@@ -1,0 +1,131 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Events\GameEventBroadcast;
+use App\Game\Geo\ArrayMapDataSource;
+use App\Game\Geo\GeoFeature;
+use App\Game\Geo\MapDataSource;
+use App\Models\Player;
+use App\Models\Question;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
+use Laravel\Sanctum\Sanctum;
+use Tests\TestCase;
+
+class OsmQuestionTest extends TestCase
+{
+    use RefreshDatabase;
+
+    /** @return array{sessionId: string, hostPlayerId: string, seekerPlayerId: string, host: User, seeker: User} */
+    private function setUpSeeking(): array
+    {
+        $host = User::factory()->create();
+        Sanctum::actingAs($host);
+        $create = $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
+        $sessionId = $create->json('id');
+        $hostPlayerId = $create->json('players.0.id');
+
+        $seeker = User::factory()->create();
+        Sanctum::actingAs($seeker);
+        $seekerPlayerId = $this->postJson("/api/sessions/{$create->json('join_code')}/join", ['display_name' => 'Seeker'])->json('player.id');
+
+        Sanctum::actingAs($host);
+        $this->postJson("/api/sessions/{$sessionId}/start");
+        $this->postJson("/api/sessions/{$sessionId}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $hostPlayerId]]);
+        $this->postJson("/api/sessions/{$sessionId}/actions", ['type' => 'confirm_hidden']);
+
+        return compact('sessionId', 'hostPlayerId', 'seekerPlayerId', 'host', 'seeker');
+    }
+
+    private function bindMuseums(GeoFeature ...$features): void
+    {
+        $this->app->instance(MapDataSource::class, new ArrayMapDataSource($features));
+    }
+
+    private function museum(string $id, float $lat, float $lng): GeoFeature
+    {
+        return new GeoFeature($id, 'museum', $lat, $lng);
+    }
+
+    private function placeBoth(array $ctx, array $hider, array $seeker): void
+    {
+        Player::whereKey($ctx['hostPlayerId'])->update(['last_lat' => $hider[0], 'last_lng' => $hider[1]]);
+        Player::whereKey($ctx['seekerPlayerId'])->update(['last_lat' => $seeker[0], 'last_lng' => $seeker[1]]);
+    }
+
+    private function askAndAnswer(array $ctx, string $category): void
+    {
+        $question = Question::create([
+            'key' => "{$category}.museum", 'category' => $category,
+            'title' => ['en' => 'Q'], 'prompt' => ['en' => 'Q'], 'reward_draw' => 3, 'reward_keep' => 1,
+        ]);
+
+        Sanctum::actingAs($ctx['seeker']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", [
+            'type' => 'ask_question', 'payload' => ['question_id' => $question->id, 'feature' => 'museum'],
+        ])->assertOk();
+
+        Sanctum::actingAs($ctx['host']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question'])->assertOk();
+    }
+
+    public function test_matching_is_yes_when_nearest_feature_is_shared(): void
+    {
+        Event::fake([GameEventBroadcast::class]);
+        $ctx = $this->setUpSeeking();
+        $this->placeBoth($ctx, [47.50, 19.00], [47.60, 19.20]);
+        $this->bindMuseums($this->museum('m/1', 47.55, 19.10)); // single museum -> both nearest = it
+
+        $this->askAndAnswer($ctx, 'matching');
+
+        Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'QuestionAnswered' && ($e->payload['answer'] ?? null) === 'yes');
+    }
+
+    public function test_matching_is_no_when_nearest_features_differ(): void
+    {
+        Event::fake([GameEventBroadcast::class]);
+        $ctx = $this->setUpSeeking();
+        $this->placeBoth($ctx, [47.50, 19.00], [47.60, 19.20]);
+        $this->bindMuseums(
+            $this->museum('m/near-hider', 47.50, 19.00),
+            $this->museum('m/near-seeker', 47.60, 19.20),
+        );
+
+        $this->askAndAnswer($ctx, 'matching');
+
+        Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'QuestionAnswered' && ($e->payload['answer'] ?? null) === 'no');
+    }
+
+    public function test_measuring_reports_closer_when_hider_is_nearer_their_feature(): void
+    {
+        Event::fake([GameEventBroadcast::class]);
+        $ctx = $this->setUpSeeking();
+        $this->placeBoth($ctx, [47.50, 19.00], [47.60, 19.20]);
+        $this->bindMuseums($this->museum('m/1', 47.50, 19.00)); // on the hider, far from the seeker
+
+        $this->askAndAnswer($ctx, 'measuring');
+
+        Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'QuestionAnswered' && ($e->payload['answer'] ?? null) === 'closer');
+    }
+
+    public function test_falls_back_to_manual_when_no_map_data(): void
+    {
+        Event::fake([GameEventBroadcast::class]);
+        $ctx = $this->setUpSeeking();
+        $this->placeBoth($ctx, [47.50, 19.00], [47.60, 19.20]);
+        $this->bindMuseums(); // empty -> nearest() is null -> not auto-evaluable
+
+        $question = Question::create([
+            'key' => 'matching.museum', 'category' => 'matching',
+            'title' => ['en' => 'Q'], 'prompt' => ['en' => 'Q'], 'reward_draw' => 3, 'reward_keep' => 1,
+        ]);
+        Sanctum::actingAs($ctx['seeker']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $question->id, 'feature' => 'museum']])->assertOk();
+        Sanctum::actingAs($ctx['host']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question', 'payload' => ['answer' => 'manual']])->assertOk();
+
+        Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'QuestionAnswered' && ($e->payload['answer'] ?? null) === 'manual');
+    }
+}

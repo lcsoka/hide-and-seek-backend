@@ -1,6 +1,8 @@
 <?php
 
 use App\Game\Modes\HideAndSeek\HideAndSeekMode;
+use App\Game\Questions\MatchingEvaluator;
+use App\Game\Questions\MeasuringEvaluator;
 use App\Game\Questions\RadarEvaluator;
 
 return [
@@ -20,6 +22,30 @@ return [
      */
     'question_evaluators' => [
         RadarEvaluator::class,
+        MatchingEvaluator::class,
+        MeasuringEvaluator::class,
+    ],
+
+    /*
+     | OpenStreetMap data via the Overpass API (the live MapDataSource backend).
+     | `features` maps a question feature key to an OSM tag.
+     */
+    'overpass' => [
+        'endpoint' => env('OVERPASS_ENDPOINT', 'https://overpass-api.de/api/interpreter'),
+        'search_radius_m' => 50_000,
+        'features' => [
+            'airport' => 'aeroway=aerodrome',
+            'rail_station' => 'railway=station',
+            'museum' => 'tourism=museum',
+            'park' => 'leisure=park',
+            'hospital' => 'amenity=hospital',
+            'library' => 'amenity=library',
+            'zoo' => 'tourism=zoo',
+            'aquarium' => 'tourism=aquarium',
+            'amusement_park' => 'tourism=theme_park',
+            'golf_course' => 'leisure=golf_course',
+            'movie_theater' => 'amenity=cinema',
+        ],
     ],
 
     /*

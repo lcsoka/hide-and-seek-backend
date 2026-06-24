@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Game\Geo\MapDataSource;
+use App\Game\Geo\OverpassMapDataSource;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\ServiceProvider;
@@ -13,7 +15,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Live OSM backend for the geo evaluators (swap to PostGIS later, or a fake in tests).
+        $this->app->bind(MapDataSource::class, OverpassMapDataSource::class);
     }
 
     /**
