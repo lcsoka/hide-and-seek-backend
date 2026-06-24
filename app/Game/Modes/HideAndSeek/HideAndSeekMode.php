@@ -51,6 +51,7 @@ class HideAndSeekMode implements GameMode
             'hiding_zone_radius_m' => $size->hidingZoneRadiusMeters(),
             'hiding_zone_rule' => config('game.hiding_zone.default_rule', 'circle'),
             'time_bonus_s' => $size->timeBonusSeconds(),
+            'units' => 'metric', // 'metric' | 'imperial' — display preference for the clients
         ];
     }
 
@@ -291,6 +292,13 @@ class HideAndSeekMode implements GameMode
         $payload['ask_lng'] = $asker->last_lng;
         $question = isset($payload['question_id']) ? Question::find($payload['question_id']) : null;
         $evaluator = $question !== null ? $this->evaluators->for($question->category) : null;
+
+        // Persist the question's geometry inputs (OSM feature type / radius) so seekers
+        // can reconstruct matching/measuring/tentacles regions from /state.
+        if ($question !== null) {
+            $payload['feature'] = $payload['feature'] ?? ($question->parameters['feature'] ?? null);
+            $payload['radius_m'] = $payload['radius_m'] ?? ($question->parameters['radius_m'] ?? null);
+        }
 
         // Deferred (thermometer): capture the seeker's start position; the answer is
         // computed when the question resolves. Others: pre-compute the truth now.
