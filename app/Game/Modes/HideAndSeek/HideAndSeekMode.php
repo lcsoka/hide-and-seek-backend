@@ -129,7 +129,7 @@ class HideAndSeekMode implements GameMode
                 [$this->event('RoundStarted', ['round' => $data['round'] ?? 0])]),
 
             'assign_hider' => $this->assignHider($session, $action, $data),
-            'choose_station' => $this->chooseStation($session, $action, $data),
+            'choose_station' => $this->chooseStation($session, $player, $action, $data),
             'confirm_hidden' => $this->confirmHidden($data),
             'ask_question' => $this->askQuestion($session, $player, $action, $data),
             'answer_question' => $this->answerQuestion($session, $action, $data),
@@ -226,7 +226,7 @@ class HideAndSeekMode implements GameMode
      * The hider designates their station; this becomes the centre of the hiding
      * zone. The centre is NOT broadcast (only the hider sees it via /state).
      */
-    private function chooseStation(Session $session, Action $action, array $data): ActionOutcome
+    private function chooseStation(Session $session, Player $hider, Action $action, array $data): ActionOutcome
     {
         $lat = (float) $action->payload['lat'];
         $lng = (float) $action->payload['lng'];
@@ -247,8 +247,8 @@ class HideAndSeekMode implements GameMode
 
         $data['hiding_zone'] = $zone;
 
-        // Broadcast only that a zone was chosen — never its location.
-        return new ActionOutcome($data, null, [$this->event('HidingZoneChosen', ['radius_m' => $radius, 'rule' => $rule])]);
+        // Player-scoped: only the hider receives their zone (with coordinates).
+        return new ActionOutcome($data, null, [$this->playerEvent('HidingZoneChosen', $zone, $hider->id)]);
     }
 
     private function validateWithinHidingZone(Session $session, Player $hider): ValidationResult
@@ -446,5 +446,11 @@ class HideAndSeekMode implements GameMode
     private function event(string $type, array $payload): array
     {
         return ['type' => $type, 'payload' => $payload];
+    }
+
+    /** A player-scoped event — broadcast only on that player's private channel. */
+    private function playerEvent(string $type, array $payload, string $playerId): array
+    {
+        return ['type' => $type, 'payload' => $payload, 'visibility' => ['scope' => 'player', 'player_id' => $playerId]];
     }
 }

@@ -45,4 +45,27 @@ class BroadcastTest extends TestCase
     {
         $this->postJson('/api/broadcasting/auth')->assertUnauthorized();
     }
+
+    public function test_player_scoped_events_target_the_private_player_channel(): void
+    {
+        Event::fake([GameEventBroadcast::class]);
+
+        $host = User::factory()->create();
+        Sanctum::actingAs($host);
+        $create = $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
+        $sessionId = $create->json('id');
+        $hostPlayerId = $create->json('players.0.id');
+
+        $this->postJson("/api/sessions/{$sessionId}/start");
+        $this->postJson("/api/sessions/{$sessionId}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $hostPlayerId]]);
+        $this->postJson("/api/sessions/{$sessionId}/actions", ['type' => 'choose_station', 'payload' => ['lat' => 47.4979, 'lng' => 19.0402]]);
+
+        // The hider's zone goes only to the hider's private channel...
+        Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'HidingZoneChosen'
+            && $e->broadcastOn()[0]->name === "private-session.{$sessionId}.player.{$hostPlayerId}");
+
+        // ...while a normal event stays on the shared presence channel.
+        Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'HidingStarted'
+            && $e->broadcastOn()[0]->name === "presence-session.{$sessionId}");
+    }
 }

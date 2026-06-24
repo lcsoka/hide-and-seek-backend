@@ -94,7 +94,12 @@ class GameEngine
         ]);
 
         foreach ($outcome->events as $event) {
-            GameEventBroadcast::dispatch($session->id, $event['type'], $event['payload'] ?? []);
+            GameEventBroadcast::dispatch(
+                $session->id,
+                $event['type'],
+                $event['payload'] ?? [],
+                $event['visibility'] ?? ['scope' => 'everyone'],
+            );
         }
 
         foreach ($outcome->timers as $timer) {
