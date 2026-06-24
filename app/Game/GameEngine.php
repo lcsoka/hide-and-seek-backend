@@ -3,6 +3,7 @@
 namespace App\Game;
 
 use App\Enums\SessionStatus;
+use App\Events\GameEventBroadcast;
 use App\Game\Support\Action;
 use App\Models\Player;
 use App\Models\Session;
@@ -48,6 +49,10 @@ class GameEngine
             'type' => $action->type,
             'payload' => $action->payload,
         ]);
+
+        foreach ($outcome->events as $event) {
+            GameEventBroadcast::dispatch($session->id, $event['type'], $event['payload'] ?? []);
+        }
 
         return $session->refresh();
     }
