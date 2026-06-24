@@ -35,6 +35,15 @@ enum GameSize: string implements HasLabel
         };
     }
 
+    /** Radius of the hider's hiding zone around their chosen station, in metres. */
+    public function hidingZoneRadiusMeters(): int
+    {
+        return match ($this) {
+            self::Small, self::Medium => 400, // ~1/4 mile
+            self::Large => 800,                // ~1/2 mile
+        };
+    }
+
     /** Base time-bonus unit (used by scoring/round bonuses), in seconds. */
     public function timeBonusSeconds(): int
     {

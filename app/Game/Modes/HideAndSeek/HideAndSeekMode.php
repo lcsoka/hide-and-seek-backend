@@ -5,6 +5,7 @@ namespace App\Game\Modes\HideAndSeek;
 use App\Enums\GameSize;
 use App\Enums\QuestionCategory;
 use App\Game\Contracts\GameMode;
+use App\Game\Geo\MapDataSource;
 use App\Game\Questions\DeferredQuestionEvaluator;
 use App\Game\Questions\QuestionEvaluatorRegistry;
 use App\Game\Support\Action;
@@ -22,7 +23,10 @@ use App\Models\Session;
  */
 class HideAndSeekMode implements GameMode
 {
-    public function __construct(private readonly QuestionEvaluatorRegistry $evaluators) {}
+    public function __construct(
+        private readonly QuestionEvaluatorRegistry $evaluators,
+        private readonly MapDataSource $map,
+    ) {}
 
     public function key(): string
     {
@@ -44,6 +48,8 @@ class HideAndSeekMode implements GameMode
             'endgame_radius_m' => 500,
             'question_cooldown_s' => 300,
             'question_answer_time_s' => 600, // hider's window to answer a question (10 min)
+            'hiding_zone_radius_m' => $size->hidingZoneRadiusMeters(),
+            'hiding_zone_rule' => config('game.hiding_zone.default_rule', 'circle'),
             'time_bonus_s' => $size->timeBonusSeconds(),
         ];
     }
@@ -65,7 +71,7 @@ class HideAndSeekMode implements GameMode
         $actions = match ($session->state) {
             'lobby' => $player->is_host ? ['start'] : [],
             'role_assignment' => $player->is_host ? ['assign_hider'] : [],
-            'hiding' => $player->role === 'hider' ? ['confirm_hidden'] : [],
+            'hiding' => $player->role === 'hider' ? ['choose_station', 'confirm_hidden'] : [],
             'seeking' => match ($player->role) {
                 // A seeker can't ask while a question is awaiting the hider's answer.
                 'seeker' => $pending ? ['declare_endgame'] : ['ask_question', 'declare_endgame'],
@@ -106,6 +112,10 @@ class HideAndSeekMode implements GameMode
             'answer_question' => ($session->state_data['pending_question'] ?? null) !== null
                 ? ValidationResult::pass()
                 : ValidationResult::fail('There is no question to answer.'),
+            'choose_station' => (isset($action->payload['lat'], $action->payload['lng']))
+                ? ValidationResult::pass()
+                : ValidationResult::fail('choose_station requires the station lat and lng.'),
+            'confirm_hidden' => $this->validateWithinHidingZone($session, $player),
             default => ValidationResult::pass(),
         };
     }
@@ -119,6 +129,7 @@ class HideAndSeekMode implements GameMode
                 [$this->event('RoundStarted', ['round' => $data['round'] ?? 0])]),
 
             'assign_hider' => $this->assignHider($session, $action, $data),
+            'choose_station' => $this->chooseStation($session, $action, $data),
             'confirm_hidden' => $this->confirmHidden($data),
             'ask_question' => $this->askQuestion($session, $player, $action, $data),
             'answer_question' => $this->answerQuestion($session, $action, $data),
@@ -209,6 +220,66 @@ class HideAndSeekMode implements GameMode
         $data['seeking_started_at'] = now()->timestamp;
 
         return new ActionOutcome($data, 'seeking', [$this->event('SeekingStarted', ['round' => $data['round'] ?? 0])]);
+    }
+
+    /**
+     * The hider designates their station; this becomes the centre of the hiding
+     * zone. The centre is NOT broadcast (only the hider sees it via /state).
+     */
+    private function chooseStation(Session $session, Action $action, array $data): ActionOutcome
+    {
+        $lat = (float) $action->payload['lat'];
+        $lng = (float) $action->payload['lng'];
+        $radius = (float) ($session->config['hiding_zone_radius_m'] ?? 400);
+        $rule = $session->config['hiding_zone_rule'] ?? 'circle';
+
+        $zone = ['center' => ['lat' => $lat, 'lng' => $lng], 'radius_m' => $radius, 'rule' => $rule];
+
+        // For the 'nearest' rule, include neighbouring stations so the client can
+        // draw the carved (clipped-Voronoi) zone.
+        if ($rule === 'nearest') {
+            $feature = config('game.hiding_zone.station_feature', 'rail_station');
+            $zone['neighbors'] = array_map(
+                fn ($f) => ['id' => $f->id, 'lat' => $f->lat, 'lng' => $f->lng],
+                $this->map->within($feature, $lat, $lng, $radius * 2),
+            );
+        }
+
+        $data['hiding_zone'] = $zone;
+
+        // Broadcast only that a zone was chosen — never its location.
+        return new ActionOutcome($data, null, [$this->event('HidingZoneChosen', ['radius_m' => $radius, 'rule' => $rule])]);
+    }
+
+    private function validateWithinHidingZone(Session $session, Player $hider): ValidationResult
+    {
+        $zone = $session->state_data['hiding_zone'] ?? null;
+        if ($zone === null) {
+            return ValidationResult::pass(); // no station chosen yet — not enforced
+        }
+
+        if ($hider->last_lat === null || $hider->last_lng === null) {
+            return ValidationResult::fail('Report your location before confirming.');
+        }
+
+        $center = $zone['center'];
+        $toChosen = Geo::distanceMeters((float) $hider->last_lat, (float) $hider->last_lng, (float) $center['lat'], (float) $center['lng']);
+        if ($toChosen > (float) $zone['radius_m']) {
+            return ValidationResult::fail('You are outside your hiding zone.');
+        }
+
+        if (($zone['rule'] ?? 'circle') === 'nearest') {
+            $feature = config('game.hiding_zone.station_feature', 'rail_station');
+            $nearest = $this->map->nearest($feature, (float) $hider->last_lat, (float) $hider->last_lng);
+            if ($nearest !== null) {
+                $toNearest = Geo::distanceMeters((float) $hider->last_lat, (float) $hider->last_lng, $nearest->lat, $nearest->lng);
+                if ($toChosen > $toNearest + 1.0) {
+                    return ValidationResult::fail('Another station is closer — you are outside your hiding zone.');
+                }
+            }
+        }
+
+        return ValidationResult::pass();
     }
 
     private function askQuestion(Session $session, Player $asker, Action $action, array $data): ActionOutcome

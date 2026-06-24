@@ -71,6 +71,16 @@ return [
     ],
 
     /*
+     | Hider's hiding zone. `default_rule`: 'circle' = official (simple radius around
+     | the chosen station); 'nearest' = stricter variant where areas closer to another
+     | station are carved out (chosen station must be the hider's nearest).
+     */
+    'hiding_zone' => [
+        'default_rule' => 'circle',
+        'station_feature' => 'rail_station',
+    ],
+
+    /*
      | Abandoned-game cleanup (see App\Console\Commands\PruneAbandonedSessions,
      | scheduled in routes/console.php).
      */

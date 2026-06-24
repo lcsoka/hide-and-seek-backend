@@ -46,6 +46,8 @@ class GameStatePresenter
             ]),
             'available_actions' => $player ? $mode->availableActions($session, $player) : [],
             'pending_question' => $this->pendingQuestion($session),
+            // Only the hider sees their own hiding zone.
+            'hiding_zone' => ($player && $player->role === 'hider') ? ($session->state_data['hiding_zone'] ?? null) : null,
             'timers' => [],
         ];
     }

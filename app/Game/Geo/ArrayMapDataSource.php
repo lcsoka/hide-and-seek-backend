@@ -36,4 +36,13 @@ final class ArrayMapDataSource implements MapDataSource
 
         return $nearest;
     }
+
+    public function within(string $type, float $lat, float $lng, float $radiusM): array
+    {
+        return array_values(array_filter(
+            $this->features,
+            fn (GeoFeature $f) => $f->type === $type
+                && Geo::distanceMeters($lat, $lng, $f->lat, $f->lng) <= $radiusM,
+        ));
+    }
 }
