@@ -5,6 +5,7 @@ namespace App\Game\Contracts;
 use App\Enums\GameSize;
 use App\Game\Support\Action;
 use App\Game\Support\ActionOutcome;
+use App\Game\Support\LocationFilter;
 use App\Game\Support\ValidationResult;
 use App\Models\Player;
 use App\Models\Session;
@@ -38,6 +39,9 @@ interface GameMode
     public function validateAction(Session $session, Player $player, Action $action): ValidationResult;
 
     public function applyAction(Session $session, Player $player, Action $action): ActionOutcome;
+
+    /** Which players' locations $viewer may see in the session's current state. */
+    public function locationVisibility(Session $session, Player $viewer): LocationFilter;
 
     /** Final standings when the game is over, or null while it continues. */
     public function winCondition(Session $session): ?array;

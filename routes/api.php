@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\ActionController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\FeedbackController;
+use App\Http\Controllers\Api\LocationController;
 use App\Http\Controllers\Api\SessionController;
 use Illuminate\Support\Facades\Route;
 
@@ -18,4 +19,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/sessions/{session}/state', [SessionController::class, 'state']);
     Route::post('/sessions/{session}/start', [SessionController::class, 'start']);
     Route::post('/sessions/{session}/actions', [ActionController::class, 'store']);
+    Route::post('/sessions/{session}/location', [LocationController::class, 'store'])
+        ->middleware('throttle:120,1');
 });

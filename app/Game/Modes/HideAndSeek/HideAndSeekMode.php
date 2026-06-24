@@ -7,6 +7,7 @@ use App\Game\Contracts\GameMode;
 use App\Game\Support\Action;
 use App\Game\Support\ActionOutcome;
 use App\Game\Support\Geo;
+use App\Game\Support\LocationFilter;
 use App\Game\Support\ValidationResult;
 use App\Models\Player;
 use App\Models\Session;
@@ -74,7 +75,8 @@ class HideAndSeekMode implements GameMode
     public function validateAction(Session $session, Player $player, Action $action): ValidationResult
     {
         return match ($action->type) {
-            'assign_hider' => $session->players()->whereKey($action->payload['player_id'] ?? null)->exists()
+            // player_id is optional — when omitted a random hider is chosen.
+            'assign_hider' => (! isset($action->payload['player_id']) || $session->players()->whereKey($action->payload['player_id'])->exists())
                 ? ValidationResult::pass()
                 : ValidationResult::fail('player_id must be a player in this session.'),
             'make_guess' => (isset($action->payload['lat'], $action->payload['lng']))
@@ -113,11 +115,32 @@ class HideAndSeekMode implements GameMode
             : null;
     }
 
+    public function locationVisibility(Session $session, Player $viewer): LocationFilter
+    {
+        $allIds = $session->players->pluck('id')->all();
+
+        // The hider's position is concealed from seekers while the round is live.
+        $concealed = in_array($session->state, ['hiding', 'seeking', 'endgame'], true);
+        if (! $concealed) {
+            return LocationFilter::only($allIds);
+        }
+
+        $hiderId = $session->state_data['hider_id'] ?? null;
+
+        // The hider sees everyone; seekers see everyone except the hider.
+        if ($viewer->role === 'hider' || $viewer->id === $hiderId) {
+            return LocationFilter::only($allIds);
+        }
+
+        return LocationFilter::only(array_filter($allIds, fn ($id) => $id !== $hiderId));
+    }
+
     // ── handlers ────────────────────────────────────────────────────────────
 
     private function assignHider(Session $session, Action $action, array $data): ActionOutcome
     {
-        $hiderId = $action->payload['player_id'];
+        // Host may pick the first hider, or omit player_id for a random one.
+        $hiderId = $action->payload['player_id'] ?? $session->players()->inRandomOrder()->value('id');
         $session->players()->update(['role' => 'seeker']);
         $session->players()->whereKey($hiderId)->update(['role' => 'hider']);
 

@@ -12,14 +12,13 @@ class PlayerResource extends JsonResource
      */
     public function toArray(Request $request): array
     {
+        // Roster only — live coordinates are exposed (visibility-filtered) via /state.
         return [
             'id' => $this->id,
             'display_name' => $this->display_name,
             'role' => $this->role,
             'is_host' => $this->is_host,
             'team_id' => $this->team_id,
-            'lat' => $this->last_lat,
-            'lng' => $this->last_lng,
         ];
     }
 }

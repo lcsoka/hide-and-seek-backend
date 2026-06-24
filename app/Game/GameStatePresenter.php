@@ -2,7 +2,6 @@
 
 namespace App\Game;
 
-use App\Http\Resources\PlayerResource;
 use App\Models\Player;
 use App\Models\Session;
 
@@ -19,6 +18,7 @@ class GameStatePresenter
     {
         $session->loadMissing('players', 'teams');
         $mode = $this->modes->make($session->game_mode->value);
+        $filter = $player ? $mode->locationVisibility($session, $player) : null;
 
         return [
             'session_id' => $session->id,
@@ -27,7 +27,20 @@ class GameStatePresenter
             'status' => $session->status?->value,
             'round' => $session->state_data['round'] ?? 0,
             'config' => $session->config,
-            'players' => PlayerResource::collection($session->players),
+            'players' => $session->players->map(function (Player $p) use ($filter) {
+                $visible = $filter?->allows($p->id) ?? false;
+
+                return [
+                    'id' => $p->id,
+                    'display_name' => $p->display_name,
+                    'role' => $p->role,
+                    'is_host' => $p->is_host,
+                    'team_id' => $p->team_id,
+                    'lat' => $visible ? $p->last_lat : null,
+                    'lng' => $visible ? $p->last_lng : null,
+                    'last_location_at' => $visible ? $p->last_location_at : null,
+                ];
+            })->values(),
             'teams' => $session->teams->map(fn ($team) => [
                 'id' => $team->id, 'name' => $team->name, 'color' => $team->color,
             ]),
