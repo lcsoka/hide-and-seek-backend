@@ -2,10 +2,10 @@
 
 namespace App\Filament\Resources\ActionLogs\Tables;
 
-use Filament\Actions\BulkActionGroup;
-use Filament\Actions\DeleteBulkAction;
-use Filament\Actions\EditAction;
+use App\Models\ActionLog;
+use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 
 class ActionLogsTable
@@ -13,28 +13,34 @@ class ActionLogsTable
     public static function configure(Table $table): Table
     {
         return $table
+            ->defaultSort('created_at', 'desc')
             ->columns([
-                TextColumn::make('session.id')
-                    ->searchable(),
-                TextColumn::make('player.id')
-                    ->searchable(),
-                TextColumn::make('type')
-                    ->searchable(),
                 TextColumn::make('created_at')
                     ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
+                    ->sortable(),
+                TextColumn::make('session.join_code')
+                    ->label('Session')
+                    ->badge()
+                    ->color('gray')
+                    ->searchable(),
+                TextColumn::make('player.display_name')
+                    ->label('Player')
+                    ->placeholder('system'),
+                TextColumn::make('type')
+                    ->badge()
+                    ->searchable(),
             ])
             ->filters([
-                //
+                SelectFilter::make('type')
+                    ->options(fn (): array => ActionLog::query()
+                        ->distinct()
+                        ->orderBy('type')
+                        ->pluck('type', 'type')
+                        ->all()),
             ])
             ->recordActions([
-                EditAction::make(),
+                ViewAction::make(),
             ])
-            ->toolbarActions([
-                BulkActionGroup::make([
-                    DeleteBulkAction::make(),
-                ]),
-            ]);
+            ->toolbarActions([]);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Teams\Schemas;
 
+use Filament\Forms\Components\ColorPicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Schema;
@@ -13,11 +14,14 @@ class TeamForm
         return $schema
             ->components([
                 Select::make('session_id')
-                    ->relationship('session', 'id')
+                    ->relationship('session', 'join_code')
+                    ->searchable()
+                    ->preload()
                     ->required(),
                 TextInput::make('name')
-                    ->required(),
-                TextInput::make('color'),
+                    ->required()
+                    ->maxLength(255),
+                ColorPicker::make('color'),
             ]);
     }
 }

@@ -2,8 +2,6 @@
 
 namespace App\Filament\Resources\ActionLogs;
 
-use App\Filament\Resources\ActionLogs\Pages\CreateActionLog;
-use App\Filament\Resources\ActionLogs\Pages\EditActionLog;
 use App\Filament\Resources\ActionLogs\Pages\ListActionLogs;
 use App\Filament\Resources\ActionLogs\Schemas\ActionLogForm;
 use App\Filament\Resources\ActionLogs\Tables\ActionLogsTable;
@@ -13,12 +11,41 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Model;
+use UnitEnum;
 
 class ActionLogResource extends Resource
 {
     protected static ?string $model = ActionLog::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedClipboardDocumentList;
+
+    protected static string|UnitEnum|null $navigationGroup = 'Audit';
+
+    protected static ?int $navigationSort = 1;
+
+    protected static ?string $recordTitleAttribute = 'type';
+
+    /** Append-only audit trail: read-only in the admin. */
+    public static function canCreate(): bool
+    {
+        return false;
+    }
+
+    public static function canEdit(Model $record): bool
+    {
+        return false;
+    }
+
+    public static function canDelete(Model $record): bool
+    {
+        return false;
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return false;
+    }
 
     public static function form(Schema $schema): Schema
     {
@@ -41,8 +68,6 @@ class ActionLogResource extends Resource
     {
         return [
             'index' => ListActionLogs::route('/'),
-            'create' => CreateActionLog::route('/create'),
-            'edit' => EditActionLog::route('/{record}/edit'),
         ];
     }
 }

@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Enums\GameMode;
+use App\Enums\SessionStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -27,6 +29,8 @@ class Session extends Model
     protected $casts = [
         'state_data' => 'array',
         'config' => 'array',
+        'status' => SessionStatus::class,
+        'game_mode' => GameMode::class,
     ];
 
     public function players(): HasMany

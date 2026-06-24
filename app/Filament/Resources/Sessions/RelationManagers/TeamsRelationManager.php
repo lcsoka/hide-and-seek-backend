@@ -1,30 +1,43 @@
 <?php
 
-namespace App\Filament\Resources\Teams\Tables;
+namespace App\Filament\Resources\Sessions\RelationManagers;
 
 use Filament\Actions\BulkActionGroup;
+use Filament\Actions\CreateAction;
+use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
-use Filament\Actions\ViewAction;
+use Filament\Forms\Components\ColorPicker;
+use Filament\Forms\Components\TextInput;
+use Filament\Resources\RelationManagers\RelationManager;
+use Filament\Schemas\Schema;
 use Filament\Tables\Columns\ColorColumn;
 use Filament\Tables\Columns\TextColumn;
-use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
 
-class TeamsTable
+class TeamsRelationManager extends RelationManager
 {
-    public static function configure(Table $table): Table
+    protected static string $relationship = 'teams';
+
+    public function form(Schema $schema): Schema
+    {
+        return $schema
+            ->components([
+                TextInput::make('name')
+                    ->required()
+                    ->maxLength(255),
+                ColorPicker::make('color'),
+            ]);
+    }
+
+    public function table(Table $table): Table
     {
         return $table
+            ->recordTitleAttribute('name')
             ->columns([
                 TextColumn::make('name')
                     ->searchable()
                     ->weight('bold'),
-                TextColumn::make('session.join_code')
-                    ->label('Session')
-                    ->badge()
-                    ->color('gray')
-                    ->searchable(),
                 ColorColumn::make('color')
                     ->placeholder('—'),
                 TextColumn::make('players_count')
@@ -32,18 +45,13 @@ class TeamsTable
                     ->counts('players')
                     ->badge()
                     ->color('primary'),
-                TextColumn::make('created_at')
-                    ->dateTime()
-                    ->sortable()
-                    ->toggleable(isToggledHiddenByDefault: true),
             ])
-            ->filters([
-                SelectFilter::make('session')
-                    ->relationship('session', 'join_code'),
+            ->headerActions([
+                CreateAction::make(),
             ])
             ->recordActions([
-                ViewAction::make(),
                 EditAction::make(),
+                DeleteAction::make(),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([

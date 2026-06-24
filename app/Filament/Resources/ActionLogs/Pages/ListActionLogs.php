@@ -3,7 +3,6 @@
 namespace App\Filament\Resources\ActionLogs\Pages;
 
 use App\Filament\Resources\ActionLogs\ActionLogResource;
-use Filament\Actions\CreateAction;
 use Filament\Resources\Pages\ListRecords;
 
 class ListActionLogs extends ListRecords
@@ -12,8 +11,7 @@ class ListActionLogs extends ListRecords
 
     protected function getHeaderActions(): array
     {
-        return [
-            CreateAction::make(),
-        ];
+        // Append-only audit trail: no create.
+        return [];
     }
 }
