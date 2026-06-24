@@ -19,8 +19,9 @@ return [
     ],
 
     /*
-     | Server-side question evaluators (category => evaluator). Pure-geometry ones
-     | work now; matching/measuring/tentacles will be added with PostGIS + OSM.
+     | Server-side question evaluators (one per category). Radar is pure geometry;
+     | matching/measuring/tentacles use the MapDataSource (Overpass); thermometer
+     | is deferred (resolved after the seeker moves).
      */
     'question_evaluators' => [
         RadarEvaluator::class,
