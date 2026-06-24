@@ -22,6 +22,7 @@ class GameStatePresenter
 
         return [
             'session_id' => $session->id,
+            'join_code' => $session->join_code,
             'game_mode' => $session->game_mode?->value,
             'state' => $session->state,
             'status' => $session->status?->value,
