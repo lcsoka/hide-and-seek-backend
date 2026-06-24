@@ -115,6 +115,19 @@ class HideAndSeekMode implements GameMode
             : null;
     }
 
+    public function onTimerExpired(Session $session, string $timerKey): ActionOutcome
+    {
+        $data = $session->state_data ?? [];
+
+        // Hiding time ran out: force the transition to seeking. Guarded by state so
+        // an early confirm_hidden (already in seeking) makes this a no-op.
+        if ($timerKey === 'hiding_deadline' && $session->state === 'hiding') {
+            return $this->confirmHidden($data);
+        }
+
+        return new ActionOutcome($data);
+    }
+
     public function locationVisibility(Session $session, Player $viewer): LocationFilter
     {
         $allIds = $session->players->pluck('id')->all();
@@ -149,8 +162,12 @@ class HideAndSeekMode implements GameMode
         $data['hiding_started_at'] = now()->timestamp;
         $data['hiding_deadline'] = now()->addSeconds($limit)->timestamp;
 
-        return new ActionOutcome($data, 'hiding',
-            [$this->event('HidingStarted', ['round' => $data['round'] ?? 0, 'hiding_deadline' => $data['hiding_deadline']])]);
+        return new ActionOutcome(
+            $data,
+            'hiding',
+            [$this->event('HidingStarted', ['round' => $data['round'] ?? 0, 'hiding_deadline' => $data['hiding_deadline']])],
+            [['op' => 'set', 'key' => 'hiding_deadline', 'delay' => $limit]],
+        );
     }
 
     private function confirmHidden(array $data): ActionOutcome

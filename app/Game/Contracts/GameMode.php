@@ -40,6 +40,9 @@ interface GameMode
 
     public function applyAction(Session $session, Player $player, Action $action): ActionOutcome;
 
+    /** A server timer fired (e.g. hiding_deadline). Applied exactly like an action. */
+    public function onTimerExpired(Session $session, string $timerKey): ActionOutcome;
+
     /** Which players' locations $viewer may see in the session's current state. */
     public function locationVisibility(Session $session, Player $viewer): LocationFilter;
 

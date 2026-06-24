@@ -10,11 +10,13 @@ final class ActionOutcome
     /**
      * @param  array<string, mixed>  $stateData  Replaces session.state_data.
      * @param  string|null  $nextState  null = stay in the current state.
-     * @param  list<array<string, mixed>>  $events  Events to broadcast (Reverb wiring comes later).
+     * @param  list<array<string, mixed>>  $events  Events to broadcast.
+     * @param  list<array{op: string, key: string, delay?: int}>  $timers  Timer ops to set/clear.
      */
     public function __construct(
         public readonly array $stateData,
         public readonly ?string $nextState = null,
         public readonly array $events = [],
+        public readonly array $timers = [],
     ) {}
 }
