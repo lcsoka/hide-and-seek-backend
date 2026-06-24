@@ -41,6 +41,7 @@ class HideAndSeekMode implements GameMode
             'hiding_time_limit_s' => $size->hidingTimeLimitSeconds(),
             'endgame_radius_m' => 500,
             'question_cooldown_s' => 300,
+            'question_answer_time_s' => 600, // hider's window to answer a question (10 min)
             'time_bonus_s' => $size->timeBonusSeconds(),
         ];
     }
@@ -57,13 +58,17 @@ class HideAndSeekMode implements GameMode
 
     public function availableActions(Session $session, Player $player): array
     {
+        $pending = ($session->state_data['pending_question'] ?? null) !== null;
+
         $actions = match ($session->state) {
             'lobby' => $player->is_host ? ['start'] : [],
             'role_assignment' => $player->is_host ? ['assign_hider'] : [],
             'hiding' => $player->role === 'hider' ? ['confirm_hidden'] : [],
             'seeking' => match ($player->role) {
-                'seeker' => ['ask_question', 'declare_endgame'],
-                'hider' => ['answer_question', 'play_curse'],
+                // A seeker can't ask while a question is awaiting the hider's answer.
+                'seeker' => $pending ? ['declare_endgame'] : ['ask_question', 'declare_endgame'],
+                // The hider answers only while a question is pending; can always curse.
+                'hider' => $pending ? ['answer_question', 'play_curse'] : ['play_curse'],
                 default => [],
             },
             'endgame' => match ($player->role) {
@@ -93,6 +98,12 @@ class HideAndSeekMode implements GameMode
             'make_guess' => (isset($action->payload['lat'], $action->payload['lng']))
                 ? ValidationResult::pass()
                 : ValidationResult::fail('make_guess requires lat and lng.'),
+            'ask_question' => ($session->state_data['pending_question'] ?? null) === null
+                ? ValidationResult::pass()
+                : ValidationResult::fail('A question is already awaiting an answer.'),
+            'answer_question' => ($session->state_data['pending_question'] ?? null) !== null
+                ? ValidationResult::pass()
+                : ValidationResult::fail('There is no question to answer.'),
             default => ValidationResult::pass(),
         };
     }
@@ -108,7 +119,7 @@ class HideAndSeekMode implements GameMode
             'assign_hider' => $this->assignHider($session, $action, $data),
             'confirm_hidden' => $this->confirmHidden($data),
             'ask_question' => $this->askQuestion($session, $player, $action, $data),
-            'answer_question' => $this->logged($data, 'answers', ['by' => $player->id] + $action->payload, 'QuestionAnswered', $action->payload),
+            'answer_question' => $this->answerQuestion($action, $data),
             'play_curse' => $this->logged($data, 'curses_played', ['by' => $player->id] + $action->payload, 'CursePlayed', $action->payload),
             'declare_endgame' => new ActionOutcome($data, 'endgame', [$this->event('EndgameTriggered', ['by' => $player->id])]),
             'make_guess' => $this->makeGuess($session, $player, $action, $data),
@@ -139,6 +150,11 @@ class HideAndSeekMode implements GameMode
         // an early confirm_hidden (already in seeking) makes this a no-op.
         if ($timerKey === 'hiding_deadline' && $session->state === 'hiding') {
             return $this->confirmHidden($data);
+        }
+
+        // The hider didn't answer in time: auto-resolve with the server truth.
+        if ($timerKey === 'question_answer' && ($data['pending_question'] ?? null) !== null) {
+            return $this->resolveQuestion($data, null, auto: true);
         }
 
         return new ActionOutcome($data);
@@ -197,29 +213,73 @@ class HideAndSeekMode implements GameMode
     {
         $payload = $action->payload;
         $question = isset($payload['question_id']) ? Question::find($payload['question_id']) : null;
-        $entry = ['asked_by' => $asker->id] + $payload;
 
-        // Try a server-authoritative answer (e.g. radar). Falls back to a manual
-        // hider answer when the category isn't auto-evaluable or positions are unknown.
-        if ($question !== null) {
-            $answer = $this->evaluators->for($question->category)?->evaluate($session, $asker, $question, $payload);
+        // Pre-compute the authoritative answer (radar etc.) at ask time, when the
+        // asker's position matters. Held server-side; revealed on answer/timeout.
+        $truth = $question !== null
+            ? $this->evaluators->for($question->category)?->evaluate($session, $asker, $question, $payload)
+            : null;
 
-            if ($answer !== null) {
-                $entry['answer'] = $answer;
-                $entry['at'] = now()->timestamp;
-                $data['questions'][] = $entry;
+        $window = (int) ($session->config['question_answer_time_s'] ?? 600);
+        $seq = ($data['question_seq'] ?? 0) + 1;
+        $data['question_seq'] = $seq;
+        $data['pending_question'] = [
+            'seq' => $seq,
+            'question_id' => $question?->id,
+            'category' => $question?->category->value,
+            'asked_by' => $asker->id,
+            'payload' => $payload,
+            'asked_at' => now()->timestamp,
+            'deadline' => now()->addSeconds($window)->timestamp,
+            'truth' => $truth, // server-only; never broadcast or exposed via /state
+        ];
+        $data['question_answer'] = $seq; // timer guard (cleared on resolve)
 
-                return new ActionOutcome($data, null, [
-                    $this->event('QuestionAsked', ['question_id' => $question->id, 'category' => $question->category->value, 'asked_by' => $asker->id]),
-                    $this->event('QuestionAnswered', ['question_id' => $question->id] + $answer),
-                ]);
-            }
+        return new ActionOutcome(
+            $data,
+            null,
+            [$this->event('QuestionAsked', [
+                'seq' => $seq,
+                'question_id' => $question?->id,
+                'category' => $question?->category->value,
+                'asked_by' => $asker->id,
+                'deadline' => $data['pending_question']['deadline'],
+            ])],
+            [['op' => 'set', 'key' => 'question_answer', 'delay' => $window]],
+        );
+    }
+
+    private function answerQuestion(Action $action, array $data): ActionOutcome
+    {
+        return $this->resolveQuestion($data, $action->payload['answer'] ?? null, auto: false);
+    }
+
+    /**
+     * Finalise the pending question: reveal the server truth (auto-evaluable
+     * categories) or accept the hider's answer; broadcast QuestionAnswered.
+     */
+    private function resolveQuestion(array $data, mixed $hiderAnswer, bool $auto): ActionOutcome
+    {
+        $pending = $data['pending_question'] ?? null;
+        if ($pending === null) {
+            return new ActionOutcome($data);
         }
 
-        $entry['at'] = now()->timestamp;
-        $data['questions'][] = $entry;
+        $answer = $pending['truth'] ?? ['answer' => $hiderAnswer];
+        $resolved = $pending + [
+            'answer' => $answer,
+            'resolved_at' => now()->timestamp,
+            'auto' => $auto,
+        ];
+        unset($resolved['truth']);
 
-        return new ActionOutcome($data, null, [$this->event('QuestionAsked', $payload)]);
+        $data['questions'][] = $resolved;
+        $data['pending_question'] = null;
+        $data['question_answer'] = null; // invalidate the deadline timer
+
+        return new ActionOutcome($data, null, [
+            $this->event('QuestionAnswered', ['seq' => $pending['seq'], 'question_id' => $pending['question_id'], 'auto' => $auto] + $answer),
+        ]);
     }
 
     private function logged(array $data, string $bucket, array $entry, string $event, array $payload): ActionOutcome

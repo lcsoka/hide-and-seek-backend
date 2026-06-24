@@ -45,7 +45,26 @@ class GameStatePresenter
                 'id' => $team->id, 'name' => $team->name, 'color' => $team->color,
             ]),
             'available_actions' => $player ? $mode->availableActions($session, $player) : [],
+            'pending_question' => $this->pendingQuestion($session),
             'timers' => [],
+        ];
+    }
+
+    /** The open question (if any) — with the server-held truth stripped out. */
+    private function pendingQuestion(Session $session): ?array
+    {
+        $pending = $session->state_data['pending_question'] ?? null;
+
+        if ($pending === null) {
+            return null;
+        }
+
+        return [
+            'seq' => $pending['seq'] ?? null,
+            'question_id' => $pending['question_id'] ?? null,
+            'category' => $pending['category'] ?? null,
+            'asked_by' => $pending['asked_by'] ?? null,
+            'deadline' => $pending['deadline'] ?? null,
         ];
     }
 }
