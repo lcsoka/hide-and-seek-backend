@@ -3,7 +3,9 @@
 namespace App\Game\Modes\HideAndSeek;
 
 use App\Enums\GameSize;
+use App\Enums\QuestionCategory;
 use App\Game\Contracts\GameMode;
+use App\Game\Questions\DeferredQuestionEvaluator;
 use App\Game\Questions\QuestionEvaluatorRegistry;
 use App\Game\Support\Action;
 use App\Game\Support\ActionOutcome;
@@ -119,7 +121,7 @@ class HideAndSeekMode implements GameMode
             'assign_hider' => $this->assignHider($session, $action, $data),
             'confirm_hidden' => $this->confirmHidden($data),
             'ask_question' => $this->askQuestion($session, $player, $action, $data),
-            'answer_question' => $this->answerQuestion($action, $data),
+            'answer_question' => $this->answerQuestion($session, $action, $data),
             'play_curse' => $this->logged($data, 'curses_played', ['by' => $player->id] + $action->payload, 'CursePlayed', $action->payload),
             'declare_endgame' => new ActionOutcome($data, 'endgame', [$this->event('EndgameTriggered', ['by' => $player->id])]),
             'make_guess' => $this->makeGuess($session, $player, $action, $data),
@@ -154,7 +156,7 @@ class HideAndSeekMode implements GameMode
 
         // The hider didn't answer in time: auto-resolve with the server truth.
         if ($timerKey === 'question_answer' && ($data['pending_question'] ?? null) !== null) {
-            return $this->resolveQuestion($data, null, auto: true);
+            return $this->resolveQuestion($session, $data, null, auto: true);
         }
 
         return new ActionOutcome($data);
@@ -213,12 +215,17 @@ class HideAndSeekMode implements GameMode
     {
         $payload = $action->payload;
         $question = isset($payload['question_id']) ? Question::find($payload['question_id']) : null;
+        $evaluator = $question !== null ? $this->evaluators->for($question->category) : null;
 
-        // Pre-compute the authoritative answer (radar etc.) at ask time, when the
-        // asker's position matters. Held server-side; revealed on answer/timeout.
-        $truth = $question !== null
-            ? $this->evaluators->for($question->category)?->evaluate($session, $asker, $question, $payload)
-            : null;
+        // Deferred (thermometer): capture the seeker's start position; the answer is
+        // computed when the question resolves. Others: pre-compute the truth now.
+        $truth = null;
+        if ($evaluator instanceof DeferredQuestionEvaluator) {
+            $payload['start_lat'] = $asker->last_lat;
+            $payload['start_lng'] = $asker->last_lng;
+        } elseif ($evaluator !== null) {
+            $truth = $evaluator->evaluate($session, $asker, $question, $payload);
+        }
 
         $window = (int) ($session->config['question_answer_time_s'] ?? 600);
         $seq = ($data['question_seq'] ?? 0) + 1;
@@ -249,23 +256,23 @@ class HideAndSeekMode implements GameMode
         );
     }
 
-    private function answerQuestion(Action $action, array $data): ActionOutcome
+    private function answerQuestion(Session $session, Action $action, array $data): ActionOutcome
     {
-        return $this->resolveQuestion($data, $action->payload['answer'] ?? null, auto: false);
+        return $this->resolveQuestion($session, $data, $action->payload['answer'] ?? null, auto: false);
     }
 
     /**
-     * Finalise the pending question: reveal the server truth (auto-evaluable
-     * categories) or accept the hider's answer; broadcast QuestionAnswered.
+     * Finalise the pending question: reveal the server truth (ask-time evaluable),
+     * compute a deferred answer (thermometer), or accept the hider's answer.
      */
-    private function resolveQuestion(array $data, mixed $hiderAnswer, bool $auto): ActionOutcome
+    private function resolveQuestion(Session $session, array $data, mixed $hiderAnswer, bool $auto): ActionOutcome
     {
         $pending = $data['pending_question'] ?? null;
         if ($pending === null) {
             return new ActionOutcome($data);
         }
 
-        $answer = $pending['truth'] ?? ['answer' => $hiderAnswer];
+        $answer = $pending['truth'] ?? $this->deferredAnswer($session, $pending) ?? ['answer' => $hiderAnswer];
         $resolved = $pending + [
             'answer' => $answer,
             'resolved_at' => now()->timestamp,
@@ -280,6 +287,24 @@ class HideAndSeekMode implements GameMode
         return new ActionOutcome($data, null, [
             $this->event('QuestionAnswered', ['seq' => $pending['seq'], 'question_id' => $pending['question_id'], 'auto' => $auto] + $answer),
         ]);
+    }
+
+    /** Run a deferred evaluator (thermometer) against the seeker's current position. */
+    private function deferredAnswer(Session $session, array $pending): ?array
+    {
+        $category = isset($pending['category']) ? QuestionCategory::tryFrom($pending['category']) : null;
+        $evaluator = $category ? $this->evaluators->for($category) : null;
+        if (! $evaluator instanceof DeferredQuestionEvaluator) {
+            return null;
+        }
+
+        $asker = $session->players()->find($pending['asked_by'] ?? null);
+        $question = isset($pending['question_id']) ? Question::find($pending['question_id']) : null;
+        if ($asker === null || $question === null) {
+            return null;
+        }
+
+        return $evaluator->evaluate($session, $asker, $question, $pending['payload'] ?? []);
     }
 
     private function logged(array $data, string $bucket, array $entry, string $event, array $payload): ActionOutcome

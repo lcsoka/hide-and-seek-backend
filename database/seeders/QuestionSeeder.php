@@ -39,13 +39,28 @@ class QuestionSeeder extends Seeder
         'Metro Lines' => 'Metróvonalak', 'Zoos' => 'Állatkertek', 'Aquariums' => 'Akváriumok', 'Amusement Parks' => 'Vidámparkok',
     ];
 
+    /** Matching/measuring subject => OSM feature key (config game.overpass.features). */
+    private array $featureKeys = [
+        'Commercial Airport' => 'airport', 'Rail Station' => 'rail_station', 'Museum' => 'museum',
+        'Park' => 'park', 'Hospital' => 'hospital', 'Library' => 'library', 'Zoo' => 'zoo',
+        'Aquarium' => 'aquarium', 'Amusement Park' => 'amusement_park', 'Golf Course' => 'golf_course',
+        'Movie Theater' => 'movie_theater',
+    ];
+
+    /** Tentacle (plural) subject => OSM feature key. */
+    private array $tentacleFeatureKeys = [
+        'Museums' => 'museum', 'Libraries' => 'library', 'Movie Theaters' => 'movie_theater',
+        'Hospitals' => 'hospital', 'Zoos' => 'zoo', 'Aquariums' => 'aquarium', 'Amusement Parks' => 'amusement_park',
+    ];
+
     public function run(): void
     {
         $matching = ['Commercial Airport', 'Transit Line', "Station Name's Length", 'Street or Path', '1st Administrative Division', '2nd Administrative Division', '3rd Administrative Division', '4th Administrative Division', 'Mountain', 'Landmass', 'Park', 'Amusement Park', 'Zoo', 'Aquarium', 'Golf Course', 'Museum', 'Movie Theater', 'Hospital', 'Library', 'Foreign Consulate'];
         foreach ($matching as $s) {
             $this->seed(QuestionCategory::Matching, "matching.{$this->slug($s)}", 3, 1,
                 "Matching — {$s}", "Egyezés — {$this->hu($s)}",
-                "Is your nearest {$s} the same as mine?", "A legközelebbi {$this->hu($s)} ugyanaz, mint az enyém?");
+                "Is your nearest {$s} the same as mine?", "A legközelebbi {$this->hu($s)} ugyanaz, mint az enyém?",
+                $this->featureParams($s));
         }
 
         $measuring = ['Commercial Airport', 'High-Speed Train Line', 'Rail Station', 'International Border', '1st Administrative Division Border', '2nd Administrative Division Border', 'Sea Level', 'Body of Water', 'Coastline', 'Mountain', 'Park', 'Amusement Park', 'Zoo', 'Aquarium', 'Golf Course', 'Museum', 'Movie Theater', 'Hospital', 'Library', 'Foreign Consulate'];
@@ -53,7 +68,8 @@ class QuestionSeeder extends Seeder
             $this->seed(QuestionCategory::Measuring, "measuring.{$this->slug($s)}", 3, 1,
                 "Measuring — {$s}", "Mérés — {$this->hu($s)}",
                 "Compared to me, are you closer to or further from the nearest {$s}?",
-                "Hozzám képest közelebb vagy távolabb van a legközelebbi {$this->hu($s)}?");
+                "Hozzám képest közelebb vagy távolabb van a legközelebbi {$this->hu($s)}?",
+                $this->featureParams($s));
         }
 
         $this->seed(QuestionCategory::Radar, 'radar', 2, 1, 'Radar', 'Radar',
@@ -78,7 +94,7 @@ class QuestionSeeder extends Seeder
                 "Tentacles — {$s} ({$radius})", "Csápok — {$this->hu($s)} ({$radius})",
                 "Of all {$s} within {$radius} of a seeker, which is your nearest?",
                 "A keresőtől {$radius} távolságon belüli összes {$this->hu($s)} közül melyik a legközelebbi hozzád?",
-                ['radius' => $radius]);
+                $this->tentacleParams($s, $radius));
         }
     }
 
@@ -90,6 +106,29 @@ class QuestionSeeder extends Seeder
     private function slug(string $value): string
     {
         return Str::slug($value, '_');
+    }
+
+    private function featureParams(string $subject): ?array
+    {
+        return isset($this->featureKeys[$subject]) ? ['feature' => $this->featureKeys[$subject]] : null;
+    }
+
+    private function tentacleParams(string $subject, string $radius): array
+    {
+        $params = ['radius' => $radius, 'radius_m' => $this->radiusMeters($radius)];
+
+        if (isset($this->tentacleFeatureKeys[$subject])) {
+            $params['feature'] = $this->tentacleFeatureKeys[$subject];
+        }
+
+        return $params;
+    }
+
+    private function radiusMeters(string $radius): int
+    {
+        preg_match('/[\d.]+/', $radius, $match);
+
+        return (int) round(((float) ($match[0] ?? 0)) * 1609.34);
     }
 
     private function seed(QuestionCategory $category, string $key, int $draw, int $keep, string $titleEn, string $titleHu, string $promptEn, string $promptHu, ?array $parameters = null): void

@@ -128,4 +128,66 @@ class OsmQuestionTest extends TestCase
 
         Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'QuestionAnswered' && ($e->payload['answer'] ?? null) === 'manual');
     }
+
+    public function test_tentacles_reports_in_range_with_nearest_feature(): void
+    {
+        Event::fake([GameEventBroadcast::class]);
+        $ctx = $this->setUpSeeking();
+        $this->placeBoth($ctx, [47.4979, 19.0402], [47.5000, 19.0500]); // ~800 m apart
+        $this->bindMuseums($this->museum('m/1', 47.4980, 19.0410)); // near the hider
+        $q = Question::create([
+            'key' => 'tentacles.museums', 'category' => 'tentacles',
+            'title' => ['en' => 'T'], 'prompt' => ['en' => 'T'], 'reward_draw' => 4, 'reward_keep' => 2,
+        ]);
+
+        Sanctum::actingAs($ctx['seeker']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'feature' => 'museum', 'radius_m' => 5000]])->assertOk();
+        Sanctum::actingAs($ctx['host']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question'])->assertOk();
+
+        Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'QuestionAnswered'
+            && ($e->payload['answer'] ?? null) === 'in_range' && ($e->payload['feature_id'] ?? null) === 'm/1');
+    }
+
+    public function test_tentacles_reports_out_of_range(): void
+    {
+        Event::fake([GameEventBroadcast::class]);
+        $ctx = $this->setUpSeeking();
+        $this->placeBoth($ctx, [47.5316, 21.6273], [47.4979, 19.0402]); // ~200 km apart
+        $this->bindMuseums();
+        $q = Question::create([
+            'key' => 'tentacles.museums', 'category' => 'tentacles',
+            'title' => ['en' => 'T'], 'prompt' => ['en' => 'T'], 'reward_draw' => 4, 'reward_keep' => 2,
+        ]);
+
+        Sanctum::actingAs($ctx['seeker']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'feature' => 'museum', 'radius_m' => 5000]])->assertOk();
+        Sanctum::actingAs($ctx['host']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question'])->assertOk();
+
+        Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'QuestionAnswered' && ($e->payload['answer'] ?? null) === 'out_of_range');
+    }
+
+    public function test_thermometer_reports_hotter_when_seeker_moves_closer(): void
+    {
+        Event::fake([GameEventBroadcast::class]);
+        $ctx = $this->setUpSeeking();
+        Player::whereKey($ctx['hostPlayerId'])->update(['last_lat' => 47.4979, 'last_lng' => 19.0402]); // hider
+        Player::whereKey($ctx['seekerPlayerId'])->update(['last_lat' => 47.6000, 'last_lng' => 19.2000]); // seeker starts far
+
+        $q = Question::create([
+            'key' => 'thermometer', 'category' => 'thermometer',
+            'title' => ['en' => 'Th'], 'prompt' => ['en' => 'Th'], 'reward_draw' => 2, 'reward_keep' => 1,
+        ]);
+
+        Sanctum::actingAs($ctx['seeker']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id]])->assertOk();
+
+        // Seeker travels toward the hider, then the hider answers.
+        Player::whereKey($ctx['seekerPlayerId'])->update(['last_lat' => 47.5100, 'last_lng' => 19.0600]);
+        Sanctum::actingAs($ctx['host']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question'])->assertOk();
+
+        Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'QuestionAnswered' && ($e->payload['answer'] ?? null) === 'hotter');
+    }
 }

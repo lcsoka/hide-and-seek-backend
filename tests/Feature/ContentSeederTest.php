@@ -60,4 +60,16 @@ class ContentSeederTest extends TestCase
         $this->assertSame('Egyezés — Múzeum', $question->getTranslation('title', 'hu'));
         $this->assertSame('Matching — Museum', $question->getTranslation('title', 'en'));
     }
+
+    public function test_geo_questions_carry_osm_feature_keys(): void
+    {
+        $this->seed(QuestionSeeder::class);
+
+        $this->assertSame('museum', Question::where('key', 'matching.museum')->firstOrFail()->parameters['feature']);
+        $this->assertSame('airport', Question::where('key', 'measuring.commercial_airport')->firstOrFail()->parameters['feature']);
+
+        $tentacle = Question::where('key', 'tentacles.museums_1_mile')->firstOrFail();
+        $this->assertSame('museum', $tentacle->parameters['feature']);
+        $this->assertGreaterThan(0, $tentacle->parameters['radius_m']);
+    }
 }

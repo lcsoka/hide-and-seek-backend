@@ -4,6 +4,8 @@ use App\Game\Modes\HideAndSeek\HideAndSeekMode;
 use App\Game\Questions\MatchingEvaluator;
 use App\Game\Questions\MeasuringEvaluator;
 use App\Game\Questions\RadarEvaluator;
+use App\Game\Questions\TentaclesEvaluator;
+use App\Game\Questions\ThermometerEvaluator;
 
 return [
     'default_mode' => 'hide_and_seek',
@@ -24,6 +26,8 @@ return [
         RadarEvaluator::class,
         MatchingEvaluator::class,
         MeasuringEvaluator::class,
+        TentaclesEvaluator::class,
+        ThermometerEvaluator::class,
     ],
 
     /*
