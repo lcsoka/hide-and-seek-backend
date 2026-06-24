@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\ActionController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\CatalogController;
 use App\Http\Controllers\Api\DebugController;
 use App\Http\Controllers\Api\FeedbackController;
 use App\Http\Controllers\Api\LocationController;
@@ -12,6 +13,8 @@ use Illuminate\Support\Facades\Route;
 // Public.
 Route::post('/auth/guest', [AuthController::class, 'guest']);
 Route::post('/feedback', [FeedbackController::class, 'store']);
+Route::get('/questions', [CatalogController::class, 'questions']);
+Route::get('/curses', [CatalogController::class, 'curses']);
 
 // Authenticated (guest or, later, registered token).
 Route::middleware('auth:sanctum')->group(function () {

@@ -2,7 +2,9 @@
 
 namespace Tests\Feature;
 
+use App\Models\Curse;
 use App\Models\Player;
+use App\Models\Question;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -124,5 +126,66 @@ class GameplayTest extends TestCase
         Sanctum::actingAs($this->seeker);
         $this->getJson("/api/sessions/{$this->sessionId}/state")
             ->assertOk()->assertJsonPath('available_actions', []);
+    }
+
+    public function test_state_exposes_answered_questions_and_timers_without_hider_location(): void
+    {
+        $this->setUpSession();
+
+        $radar = Question::create([
+            'key' => 'radar', 'category' => 'radar',
+            'title' => ['hu' => 'Radar', 'en' => 'Radar'], 'prompt' => ['hu' => 'Körön belül?', 'en' => 'Within?'],
+            'parameters' => ['distances' => ['1 mile']], 'reward_draw' => 2, 'reward_keep' => 1, 'is_active' => true,
+        ]);
+
+        Sanctum::actingAs($this->host);
+        $this->postJson("/api/sessions/{$this->sessionId}/start");
+        $this->action('assign_hider', ['player_id' => $this->hostPlayerId]);
+
+        // Known positions: the hider ~16 km from the seeker.
+        Player::whereKey($this->hostPlayerId)->update(['last_lat' => 47.60, 'last_lng' => 19.20]);
+        Player::whereKey($this->seekerPlayerId)->update(['last_lat' => 47.50, 'last_lng' => 19.04]);
+
+        $this->action('confirm_hidden')->assertJsonPath('state', 'seeking');
+
+        Sanctum::actingAs($this->seeker);
+        $this->action('ask_question', ['question_id' => $radar->id, 'radius_m' => 1609])->assertOk();
+
+        Sanctum::actingAs($this->host);
+        $this->action('answer_question', [])->assertOk();
+
+        Sanctum::actingAs($this->seeker);
+        $state = $this->getJson("/api/sessions/{$this->sessionId}/state")->assertOk()
+            ->assertJsonPath('questions.0.category', 'radar')
+            ->assertJsonPath('questions.0.ask.radius_m', 1609);
+
+        // The radar centre is the seeker's own ask-time position.
+        $this->assertNotNull($state->json('questions.0.ask.lat'));
+        $this->assertContains($state->json('questions.0.answer.answer'), ['yes', 'no']);
+        $this->assertIsInt($state->json('timers.now'));
+
+        // The seeker must NOT see the hider's location.
+        $hider = collect($state->json('players'))->firstWhere('id', $this->hostPlayerId);
+        $this->assertNull($hider['lat']);
+        $this->assertNull($hider['lng']);
+    }
+
+    public function test_catalog_endpoints_return_active_questions_and_curses(): void
+    {
+        Question::create([
+            'key' => 'radar', 'category' => 'radar',
+            'title' => ['hu' => 'Radar', 'en' => 'Radar'], 'prompt' => ['hu' => 'x', 'en' => 'x'], 'is_active' => true,
+        ]);
+        Question::create([
+            'key' => 'hidden', 'category' => 'radar',
+            'title' => ['hu' => 'Rejtett', 'en' => 'Hidden'], 'prompt' => ['hu' => 'x', 'en' => 'x'], 'is_active' => false,
+        ]);
+        Curse::create([
+            'key' => 'luxury_car', 'name' => ['hu' => 'A luxusautó', 'en' => 'The Luxury Car'],
+            'cost' => ['hu' => 'Fotó', 'en' => 'A photo'], 'description' => ['hu' => 'x', 'en' => 'x'], 'is_active' => true,
+        ]);
+
+        $this->getJson('/api/questions')->assertOk()->assertJsonCount(1)->assertJsonPath('0.category', 'radar');
+        $this->getJson('/api/curses')->assertOk()->assertJsonCount(1)->assertJsonPath('0.key', 'luxury_car');
     }
 }

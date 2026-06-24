@@ -133,7 +133,7 @@ class HideAndSeekMode implements GameMode
             'confirm_hidden' => $this->confirmHidden($data),
             'ask_question' => $this->askQuestion($session, $player, $action, $data),
             'answer_question' => $this->answerQuestion($session, $action, $data),
-            'play_curse' => $this->logged($data, 'curses_played', ['by' => $player->id] + $action->payload, 'CursePlayed', $action->payload),
+            'play_curse' => $this->logged($data, 'curses_played', ['by' => $player->id, 'round' => $data['round'] ?? 0] + $action->payload, 'CursePlayed', $action->payload),
             'declare_endgame' => new ActionOutcome($data, 'endgame', [$this->event('EndgameTriggered', ['by' => $player->id])]),
             'make_guess' => $this->makeGuess($session, $player, $action, $data),
             'surrender' => $this->endRound($data, [$this->event('HiderFound', ['round' => $data['round'] ?? 0, 'surrendered' => true])]),
@@ -285,6 +285,10 @@ class HideAndSeekMode implements GameMode
     private function askQuestion(Session $session, Player $asker, Action $action, array $data): ActionOutcome
     {
         $payload = $action->payload;
+        // Capture the seeker's ask-time position (radar centre / thermometer A). It's
+        // the seeker's OWN location, so it is safe to expose to seekers later.
+        $payload['ask_lat'] = $asker->last_lat;
+        $payload['ask_lng'] = $asker->last_lng;
         $question = isset($payload['question_id']) ? Question::find($payload['question_id']) : null;
         $evaluator = $question !== null ? $this->evaluators->for($question->category) : null;
 
@@ -344,10 +348,16 @@ class HideAndSeekMode implements GameMode
         }
 
         $answer = $pending['truth'] ?? $this->deferredAnswer($session, $pending) ?? ['answer' => $hiderAnswer];
+
+        // The seeker's resolve-time position (thermometer B) — their own location.
+        $asker = $session->players()->find($pending['asked_by'] ?? null);
+
         $resolved = $pending + [
             'answer' => $answer,
             'resolved_at' => now()->timestamp,
             'auto' => $auto,
+            'end_lat' => $asker?->last_lat,
+            'end_lng' => $asker?->last_lng,
         ];
         unset($resolved['truth']);
 
