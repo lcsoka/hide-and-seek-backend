@@ -9,6 +9,11 @@ return [
     'game_mode' => [
         'hide_and_seek' => 'Hide & Seek',
     ],
+    'game_size' => [
+        'small' => 'Small (city)',
+        'medium' => 'Medium (region)',
+        'large' => 'Large (country)',
+    ],
     'question_category' => [
         'matching' => 'Matching',
         'measuring' => 'Measuring',

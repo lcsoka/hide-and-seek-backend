@@ -9,6 +9,11 @@ return [
     'game_mode' => [
         'hide_and_seek' => 'Bújócska',
     ],
+    'game_size' => [
+        'small' => 'Kicsi (város)',
+        'medium' => 'Közepes (régió)',
+        'large' => 'Nagy (ország)',
+    ],
     'question_category' => [
         'matching' => 'Egyezés',
         'measuring' => 'Mérés',
