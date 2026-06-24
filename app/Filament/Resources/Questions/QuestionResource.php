@@ -29,6 +29,18 @@ class QuestionResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'title';
 
+    protected static ?string $slug = 'questions';
+
+    public static function getModelLabel(): string
+    {
+        return __('resources.questions.singular');
+    }
+
+    public static function getPluralModelLabel(): string
+    {
+        return __('resources.questions.plural');
+    }
+
     public static function form(Schema $schema): Schema
     {
         return QuestionForm::configure($schema);

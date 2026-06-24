@@ -27,6 +27,18 @@ class SessionResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'join_code';
 
+    protected static ?string $slug = 'sessions';
+
+    public static function getModelLabel(): string
+    {
+        return __('resources.sessions.singular');
+    }
+
+    public static function getPluralModelLabel(): string
+    {
+        return __('resources.sessions.plural');
+    }
+
     public static function getNavigationGroup(): ?string
     {
         return __('navigation.groups.game');

@@ -29,6 +29,18 @@ class PlayerResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'display_name';
 
+    protected static ?string $slug = 'players';
+
+    public static function getModelLabel(): string
+    {
+        return __('resources.players.singular');
+    }
+
+    public static function getPluralModelLabel(): string
+    {
+        return __('resources.players.plural');
+    }
+
     public static function form(Schema $schema): Schema
     {
         return PlayerForm::configure($schema);

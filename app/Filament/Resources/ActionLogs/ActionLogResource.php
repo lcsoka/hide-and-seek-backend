@@ -28,6 +28,18 @@ class ActionLogResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'type';
 
+    protected static ?string $slug = 'action-logs';
+
+    public static function getModelLabel(): string
+    {
+        return __('resources.action_logs.singular');
+    }
+
+    public static function getPluralModelLabel(): string
+    {
+        return __('resources.action_logs.plural');
+    }
+
     /** Append-only audit trail: read-only in the admin. */
     public static function canCreate(): bool
     {

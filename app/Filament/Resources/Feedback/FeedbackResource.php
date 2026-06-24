@@ -29,6 +29,18 @@ class FeedbackResource extends Resource
 
     protected static ?string $recordTitleAttribute = 'subject';
 
+    protected static ?string $slug = 'feedback';
+
+    public static function getModelLabel(): string
+    {
+        return __('resources.feedback.singular');
+    }
+
+    public static function getPluralModelLabel(): string
+    {
+        return __('resources.feedback.plural');
+    }
+
     /** Feedback originates from the public API, not the admin. Triage only. */
     public static function canCreate(): bool
     {

@@ -27,6 +27,11 @@ class LocalizationTest extends TestCase
         $this->assertSame('Játék', __('navigation.groups.game', [], 'hu'));
         $this->assertSame('Game', __('navigation.groups.game', [], 'en'));
 
+        // Resource labels are Hungarian (e.g. Curses -> Átkok).
+        $this->assertSame('Átkok', __('resources.curses.plural', [], 'hu'));
+        $this->assertSame('Kérdések', __('resources.questions.plural', [], 'hu'));
+        $this->assertSame('Curses', __('resources.curses.plural', [], 'en'));
+
         // laravel-lang Hungarian framework strings are installed.
         $this->assertNotSame('validation.required', __('validation.required', [], 'hu'));
         $this->assertNotSame(
