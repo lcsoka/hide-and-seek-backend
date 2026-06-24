@@ -2,9 +2,11 @@
 
 use App\Http\Controllers\Api\ActionController;
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\DebugController;
 use App\Http\Controllers\Api\FeedbackController;
 use App\Http\Controllers\Api\LocationController;
 use App\Http\Controllers\Api\SessionController;
+use App\Http\Middleware\EnsureDebugAccess;
 use Illuminate\Support\Facades\Route;
 
 // Public.
@@ -21,4 +23,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/sessions/{session}/actions', [ActionController::class, 'store']);
     Route::post('/sessions/{session}/location', [LocationController::class, 'store'])
         ->middleware('throttle:120,1');
+});
+
+// Developer/debug API — gated by GAME_DEBUG + developer token; unreachable in production.
+Route::middleware(EnsureDebugAccess::class)->prefix('sessions/{session}/debug')->group(function () {
+    Route::get('/state', [DebugController::class, 'state']);
+    Route::post('/act-as', [DebugController::class, 'actAs']);
+    Route::post('/location', [DebugController::class, 'location']);
+    Route::post('/seed-players', [DebugController::class, 'seedPlayers']);
+    Route::post('/state', [DebugController::class, 'forceState']);
+    Route::post('/timer/{key}/expire', [DebugController::class, 'expireTimer']);
 });

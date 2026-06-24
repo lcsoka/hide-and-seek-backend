@@ -11,6 +11,15 @@ return [
     'default_mode' => 'hide_and_seek',
 
     /*
+     | Developer/debug API gate (see App\Http\Middleware\EnsureDebugAccess). Must be
+     | OFF in production. When on, callers must also present the developer token.
+     */
+    'debug' => [
+        'enabled' => env('GAME_DEBUG', false),
+        'token' => env('GAME_DEBUG_TOKEN'),
+    ],
+
+    /*
      | Registered game modes, keyed by GameMode::key(). Adding a mode = one class
      | + one line here (no engine changes).
      */
