@@ -1,6 +1,7 @@
 <?php
 
 use App\Game\Modes\HideAndSeek\HideAndSeekMode;
+use App\Game\Questions\RadarEvaluator;
 
 return [
     'default_mode' => 'hide_and_seek',
@@ -11,6 +12,14 @@ return [
      */
     'modes' => [
         'hide_and_seek' => HideAndSeekMode::class,
+    ],
+
+    /*
+     | Server-side question evaluators (category => evaluator). Pure-geometry ones
+     | work now; matching/measuring/tentacles will be added with PostGIS + OSM.
+     */
+    'question_evaluators' => [
+        RadarEvaluator::class,
     ],
 
     /*

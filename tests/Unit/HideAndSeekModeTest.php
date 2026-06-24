@@ -11,7 +11,7 @@ class HideAndSeekModeTest extends TestCase
 {
     public function test_default_config_scales_with_size(): void
     {
-        $mode = new HideAndSeekMode;
+        $mode = app(HideAndSeekMode::class);
 
         $small = $mode->defaultConfig(GameSize::Small);
         $large = $mode->defaultConfig(GameSize::Large);

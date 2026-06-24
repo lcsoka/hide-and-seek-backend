@@ -4,12 +4,14 @@ namespace App\Game\Modes\HideAndSeek;
 
 use App\Enums\GameSize;
 use App\Game\Contracts\GameMode;
+use App\Game\Questions\QuestionEvaluatorRegistry;
 use App\Game\Support\Action;
 use App\Game\Support\ActionOutcome;
 use App\Game\Support\Geo;
 use App\Game\Support\LocationFilter;
 use App\Game\Support\ValidationResult;
 use App\Models\Player;
+use App\Models\Question;
 use App\Models\Session;
 
 /**
@@ -18,6 +20,8 @@ use App\Models\Session;
  */
 class HideAndSeekMode implements GameMode
 {
+    public function __construct(private readonly QuestionEvaluatorRegistry $evaluators) {}
+
     public function key(): string
     {
         return 'hide_and_seek';
@@ -103,7 +107,7 @@ class HideAndSeekMode implements GameMode
 
             'assign_hider' => $this->assignHider($session, $action, $data),
             'confirm_hidden' => $this->confirmHidden($data),
-            'ask_question' => $this->logged($data, 'questions', ['asked_by' => $player->id] + $action->payload, 'QuestionAsked', $action->payload),
+            'ask_question' => $this->askQuestion($session, $player, $action, $data),
             'answer_question' => $this->logged($data, 'answers', ['by' => $player->id] + $action->payload, 'QuestionAnswered', $action->payload),
             'play_curse' => $this->logged($data, 'curses_played', ['by' => $player->id] + $action->payload, 'CursePlayed', $action->payload),
             'declare_endgame' => new ActionOutcome($data, 'endgame', [$this->event('EndgameTriggered', ['by' => $player->id])]),
@@ -187,6 +191,35 @@ class HideAndSeekMode implements GameMode
         $data['seeking_started_at'] = now()->timestamp;
 
         return new ActionOutcome($data, 'seeking', [$this->event('SeekingStarted', ['round' => $data['round'] ?? 0])]);
+    }
+
+    private function askQuestion(Session $session, Player $asker, Action $action, array $data): ActionOutcome
+    {
+        $payload = $action->payload;
+        $question = isset($payload['question_id']) ? Question::find($payload['question_id']) : null;
+        $entry = ['asked_by' => $asker->id] + $payload;
+
+        // Try a server-authoritative answer (e.g. radar). Falls back to a manual
+        // hider answer when the category isn't auto-evaluable or positions are unknown.
+        if ($question !== null) {
+            $answer = $this->evaluators->for($question->category)?->evaluate($session, $asker, $question, $payload);
+
+            if ($answer !== null) {
+                $entry['answer'] = $answer;
+                $entry['at'] = now()->timestamp;
+                $data['questions'][] = $entry;
+
+                return new ActionOutcome($data, null, [
+                    $this->event('QuestionAsked', ['question_id' => $question->id, 'category' => $question->category->value, 'asked_by' => $asker->id]),
+                    $this->event('QuestionAnswered', ['question_id' => $question->id] + $answer),
+                ]);
+            }
+        }
+
+        $entry['at'] = now()->timestamp;
+        $data['questions'][] = $entry;
+
+        return new ActionOutcome($data, null, [$this->event('QuestionAsked', $payload)]);
     }
 
     private function logged(array $data, string $bucket, array $entry, string $event, array $payload): ActionOutcome
