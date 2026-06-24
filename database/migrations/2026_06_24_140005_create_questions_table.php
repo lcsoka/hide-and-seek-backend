@@ -10,13 +10,14 @@ return new class extends Migration
     {
         Schema::create('questions', function (Blueprint $table) {
             $table->uuid('id')->primary();
-            $table->string('category')->index();           // QuestionCategory
-            $table->string('title');                        // short label, e.g. "Radar — 1 mile"
-            $table->text('prompt');                         // the askable text / template
+            $table->string('key')->nullable()->unique();    // stable, locale-independent id
+            $table->string('category')->index();            // QuestionCategory
+            $table->text('title');                           // translatable (spatie JSON)
+            $table->text('prompt');                          // translatable (spatie JSON)
             $table->unsignedTinyInteger('reward_draw')->default(0); // cards drawn
             $table->unsignedTinyInteger('reward_keep')->default(0); // cards kept
-            $table->json('parameters')->nullable();         // distance/radius options etc.
-            $table->boolean('is_custom')->default(false);   // false = seeded official
+            $table->json('parameters')->nullable();          // distance/radius options etc.
+            $table->boolean('is_custom')->default(false);    // false = seeded official
             $table->boolean('is_active')->default(true);
             $table->unsignedInteger('sort')->default(0);
             $table->timestamps();

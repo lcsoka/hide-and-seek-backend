@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Enums\GameMode;
 use App\Enums\QuestionCategory;
 use App\Enums\SessionStatus;
+use App\Models\Curse;
 use App\Models\Question;
 use App\Models\Session;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -71,5 +72,23 @@ class GameModelsTest extends TestCase
         ]);
         $this->assertSame(QuestionCategory::Radar, $question->fresh()->category);
         $this->assertSame(['distances' => ['1 mile']], $question->fresh()->parameters);
+    }
+
+    public function test_content_models_are_translatable(): void
+    {
+        $curse = Curse::create([
+            'key' => 'test_curse',
+            'name' => ['en' => 'Test', 'hu' => 'Teszt'],
+            'cost' => ['en' => 'Free', 'hu' => 'Ingyen'],
+            'description' => ['en' => 'Effect', 'hu' => 'Hatás'],
+        ]);
+
+        $this->assertSame('Teszt', $curse->getTranslation('name', 'hu'));
+        $this->assertSame('Test', $curse->getTranslation('name', 'en'));
+
+        app()->setLocale('hu');
+        $this->assertSame('Teszt', $curse->fresh()->name);
+        app()->setLocale('en');
+        $this->assertSame('Test', $curse->fresh()->name);
     }
 }

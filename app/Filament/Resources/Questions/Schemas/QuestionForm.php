@@ -17,39 +17,35 @@ class QuestionForm
         return $schema
             ->components([
                 Section::make()
-                    ->columns(2)
+                    ->columns(3)
                     ->schema([
                         Select::make('category')
                             ->options(QuestionCategory::class)
                             ->required(),
-                        TextInput::make('title')
-                            ->required()
-                            ->maxLength(255)
-                            ->helperText('Short label, e.g. "Radar — 1 mile".'),
-                        Textarea::make('prompt')
-                            ->required()
-                            ->rows(3)
-                            ->columnSpanFull()
-                            ->helperText('The askable text or template shown to players.'),
-                        TextInput::make('reward_draw')
-                            ->numeric()
-                            ->default(0)
-                            ->label('Cards drawn'),
-                        TextInput::make('reward_keep')
-                            ->numeric()
-                            ->default(0)
-                            ->label('Cards kept'),
+                        TextInput::make('reward_draw')->numeric()->default(0)->label('Cards drawn'),
+                        TextInput::make('reward_keep')->numeric()->default(0)->label('Cards kept'),
+                    ]),
+
+                Section::make('Magyar (HU)')
+                    ->schema([
+                        TextInput::make('title_hu')->label('Title (HU)')->required()->maxLength(255),
+                        Textarea::make('prompt_hu')->label('Prompt (HU)')->required()->rows(3),
+                    ]),
+
+                Section::make('English (EN)')
+                    ->schema([
+                        TextInput::make('title_en')->label('Title (EN)')->required()->maxLength(255),
+                        Textarea::make('prompt_en')->label('Prompt (EN)')->required()->rows(3),
                     ]),
 
                 Section::make('Options & flags')
                     ->columns(3)
                     ->schema([
                         Toggle::make('is_active')->default(true),
-                        Toggle::make('is_custom')
-                            ->helperText('On for house-made questions.'),
+                        Toggle::make('is_custom')->helperText('On for house-made questions.'),
                         TextInput::make('sort')->numeric()->default(0),
                         Textarea::make('parameters')
-                            ->rows(5)
+                            ->rows(4)
                             ->columnSpanFull()
                             ->helperText('Optional JSON, e.g. distance/radius options.')
                             ->rules(['nullable', 'json'])

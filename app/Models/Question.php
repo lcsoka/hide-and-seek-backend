@@ -5,12 +5,17 @@ namespace App\Models;
 use App\Enums\QuestionCategory;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Translatable\HasTranslations;
 
 class Question extends Model
 {
-    use HasUuids;
+    use HasTranslations, HasUuids;
+
+    /** Translatable (per-locale) attributes — stored as JSON by spatie. */
+    public array $translatable = ['title', 'prompt'];
 
     protected $fillable = [
+        'key',
         'category',
         'title',
         'prompt',

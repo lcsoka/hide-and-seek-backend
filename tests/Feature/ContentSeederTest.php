@@ -27,7 +27,7 @@ class ContentSeederTest extends TestCase
         $this->assertSame(0, Question::where('is_custom', true)->count());
 
         // A known curse and every question category are present.
-        $this->assertTrue(Curse::where('name', 'The Labyrinth')->exists());
+        $this->assertTrue(Curse::where('key', 'the_labyrinth')->exists());
         foreach (QuestionCategory::cases() as $category) {
             $this->assertTrue(
                 Question::where('category', $category->value)->exists(),
@@ -45,5 +45,19 @@ class ContentSeederTest extends TestCase
 
         $this->assertSame(24, Curse::count());
         $this->assertSame(66, Question::count());
+    }
+
+    public function test_official_content_is_bilingual(): void
+    {
+        $this->seed(CurseSeeder::class);
+        $this->seed(QuestionSeeder::class);
+
+        $curse = Curse::where('key', 'the_labyrinth')->firstOrFail();
+        $this->assertSame('A labirintus', $curse->getTranslation('name', 'hu'));
+        $this->assertSame('The Labyrinth', $curse->getTranslation('name', 'en'));
+
+        $question = Question::where('key', 'matching.museum')->firstOrFail();
+        $this->assertSame('Egyezés — Múzeum', $question->getTranslation('title', 'hu'));
+        $this->assertSame('Matching — Museum', $question->getTranslation('title', 'en'));
     }
 }

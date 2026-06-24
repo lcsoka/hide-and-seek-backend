@@ -14,30 +14,27 @@ class CurseForm
     {
         return $schema
             ->components([
-                Section::make()
-                    ->columns(2)
+                Section::make('Magyar (HU)')
                     ->schema([
-                        TextInput::make('name')
-                            ->required()
-                            ->maxLength(255)
-                            ->columnSpanFull(),
-                        TextInput::make('cost')
-                            ->maxLength(255)
-                            ->helperText('Casting cost, e.g. "Discard 2 cards".'),
-                        TextInput::make('sort')->numeric()->default(0),
-                        Textarea::make('description')
-                            ->required()
-                            ->rows(3)
-                            ->columnSpanFull()
-                            ->label('Effect'),
+                        TextInput::make('name_hu')->label('Name (HU)')->required()->maxLength(255),
+                        TextInput::make('cost_hu')->label('Cost (HU)')->maxLength(255)
+                            ->helperText('Casting cost, e.g. "2 kártya eldobása".'),
+                        Textarea::make('description_hu')->label('Effect (HU)')->required()->rows(3),
+                    ]),
+
+                Section::make('English (EN)')
+                    ->schema([
+                        TextInput::make('name_en')->label('Name (EN)')->required()->maxLength(255),
+                        TextInput::make('cost_en')->label('Cost (EN)')->maxLength(255),
+                        Textarea::make('description_en')->label('Effect (EN)')->required()->rows(3),
                     ]),
 
                 Section::make('Flags')
-                    ->columns(2)
+                    ->columns(3)
                     ->schema([
                         Toggle::make('is_active')->default(true),
-                        Toggle::make('is_custom')
-                            ->helperText('On for house-made curses.'),
+                        Toggle::make('is_custom')->helperText('On for house-made curses.'),
+                        TextInput::make('sort')->numeric()->default(0),
                         Textarea::make('parameters')
                             ->rows(4)
                             ->columnSpanFull()

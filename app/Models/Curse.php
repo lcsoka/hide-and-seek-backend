@@ -4,12 +4,17 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Spatie\Translatable\HasTranslations;
 
 class Curse extends Model
 {
-    use HasUuids;
+    use HasTranslations, HasUuids;
+
+    /** Translatable (per-locale) attributes — stored as JSON by spatie. */
+    public array $translatable = ['name', 'cost', 'description'];
 
     protected $fillable = [
+        'key',
         'name',
         'cost',
         'description',
