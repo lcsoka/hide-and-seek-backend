@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Api\ActionController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\FeedbackController;
 use App\Http\Controllers\Api\SessionController;
@@ -15,4 +16,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/sessions/{code}/join', [SessionController::class, 'join']);
     Route::get('/sessions/{session}', [SessionController::class, 'show']);
     Route::get('/sessions/{session}/state', [SessionController::class, 'state']);
+    Route::post('/sessions/{session}/start', [SessionController::class, 'start']);
+    Route::post('/sessions/{session}/actions', [ActionController::class, 'store']);
 });

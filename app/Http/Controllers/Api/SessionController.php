@@ -3,7 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Enums\GameSize;
+use App\Game\GameEngine;
+use App\Game\GameStatePresenter;
 use App\Game\SessionFactory;
+use App\Game\Support\Action;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\JoinSessionRequest;
 use App\Http\Requests\StoreSessionRequest;
@@ -14,7 +17,11 @@ use Illuminate\Http\JsonResponse;
 
 class SessionController extends Controller
 {
-    public function __construct(private readonly SessionFactory $factory) {}
+    public function __construct(
+        private readonly SessionFactory $factory,
+        private readonly GameEngine $engine,
+        private readonly GameStatePresenter $presenter,
+    ) {}
 
     public function store(StoreSessionRequest $request): JsonResponse
     {
@@ -48,24 +55,18 @@ class SessionController extends Controller
         return new SessionResource($session->load('players', 'teams'));
     }
 
+    public function start(Session $session, GameEngine $engine): JsonResponse
+    {
+        $player = $engine->playerFor($session, request()->user());
+        $session = $engine->submit($session, $player, new Action('start'));
+
+        return response()->json($this->presenter->present($session, $player->refresh()));
+    }
+
     public function state(Session $session): JsonResponse
     {
-        $session->load('players', 'teams');
+        $player = $this->engine->playerFor($session, request()->user());
 
-        return response()->json([
-            'session_id' => $session->id,
-            'game_mode' => $session->game_mode?->value,
-            'state' => $session->state,
-            'status' => $session->status?->value,
-            'round' => $session->state_data['round'] ?? 0,
-            'config' => $session->config,
-            'players' => PlayerResource::collection($session->players),
-            'teams' => $session->teams->map(fn ($team) => [
-                'id' => $team->id, 'name' => $team->name, 'color' => $team->color,
-            ]),
-            // Populated once the action/visibility engine lands.
-            'available_actions' => [],
-            'timers' => [],
-        ]);
+        return response()->json($this->presenter->present($session, $player));
     }
 }
