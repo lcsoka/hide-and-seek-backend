@@ -12,10 +12,7 @@ enum FeedbackType: string implements HasColor, HasLabel
 
     public function getLabel(): ?string
     {
-        return match ($this) {
-            self::Suggestion => 'Suggestion',
-            self::Bug => 'Bug / error',
-        };
+        return __("enums.feedback_type.{$this->value}");
     }
 
     public function getColor(): string|array|null

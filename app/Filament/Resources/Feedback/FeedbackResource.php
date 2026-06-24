@@ -13,7 +13,6 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
-use UnitEnum;
 
 class FeedbackResource extends Resource
 {
@@ -21,7 +20,10 @@ class FeedbackResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedClipboardDocumentCheck;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Inbox';
+    public static function getNavigationGroup(): ?string
+    {
+        return __('navigation.groups.inbox');
+    }
 
     protected static ?int $navigationSort = 1;
 

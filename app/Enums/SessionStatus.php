@@ -13,7 +13,7 @@ enum SessionStatus: string implements HasColor, HasLabel
 
     public function getLabel(): ?string
     {
-        return ucfirst($this->value);
+        return __("enums.session_status.{$this->value}");
     }
 
     public function getColor(): string|array|null

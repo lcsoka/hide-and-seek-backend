@@ -11,8 +11,6 @@ enum GameMode: string implements HasLabel
 
     public function getLabel(): ?string
     {
-        return match ($this) {
-            self::HideAndSeek => 'Hide & Seek',
-        };
+        return __("enums.game_mode.{$this->value}");
     }
 }

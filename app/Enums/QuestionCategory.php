@@ -16,7 +16,7 @@ enum QuestionCategory: string implements HasColor, HasLabel
 
     public function getLabel(): ?string
     {
-        return ucfirst($this->value);
+        return __("enums.question_category.{$this->value}");
     }
 
     public function getColor(): string|array|null

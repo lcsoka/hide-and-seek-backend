@@ -13,7 +13,6 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
-use UnitEnum;
 
 class PlayerResource extends Resource
 {
@@ -21,7 +20,10 @@ class PlayerResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedUsers;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Game';
+    public static function getNavigationGroup(): ?string
+    {
+        return __('navigation.groups.game');
+    }
 
     protected static ?int $navigationSort = 2;
 

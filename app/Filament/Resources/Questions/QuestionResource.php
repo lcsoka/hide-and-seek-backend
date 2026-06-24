@@ -13,7 +13,6 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
-use UnitEnum;
 
 class QuestionResource extends Resource
 {
@@ -21,7 +20,10 @@ class QuestionResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedQueueList;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Content';
+    public static function getNavigationGroup(): ?string
+    {
+        return __('navigation.groups.content');
+    }
 
     protected static ?int $navigationSort = 1;
 

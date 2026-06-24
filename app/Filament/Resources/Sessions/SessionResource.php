@@ -16,7 +16,6 @@ use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
-use UnitEnum;
 
 class SessionResource extends Resource
 {
@@ -24,11 +23,14 @@ class SessionResource extends Resource
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
 
-    protected static string|UnitEnum|null $navigationGroup = 'Game';
-
     protected static ?int $navigationSort = 1;
 
     protected static ?string $recordTitleAttribute = 'join_code';
+
+    public static function getNavigationGroup(): ?string
+    {
+        return __('navigation.groups.game');
+    }
 
     public static function form(Schema $schema): Schema
     {

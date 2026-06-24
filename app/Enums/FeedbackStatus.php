@@ -14,7 +14,7 @@ enum FeedbackStatus: string implements HasColor, HasLabel
 
     public function getLabel(): ?string
     {
-        return ucfirst($this->value);
+        return __("enums.feedback_status.{$this->value}");
     }
 
     public function getColor(): string|array|null
