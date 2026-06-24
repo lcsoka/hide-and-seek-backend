@@ -2,26 +2,34 @@
 
 namespace App\Models;
 
+use App\Enums\FeedbackStatus;
+use App\Enums\FeedbackType;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class ActionLog extends Model
+class Feedback extends Model
 {
     use HasUuids;
 
-    /** Append-only audit trail: only `created_at`, never updated. */
-    const UPDATED_AT = null;
+    /** Singular table name (Laravel would otherwise pluralize to "feedbacks"). */
+    protected $table = 'feedback';
 
     protected $fillable = [
+        'type',
+        'subject',
+        'message',
         'session_id',
         'player_id',
-        'type',
-        'payload',
+        'contact',
+        'context',
+        'status',
     ];
 
     protected $casts = [
-        'payload' => 'array',
+        'type' => FeedbackType::class,
+        'status' => FeedbackStatus::class,
+        'context' => 'array',
     ];
 
     public function session(): BelongsTo

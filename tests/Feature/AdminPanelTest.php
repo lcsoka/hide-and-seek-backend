@@ -4,6 +4,9 @@ namespace Tests\Feature;
 
 use App\Enums\GameMode;
 use App\Enums\SessionStatus;
+use App\Models\Curse;
+use App\Models\Feedback;
+use App\Models\Question;
 use App\Models\Session;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -66,5 +69,27 @@ class AdminPanelTest extends TestCase
         $this->assertSame(SessionStatus::Open, $session->status);
         $this->assertSame(GameMode::HideAndSeek, $session->game_mode);
         $this->assertIsArray($session->config);
+    }
+
+    public function test_content_and_feedback_admin_pages_load(): void
+    {
+        $this->seed(); // questions + curses + sample session
+        $this->actingAs(User::factory()->create());
+
+        foreach (['questions', 'curses', 'feedback'] as $slug) {
+            $this->get("/admin/{$slug}")->assertSuccessful();
+        }
+
+        // Edit/triage pages render their forms.
+        $question = Question::query()->first();
+        $this->get("/admin/questions/{$question->getKey()}/edit")->assertSuccessful();
+
+        $curse = Curse::query()->first();
+        $this->get("/admin/curses/{$curse->getKey()}/edit")->assertSuccessful();
+
+        $feedback = Feedback::create([
+            'type' => 'bug', 'message' => 'something broke', 'status' => 'open',
+        ]);
+        $this->get("/admin/feedback/{$feedback->getKey()}/edit")->assertSuccessful();
     }
 }

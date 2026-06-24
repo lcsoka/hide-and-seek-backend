@@ -9,8 +9,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('teams', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('session_id')->constrained('game_sessions')->cascadeOnDelete();
+            $table->uuid('id')->primary();
+            $table->foreignUuid('session_id')->constrained('game_sessions')->cascadeOnDelete();
             $table->string('name');
             $table->string('color')->nullable();
             $table->timestamps();

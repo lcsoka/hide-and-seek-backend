@@ -4,12 +4,15 @@ namespace App\Models;
 
 use App\Enums\GameMode;
 use App\Enums\SessionStatus;
+use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Session extends Model
 {
+    use HasUuids;
+
     /**
      * Backed by `game_sessions` to avoid colliding with Laravel's framework
      * `sessions` table (used by the database session driver).

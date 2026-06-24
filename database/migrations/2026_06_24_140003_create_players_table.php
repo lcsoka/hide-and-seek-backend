@@ -9,11 +9,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('players', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('session_id')->constrained('game_sessions')->cascadeOnDelete();
+            $table->uuid('id')->primary();
+            $table->foreignUuid('session_id')->constrained('game_sessions')->cascadeOnDelete();
+            // users stays bigint until the accounts phase; this FK matches it.
             $table->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();
             $table->string('display_name');
-            $table->foreignId('team_id')->nullable()->constrained('teams')->nullOnDelete();
+            $table->foreignUuid('team_id')->nullable()->constrained('teams')->nullOnDelete();
             $table->string('role')->nullable();          // mode-defined, e.g. hider/seeker
             $table->boolean('is_host')->default(false);
             $table->decimal('last_lat', 10, 7)->nullable();
