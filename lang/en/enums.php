@@ -5,6 +5,7 @@ return [
         'open' => 'Open',
         'running' => 'Running',
         'finished' => 'Finished',
+        'abandoned' => 'Abandoned',
     ],
     'game_mode' => [
         'hide_and_seek' => 'Hide & Seek',

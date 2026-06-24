@@ -119,7 +119,7 @@ class GameplayTest extends TestCase
 
         Sanctum::actingAs($this->host);
         $this->getJson("/api/sessions/{$this->sessionId}/state")
-            ->assertOk()->assertJsonPath('available_actions', ['start']);
+            ->assertOk()->assertJsonPath('available_actions', ['start', 'end_game']);
 
         Sanctum::actingAs($this->seeker);
         $this->getJson("/api/sessions/{$this->sessionId}/state")

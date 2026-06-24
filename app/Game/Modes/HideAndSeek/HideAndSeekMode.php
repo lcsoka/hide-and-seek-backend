@@ -53,7 +53,7 @@ class HideAndSeekMode implements GameMode
 
     public function availableActions(Session $session, Player $player): array
     {
-        return match ($session->state) {
+        $actions = match ($session->state) {
             'lobby' => $player->is_host ? ['start'] : [],
             'role_assignment' => $player->is_host ? ['assign_hider'] : [],
             'hiding' => $player->role === 'hider' ? ['confirm_hidden'] : [],
@@ -70,6 +70,13 @@ class HideAndSeekMode implements GameMode
             'round_end' => $player->is_host ? ['advance_round'] : [],
             default => [],
         };
+
+        // The host can stop the game at any point (e.g. to avoid leaving it abandoned).
+        if ($player->is_host && $session->state !== 'finished') {
+            $actions[] = 'end_game';
+        }
+
+        return $actions;
     }
 
     public function validateAction(Session $session, Player $player, Action $action): ValidationResult
@@ -103,6 +110,11 @@ class HideAndSeekMode implements GameMode
             'make_guess' => $this->makeGuess($session, $player, $action, $data),
             'surrender' => $this->endRound($data, [$this->event('HiderFound', ['round' => $data['round'] ?? 0, 'surrendered' => true])]),
             'advance_round' => $this->advanceRound($session, $data),
+            'end_game' => new ActionOutcome(
+                array_merge($data, ['ended_reason' => 'host_ended']),
+                'finished',
+                [$this->event('GameEnded', ['standings' => $this->standings($data), 'reason' => 'host_ended'])],
+            ),
 
             default => new ActionOutcome($data),
         };

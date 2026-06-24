@@ -36,6 +36,9 @@ class GameEngine
 
         $outcome = $mode->applyAction($session, $player, $action);
 
+        // Player activity keeps the session alive (abandonment clock).
+        $session->last_activity_at = now();
+
         return $this->apply($session, $outcome, $action->type, $player->id, $action->payload);
     }
 
@@ -77,6 +80,9 @@ class GameEngine
             $session->state = $outcome->nextState;
             if ($outcome->nextState === 'finished') {
                 $session->status = SessionStatus::Finished;
+                $session->ended_at = now();
+            } elseif ($outcome->nextState !== 'lobby' && $session->status === SessionStatus::Open) {
+                $session->status = SessionStatus::Running;
             }
         }
         $session->save();

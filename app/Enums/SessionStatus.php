@@ -10,6 +10,7 @@ enum SessionStatus: string implements HasColor, HasLabel
     case Open = 'open';
     case Running = 'running';
     case Finished = 'finished';
+    case Abandoned = 'abandoned';
 
     public function getLabel(): ?string
     {
@@ -22,6 +23,7 @@ enum SessionStatus: string implements HasColor, HasLabel
             self::Open => 'gray',
             self::Running => 'success',
             self::Finished => 'info',
+            self::Abandoned => 'danger',
         };
     }
 }

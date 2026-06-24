@@ -79,6 +79,6 @@ class SessionApiTest extends TestCase
             ->assertOk()
             ->assertJsonPath('session_id', $id)
             ->assertJsonPath('state', 'lobby')
-            ->assertJsonPath('available_actions', ['start']); // host in lobby
+            ->assertJsonPath('available_actions', ['start', 'end_game']); // host in lobby
     }
 }

@@ -27,6 +27,8 @@ class Session extends Model
         'config',
         'host_player_id',
         'status',
+        'last_activity_at',
+        'ended_at',
     ];
 
     protected $casts = [
@@ -34,6 +36,8 @@ class Session extends Model
         'config' => 'array',
         'status' => SessionStatus::class,
         'game_mode' => GameMode::class,
+        'last_activity_at' => 'datetime',
+        'ended_at' => 'datetime',
     ];
 
     public function players(): HasMany

@@ -29,4 +29,14 @@ return [
         'szekesfehervar' => ['name' => 'Székesfehérvár', 'lat' => 47.1860, 'lng' => 18.4221],
         'szombathely' => ['name' => 'Szombathely', 'lat' => 47.2307, 'lng' => 16.6218],
     ],
+
+    /*
+     | Abandoned-game cleanup (see App\Console\Commands\PruneAbandonedSessions,
+     | scheduled in routes/console.php).
+     */
+    'abandon' => [
+        'lobby_idle_minutes' => 120,   // never-started session sitting in the lobby
+        'active_idle_minutes' => 360,  // in-progress session with no player activity
+        'retention_days' => 30,        // delete finished/abandoned sessions after this
+    ],
 ];

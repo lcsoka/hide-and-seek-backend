@@ -22,6 +22,9 @@ class LocationController extends Controller
             'last_location_at' => now(),
         ]);
 
+        // Location pings count as activity (keeps the session off the abandonment list).
+        $session->update(['last_activity_at' => now()]);
+
         return response()->noContent();
     }
 }

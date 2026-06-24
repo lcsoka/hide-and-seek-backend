@@ -5,6 +5,7 @@ return [
         'open' => 'Nyitott',
         'running' => 'Folyamatban',
         'finished' => 'Befejezett',
+        'abandoned' => 'Elhagyott',
     ],
     'game_mode' => [
         'hide_and_seek' => 'Bújócska',
