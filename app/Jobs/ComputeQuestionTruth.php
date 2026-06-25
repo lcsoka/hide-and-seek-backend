@@ -17,7 +17,16 @@ class ComputeQuestionTruth implements ShouldQueue
 {
     use Queueable;
 
+    /** Retry transient Overpass failures with backoff before giving up. */
+    public int $tries = 4;
+
     public function __construct(public string $sessionId, public int $seq) {}
+
+    /** @return array<int, int> seconds between retries */
+    public function backoff(): array
+    {
+        return [3, 8, 20];
+    }
 
     public function handle(HideAndSeekMode $mode): void
     {

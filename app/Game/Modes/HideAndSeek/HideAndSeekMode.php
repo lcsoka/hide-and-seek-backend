@@ -478,11 +478,14 @@ class HideAndSeekMode implements GameMode
         }
 
         $truth = $this->evaluateTruth($session, $pending);
-        if ($truth !== null) {
-            $data['pending_question']['truth'] = $truth;
-            $session->state_data = $data;
-            $session->save();
+        if ($truth === null) {
+            // Overpass was unavailable / no data — let the queued job retry (backoff).
+            throw new \RuntimeException("Could not compute truth for question seq {$seq} yet.");
         }
+
+        $data['pending_question']['truth'] = $truth;
+        $session->state_data = $data;
+        $session->save();
     }
 
     /** Run the non-deferred evaluator for a pending question (radar inline / OSM via job). */
@@ -514,8 +517,11 @@ class HideAndSeekMode implements GameMode
     }
 
     /**
-     * Finalise the pending question: reveal the server truth (ask-time evaluable),
-     * compute a deferred answer (thermometer), or accept the hider's answer.
+     * Finalise the pending question. Uses the pre-computed truth (radar inline / OSM via
+     * the queued job / thermometer at stop) or the hider's explicit manual answer — never
+     * a blocking inline Overpass call on the request path. If neither yields an answer
+     * (e.g. Overpass was unavailable and the hider didn't answer manually) the question is
+     * VOIDED so the seeker can ask again, rather than recording a blank answer.
      */
     private function resolveQuestion(Session $session, array $data, mixed $hiderAnswer, bool $auto): ActionOutcome
     {
@@ -524,13 +530,24 @@ class HideAndSeekMode implements GameMode
             return new ActionOutcome($data);
         }
 
-        // Prefer the pre-computed truth; if the job hasn't landed yet, compute it now
-        // (Overpass is likely warm from the job's attempt), then deferred, then manual.
+        // Prefer the pre-computed truth, then the hider's explicit manual answer (so the
+        // manual path never blocks), then a last inline compute (bounded; usually the
+        // job already filled it). The /state read path never reaches here.
         $manual = is_array($hiderAnswer) ? $hiderAnswer : ['answer' => $hiderAnswer];
+        $hasManual = ($manual['answer'] ?? null) !== null;
         $answer = $pending['truth']
-            ?? $this->evaluateTruth($session, $pending)
-            ?? $this->deferredAnswer($session, $pending)
-            ?? $manual;
+            ?? ($hasManual ? $manual : null)
+            ?? $this->evaluateTruth($session, $pending);
+
+        // Undeterminable (e.g. throttled Overpass + no manual answer) → void, don't record blank.
+        if (($answer['answer'] ?? null) === null) {
+            $data['pending_question'] = null;
+            $data['question_answer'] = null;
+
+            return new ActionOutcome($data, null, [
+                $this->event('QuestionVoided', ['seq' => $pending['seq'] ?? null, 'category' => $pending['category'] ?? null]),
+            ]);
+        }
 
         // The seeker's resolve-time position (thermometer B) — their own location.
         $asker = $session->players()->find($pending['asked_by'] ?? null);

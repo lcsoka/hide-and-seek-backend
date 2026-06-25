@@ -7,6 +7,7 @@ use App\Models\Player;
 use App\Models\Question;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
 use Laravel\Sanctum\Sanctum;
 use Tests\Support\SeekingScenario;
 use Tests\TestCase;
@@ -131,6 +132,30 @@ class QuestionCategoryOutcomesTest extends TestCase
         // Start near, stop far → colder.
         $this->thermo($ctx, start: [47.51, 19.05], end: [47.62, 19.22]);
         $this->assertSame('colder', $this->lastAnswer($ctx)['answer']);
+    }
+
+    public function test_an_unanswerable_osm_question_is_voided_not_recorded_blank(): void
+    {
+        Queue::fake(); // don't run the (throwing) truth job here
+        $ctx = $this->startSeeking();
+        $this->place($ctx, [47.50, 19.00], [47.60, 19.20]);
+        $this->bindFeatures(); // no map data → truth can't be computed
+        $q = Question::create(['key' => 'matching.v'.uniqid(), 'category' => 'matching', 'title' => ['en' => 'M'], 'prompt' => ['en' => '?'], 'reward_draw' => 1, 'reward_keep' => 1]);
+
+        Sanctum::actingAs($ctx['seeker']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'feature' => 'museum']])->assertOk();
+
+        // Hider "answers" with no verdict and no map data → the question is voided.
+        Sanctum::actingAs($ctx['host']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question'])->assertOk();
+        Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'QuestionVoided');
+
+        // Nothing recorded; the seeker can ask again.
+        Sanctum::actingAs($ctx['seeker']);
+        $state = $this->getJson("/api/sessions/{$ctx['sessionId']}/state");
+        $this->assertCount(0, $state->json('questions'));
+        $this->assertNull($state->json('pending_question'));
+        $this->assertContains('ask_question', $state->json('available_actions'));
     }
 
     public function test_photo_is_answered_with_the_uploaded_image(): void
