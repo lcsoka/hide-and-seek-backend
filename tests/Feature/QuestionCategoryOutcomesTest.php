@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Events\GameEventBroadcast;
 use App\Models\Player;
 use App\Models\Question;
+use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
@@ -21,6 +22,38 @@ class QuestionCategoryOutcomesTest extends TestCase
     {
         parent::setUp();
         Event::fake([GameEventBroadcast::class]);
+    }
+
+    public function test_questions_reference_the_committed_spot_not_the_hiders_live_drift(): void
+    {
+        $host = User::factory()->create();
+        Sanctum::actingAs($host);
+        $create = $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
+        $sid = $create->json('id');
+        $hiderId = $create->json('players.0.id');
+        $seeker = User::factory()->create();
+        Sanctum::actingAs($seeker);
+        $seekerId = $this->postJson("/api/sessions/{$create->json('join_code')}/join", ['display_name' => 'S'])->json('player.id');
+
+        Sanctum::actingAs($host);
+        $this->postJson("/api/sessions/{$sid}/start");
+        $this->postJson("/api/sessions/{$sid}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $hiderId]]);
+
+        // Hider commits at spot A, then their GPS drifts far away to B.
+        Player::whereKey($hiderId)->update(['last_lat' => 47.50, 'last_lng' => 19.04]);
+        $this->postJson("/api/sessions/{$sid}/actions", ['type' => 'confirm_hidden']);
+        Player::whereKey($hiderId)->update(['last_lat' => 47.70, 'last_lng' => 19.40]); // drift ~35 km away
+        Player::whereKey($seekerId)->update(['last_lat' => 47.505, 'last_lng' => 19.045]); // ~0.6 km from A
+
+        $q = Question::create(['key' => 'radar.drift', 'category' => 'radar', 'title' => ['en' => 'R'], 'prompt' => ['en' => '?'], 'reward_draw' => 1, 'reward_keep' => 1]);
+        Sanctum::actingAs($seeker);
+        $this->postJson("/api/sessions/{$sid}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'radius_m' => 3000]]);
+        Sanctum::actingAs($host);
+        $this->postJson("/api/sessions/{$sid}/actions", ['type' => 'answer_question']);
+
+        // References the committed spot A (within 3 km) → yes; the drift B would be "no".
+        Sanctum::actingAs($seeker);
+        $this->assertSame('yes', $this->getJson("/api/sessions/{$sid}/state")->json('questions.0.answer.answer'));
     }
 
     public function test_radar_yes_when_within_and_no_when_beyond(): void

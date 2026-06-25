@@ -17,6 +17,8 @@ use App\Models\Session;
  */
 class MatchingEvaluator implements QuestionEvaluator
 {
+    use ResolvesHiderLocation;
+
     /** A hider feature within this distance of the seeker's place counts as "the same place". */
     private const SAME_PLACE_M = 150.0;
 
@@ -30,14 +32,13 @@ class MatchingEvaluator implements QuestionEvaluator
     public function evaluate(Session $session, Player $asker, Question $question, array $payload): ?array
     {
         $feature = $payload['feature'] ?? ($question->parameters['feature'] ?? null);
-        $hider = $session->players()->find($session->state_data['hider_id'] ?? null);
+        $hiderPoint = $this->hiderPoint($session);
 
-        if (! is_string($feature) || $hider === null
-            || $hider->last_lat === null || $hider->last_lng === null) {
+        if (! is_string($feature) || $hiderPoint === null) {
             return null;
         }
 
-        $hiderNearest = $this->map->nearest($feature, (float) $hider->last_lat, (float) $hider->last_lng);
+        $hiderNearest = $this->map->nearest($feature, $hiderPoint[0], $hiderPoint[1]);
         if ($hiderNearest === null) {
             return null; // no map data — fall back to a manual answer
         }

@@ -16,6 +16,8 @@ use App\Models\Session;
  */
 class MeasuringEvaluator implements QuestionEvaluator
 {
+    use ResolvesHiderLocation;
+
     public function __construct(private readonly MapDataSource $map) {}
 
     public function category(): QuestionCategory
@@ -26,10 +28,9 @@ class MeasuringEvaluator implements QuestionEvaluator
     public function evaluate(Session $session, Player $asker, Question $question, array $payload): ?array
     {
         $feature = $payload['feature'] ?? ($question->parameters['feature'] ?? null);
-        $hider = $session->players()->find($session->state_data['hider_id'] ?? null);
+        $hiderPoint = $this->hiderPoint($session);
 
-        if (! is_string($feature) || $hider === null
-            || $hider->last_lat === null || $hider->last_lng === null
+        if (! is_string($feature) || $hiderPoint === null
             || $asker->last_lat === null || $asker->last_lng === null) {
             return null;
         }
@@ -41,7 +42,7 @@ class MeasuringEvaluator implements QuestionEvaluator
         }
 
         $askerDistance = Geo::distanceMeters((float) $asker->last_lat, (float) $asker->last_lng, $reference->lat, $reference->lng);
-        $hiderDistance = Geo::distanceMeters((float) $hider->last_lat, (float) $hider->last_lng, $reference->lat, $reference->lng);
+        $hiderDistance = Geo::distanceMeters($hiderPoint[0], $hiderPoint[1], $reference->lat, $reference->lng);
 
         return [
             'answer' => $hiderDistance <= $askerDistance ? 'closer' : 'further',

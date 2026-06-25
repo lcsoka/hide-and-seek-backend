@@ -16,6 +16,8 @@ use App\Models\Session;
  */
 class TentaclesEvaluator implements QuestionEvaluator
 {
+    use ResolvesHiderLocation;
+
     public function __construct(private readonly MapDataSource $map) {}
 
     public function category(): QuestionCategory
@@ -27,24 +29,20 @@ class TentaclesEvaluator implements QuestionEvaluator
     {
         $feature = $payload['feature'] ?? ($question->parameters['feature'] ?? null);
         $radius = (float) ($payload['radius_m'] ?? ($question->parameters['radius_m'] ?? 0));
-        $hider = $session->players()->find($session->state_data['hider_id'] ?? null);
+        $hiderPoint = $this->hiderPoint($session);
 
-        if (! is_string($feature) || $radius <= 0 || $hider === null
-            || $hider->last_lat === null || $hider->last_lng === null
+        if (! is_string($feature) || $radius <= 0 || $hiderPoint === null
             || $asker->last_lat === null || $asker->last_lng === null) {
             return null;
         }
 
-        $inRange = Geo::distanceMeters(
-            (float) $asker->last_lat, (float) $asker->last_lng,
-            (float) $hider->last_lat, (float) $hider->last_lng,
-        ) <= $radius;
+        $inRange = Geo::distanceMeters((float) $asker->last_lat, (float) $asker->last_lng, $hiderPoint[0], $hiderPoint[1]) <= $radius;
 
         if (! $inRange) {
             return ['answer' => 'out_of_range'];
         }
 
-        $nearest = $this->map->nearest($feature, (float) $hider->last_lat, (float) $hider->last_lng);
+        $nearest = $this->map->nearest($feature, $hiderPoint[0], $hiderPoint[1]);
         if ($nearest === null) {
             return null; // in range but no map data — manual fallback
         }

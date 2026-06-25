@@ -139,7 +139,7 @@ class HideAndSeekMode implements GameMode
 
             'assign_hider' => $this->assignHider($session, $action, $data),
             'choose_station' => $this->chooseStation($session, $player, $action, $data),
-            'confirm_hidden' => $this->confirmHidden($data),
+            'confirm_hidden' => $this->confirmHidden($session, $data),
             'ask_question' => $this->askQuestion($session, $player, $action, $data),
             'start_thermometer' => $this->startThermometer($player, $action, $data),
             'stop_thermometer' => $this->stopThermometer($session, $player, $data),
@@ -177,7 +177,7 @@ class HideAndSeekMode implements GameMode
         // Hiding time ran out: force the transition to seeking. Guarded by state so
         // an early confirm_hidden (already in seeking) makes this a no-op.
         if ($timerKey === 'hiding_deadline' && $session->state === 'hiding') {
-            return $this->confirmHidden($data);
+            return $this->confirmHidden($session, $data);
         }
 
         // The hider didn't answer in time: auto-resolve with the server truth.
@@ -233,9 +233,17 @@ class HideAndSeekMode implements GameMode
         );
     }
 
-    private function confirmHidden(array $data): ActionOutcome
+    private function confirmHidden(Session $session, array $data): ActionOutcome
     {
         $data['seeking_started_at'] = now()->timestamp;
+
+        // Snapshot the hider's committed spot. Every question is answered against THIS
+        // fixed point, so the deduction stays consistent even if the hider's live GPS
+        // drifts within their zone afterwards.
+        $hider = $session->players()->find($data['hider_id'] ?? null);
+        if ($hider !== null && $hider->last_lat !== null && $hider->last_lng !== null) {
+            $data['hider_position'] = ['lat' => (float) $hider->last_lat, 'lng' => (float) $hider->last_lng];
+        }
 
         return new ActionOutcome($data, 'seeking', [$this->event('SeekingStarted', ['round' => $data['round'] ?? 0])]);
     }

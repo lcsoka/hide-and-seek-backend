@@ -14,6 +14,8 @@ use App\Models\Session;
  */
 class RadarEvaluator implements QuestionEvaluator
 {
+    use ResolvesHiderLocation;
+
     public function category(): QuestionCategory
     {
         return QuestionCategory::Radar;
@@ -21,19 +23,14 @@ class RadarEvaluator implements QuestionEvaluator
 
     public function evaluate(Session $session, Player $asker, Question $question, array $payload): ?array
     {
-        $hider = $session->players()->find($session->state_data['hider_id'] ?? null);
-
-        if ($hider === null
-            || $hider->last_lat === null || $hider->last_lng === null
-            || $asker->last_lat === null || $asker->last_lng === null) {
+        $hiderPoint = $this->hiderPoint($session);
+        if ($hiderPoint === null || $asker->last_lat === null || $asker->last_lng === null) {
             return null; // positions unknown — fall back to a manual answer
         }
+        [$hLat, $hLng] = $hiderPoint;
 
         $radius = (float) ($payload['radius_m'] ?? 0);
-        $within = Geo::distanceMeters(
-            (float) $asker->last_lat, (float) $asker->last_lng,
-            (float) $hider->last_lat, (float) $hider->last_lng,
-        ) <= $radius;
+        $within = Geo::distanceMeters((float) $asker->last_lat, (float) $asker->last_lng, $hLat, $hLng) <= $radius;
 
         return ['answer' => $within ? 'yes' : 'no', 'radius_m' => $radius];
     }

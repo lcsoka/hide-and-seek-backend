@@ -15,6 +15,8 @@ use App\Models\Session;
  */
 class ThermometerEvaluator implements QuestionEvaluator
 {
+    use ResolvesHiderLocation;
+
     public function category(): QuestionCategory
     {
         return QuestionCategory::Thermometer;
@@ -26,15 +28,14 @@ class ThermometerEvaluator implements QuestionEvaluator
         $startLng = $payload['start_lng'] ?? null;
         $endLat = $payload['end_lat'] ?? null;
         $endLng = $payload['end_lng'] ?? null;
-        $hider = $session->players()->find($session->state_data['hider_id'] ?? null);
+        $hiderPoint = $this->hiderPoint($session);
 
-        if ($startLat === null || $startLng === null || $endLat === null || $endLng === null
-            || $hider === null || $hider->last_lat === null || $hider->last_lng === null) {
+        if ($startLat === null || $startLng === null || $endLat === null || $endLng === null || $hiderPoint === null) {
             return null;
         }
 
-        $startDistance = Geo::distanceMeters((float) $startLat, (float) $startLng, (float) $hider->last_lat, (float) $hider->last_lng);
-        $endDistance = Geo::distanceMeters((float) $endLat, (float) $endLng, (float) $hider->last_lat, (float) $hider->last_lng);
+        $startDistance = Geo::distanceMeters((float) $startLat, (float) $startLng, $hiderPoint[0], $hiderPoint[1]);
+        $endDistance = Geo::distanceMeters((float) $endLat, (float) $endLng, $hiderPoint[0], $hiderPoint[1]);
 
         return ['answer' => $endDistance < $startDistance ? 'hotter' : 'colder'];
     }
