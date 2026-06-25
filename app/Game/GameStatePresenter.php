@@ -262,6 +262,7 @@ class GameStatePresenter
             $status = ($c['status'] ?? 'active') === 'completed'
                 ? 'completed'
                 : ($expiresAt !== null && $now > $expiresAt ? 'expired' : 'active');
+            $rolls = $c['rolls'] ?? [];
 
             return [
                 'uid' => $c['uid'] ?? null,
@@ -272,6 +273,8 @@ class GameStatePresenter
                 'cost' => $model?->cost,
                 'description' => $model?->description,
                 'requires_proof' => (bool) ($c['requires_proof'] ?? false),
+                'dice' => $c['dice'] ?? null,
+                'last_roll' => $rolls ? end($rolls) : null,
                 'expires_at' => $expiresAt,
                 'status' => $status,
                 'proof_url' => $c['proof_url'] ?? null,

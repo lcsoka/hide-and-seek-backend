@@ -149,6 +149,34 @@ class CurseAndPhotoTest extends TestCase
         $this->assertContains('ask_question', $state->json('available_actions'));
     }
 
+    public function test_a_dice_curse_can_be_rolled_by_a_seeker(): void
+    {
+        Event::fake([GameEventBroadcast::class]);
+        $ctx = $this->setUpSeeking();
+        $curse = Curse::create([
+            'key' => 'dice_curse', 'name' => ['en' => 'Jammed Door'], 'description' => ['en' => 'Roll 7+ to enter'],
+            'parameters' => ['dice' => ['count' => 2, 'sides' => 6, 'target' => 7]], 'is_active' => true,
+        ]);
+        $this->giveHiderCard($ctx['sessionId'], ['uid' => 'h1', 'type' => 'curse', 'curse_id' => $curse->id]);
+
+        Sanctum::actingAs($ctx['host']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'play_curse', 'payload' => ['card_uid' => 'h1']])->assertOk();
+
+        // The seeker sees the dice spec and may roll.
+        Sanctum::actingAs($ctx['seeker']);
+        $state = $this->getJson("/api/sessions/{$ctx['sessionId']}/state");
+        $this->assertContains('roll_dice', $state->json('available_actions'));
+        $uid = $state->json('curses.0.uid');
+        $this->assertSame(2, $state->json('curses.0.dice.count'));
+
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'roll_dice', 'payload' => ['curse_uid' => $uid]])->assertOk();
+
+        $roll = $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('curses.0.last_roll');
+        $this->assertCount(2, $roll['values']);
+        $this->assertSame(array_sum($roll['values']), $roll['sum']);
+        $this->assertIsBool($roll['success']);
+    }
+
     public function test_a_timed_curse_carries_an_expiry(): void
     {
         Event::fake([GameEventBroadcast::class]);

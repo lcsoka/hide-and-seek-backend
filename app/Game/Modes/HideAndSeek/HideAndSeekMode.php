@@ -82,6 +82,7 @@ class HideAndSeekMode implements GameMode
                 'seeker' => array_merge(
                     $pending ? ['declare_endgame'] : ['ask_question', 'declare_endgame'],
                     $this->curseAwaitingProof($session->state_data ?? []) ? ['complete_curse'] : [],
+                    $this->curseWithDiceActive($session->state_data ?? []) ? ['roll_dice'] : [],
                 ),
                 // The hider is locked to their spot once seeking begins (they could only move
                 // during the hiding period). They answer pending questions and play cards.
@@ -149,6 +150,7 @@ class HideAndSeekMode implements GameMode
             'play_powerup' => $this->playPowerup($action, $data),
             'keep_cards' => $this->keepCards($action, $data),
             'complete_curse' => $this->completeCurse($player, $action, $data),
+            'roll_dice' => $this->rollDice($action, $data),
             'declare_endgame' => new ActionOutcome($data, 'endgame', [$this->event('EndgameTriggered', ['by' => $player->id])]),
             'make_guess' => $this->makeGuess($session, $player, $action, $data),
             'surrender' => $this->endRound($data, [$this->event('HiderFound', ['round' => $data['round'] ?? 0, 'surrendered' => true])]),
@@ -532,6 +534,8 @@ class HideAndSeekMode implements GameMode
             'round' => $data['round'] ?? 0,
             'at' => $now,
             'requires_proof' => (bool) ($params['requires_proof'] ?? false),
+            'dice' => $params['dice'] ?? null,
+            'rolls' => [],
             'expires_at' => $duration !== null ? $now + $duration : null,
             'status' => 'active',
             'proof_url' => null,
@@ -560,6 +564,51 @@ class HideAndSeekMode implements GameMode
         }
 
         return new ActionOutcome($data);
+    }
+
+    /** A seeker rolls the dice a curse requires; the (server-authoritative) result is recorded. */
+    private function rollDice(Action $action, array $data): ActionOutcome
+    {
+        $uid = $action->payload['curse_uid'] ?? null;
+
+        foreach ($data['curses_played'] ?? [] as $i => $curse) {
+            if (($curse['uid'] ?? null) === $uid && ($curse['dice'] ?? null) !== null) {
+                $dice = $curse['dice'];
+                $count = max(1, (int) ($dice['count'] ?? 1));
+                $sides = max(2, (int) ($dice['sides'] ?? 6));
+                $target = $dice['target'] ?? null;
+
+                $values = [];
+                for ($r = 0; $r < $count; $r++) {
+                    $values[] = random_int(1, $sides);
+                }
+                $sum = array_sum($values);
+                $roll = ['values' => $values, 'sum' => $sum, 'success' => $target !== null ? $sum >= (int) $target : null, 'at' => now()->timestamp];
+                $data['curses_played'][$i]['rolls'][] = $roll;
+
+                return new ActionOutcome($data, null, [$this->event('DiceRolled', ['uid' => $uid, 'values' => $values, 'sum' => $sum])]);
+            }
+        }
+
+        return new ActionOutcome($data);
+    }
+
+    /** True if a current-round curse still has dice the seekers can roll. */
+    private function curseWithDiceActive(array $data): bool
+    {
+        $now = now()->timestamp;
+        $round = $data['round'] ?? 0;
+
+        foreach ($data['curses_played'] ?? [] as $curse) {
+            if (($curse['round'] ?? 0) === $round
+                && ($curse['status'] ?? 'active') === 'active'
+                && ($curse['dice'] ?? null) !== null
+                && (($curse['expires_at'] ?? null) === null || $curse['expires_at'] > $now)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** True if a curse in the current round still needs photo proof from the seekers. */

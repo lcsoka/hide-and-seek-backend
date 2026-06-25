@@ -52,9 +52,11 @@ class CurseSeeder extends Seeder
             'the_labyrinth' => ['requires_proof' => true],
             'the_mediocre_travel_agent' => ['requires_proof' => true],
             // Timed effects (representative midpoints of the official ranges).
-            'the_jammed_door' => ['duration_s' => 3600],     // 0.5–3 h
-            'the_gamblers_feet' => ['duration_s' => 1800],   // 20–60 min
+            'the_jammed_door' => ['duration_s' => 3600, 'dice' => ['count' => 2, 'sides' => 6, 'target' => 7]], // roll 7+ to enter
+            'the_gamblers_feet' => ['duration_s' => 1800, 'dice' => ['count' => 1, 'sides' => 6]],              // roll before each step
             'the_right_turn' => ['duration_s' => 1800],      // 20–60 min
+            // Dice-only effect.
+            'the_endless_tumble' => ['dice' => ['count' => 1, 'sides' => 6, 'target' => 5]], // roll 5–6 to proceed
         ];
     }
 
