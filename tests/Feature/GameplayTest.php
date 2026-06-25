@@ -170,6 +170,36 @@ class GameplayTest extends TestCase
         $this->assertNull($hider['lng']);
     }
 
+    public function test_hider_draws_and_plays_curse_cards(): void
+    {
+        $this->setUpSession();
+        foreach (['c1', 'c2', 'c3'] as $key) {
+            Curse::create([
+                'key' => $key, 'name' => ['hu' => $key, 'en' => $key], 'cost' => ['hu' => 'x', 'en' => 'x'],
+                'description' => ['hu' => 'x', 'en' => 'x'], 'is_active' => true,
+            ]);
+        }
+
+        Sanctum::actingAs($this->host);
+        $this->postJson("/api/sessions/{$this->sessionId}/start");
+        $this->action('assign_hider', ['player_id' => $this->hostPlayerId]); // host is the hider
+
+        // The hider starts with a hand of 3 cards.
+        $hand = $this->getJson("/api/sessions/{$this->sessionId}/state")->assertOk()->json('hand');
+        $this->assertCount(3, $hand);
+        $this->assertNotNull($hand[0]['name']);
+
+        // Seekers never see the hider's hand.
+        Sanctum::actingAs($this->seeker);
+        $this->getJson("/api/sessions/{$this->sessionId}/state")->assertJsonPath('hand', []);
+
+        // Playing a card removes it from the hand.
+        Sanctum::actingAs($this->host);
+        $this->action('confirm_hidden')->assertJsonPath('state', 'seeking');
+        $this->action('play_curse', ['curse_id' => $hand[0]['curse_id']])->assertOk();
+        $this->assertCount(2, $this->getJson("/api/sessions/{$this->sessionId}/state")->json('hand'));
+    }
+
     public function test_catalog_endpoints_return_active_questions_and_curses(): void
     {
         Question::create([

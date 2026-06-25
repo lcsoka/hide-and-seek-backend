@@ -14,6 +14,7 @@ use App\Game\Support\Geo;
 use App\Game\Support\LocationFilter;
 use App\Game\Support\ValidationResult;
 use App\Jobs\ComputeQuestionTruth;
+use App\Models\Curse;
 use App\Models\Player;
 use App\Models\Question;
 use App\Models\Session;
@@ -135,7 +136,7 @@ class HideAndSeekMode implements GameMode
             'confirm_hidden' => $this->confirmHidden($data),
             'ask_question' => $this->askQuestion($session, $player, $action, $data),
             'answer_question' => $this->answerQuestion($session, $action, $data),
-            'play_curse' => $this->logged($data, 'curses_played', ['by' => $player->id, 'round' => $data['round'] ?? 0] + $action->payload, 'CursePlayed', $action->payload),
+            'play_curse' => $this->playCurse($player, $action, $data),
             'declare_endgame' => new ActionOutcome($data, 'endgame', [$this->event('EndgameTriggered', ['by' => $player->id])]),
             'make_guess' => $this->makeGuess($session, $player, $action, $data),
             'surrender' => $this->endRound($data, [$this->event('HiderFound', ['round' => $data['round'] ?? 0, 'surrendered' => true])]),
@@ -208,6 +209,10 @@ class HideAndSeekMode implements GameMode
         $data['hider_id'] = $hiderId;
         $data['hiding_started_at'] = now()->timestamp;
         $data['hiding_deadline'] = now()->addSeconds($limit)->timestamp;
+
+        // The hider starts with a small hand of curse cards; more are drawn as questions resolve.
+        $data['hand'] = [];
+        $this->drawInto($data, 3);
 
         return new ActionOutcome(
             $data,
@@ -425,6 +430,10 @@ class HideAndSeekMode implements GameMode
         $data['pending_question'] = null;
         $data['question_answer'] = null; // invalidate the deadline timer
 
+        // Answering a question rewards the hider with new curse cards.
+        $question = isset($pending['question_id']) ? Question::find($pending['question_id']) : null;
+        $this->drawInto($data, (int) ($question?->reward_keep ?? 1));
+
         return new ActionOutcome($data, null, [
             $this->event('QuestionAnswered', ['seq' => $pending['seq'], 'question_id' => $pending['question_id'], 'auto' => $auto] + $answer),
         ]);
@@ -448,12 +457,41 @@ class HideAndSeekMode implements GameMode
         return $evaluator->evaluate($session, $asker, $question, $pending['payload'] ?? []);
     }
 
-    private function logged(array $data, string $bucket, array $entry, string $event, array $payload): ActionOutcome
+    /** The hider plays a curse from their hand (the card is removed) against the seekers. */
+    private function playCurse(Player $player, Action $action, array $data): ActionOutcome
     {
-        $entry['at'] = now()->timestamp;
-        $data[$bucket][] = $entry;
+        $curseId = $action->payload['curse_id'] ?? null;
 
-        return new ActionOutcome($data, null, [$this->event($event, $payload)]);
+        // Remove one matching card from the hand.
+        if ($curseId !== null && isset($data['hand'])) {
+            $index = array_search($curseId, $data['hand'], true);
+            if ($index !== false) {
+                array_splice($data['hand'], $index, 1);
+            }
+        }
+
+        $data['curses_played'][] = ['by' => $player->id, 'round' => $data['round'] ?? 0, 'at' => now()->timestamp] + $action->payload;
+
+        return new ActionOutcome($data, null, [$this->event('CursePlayed', $action->payload)]);
+    }
+
+    /** Draw `n` random active curse cards into the hider's hand. */
+    private function drawInto(array &$data, int $n): void
+    {
+        if ($n <= 0) {
+            return;
+        }
+
+        $ids = Curse::query()->where('is_active', true)->inRandomOrder()->limit($n)->pluck('id')->all();
+        if ($ids === []) {
+            return;
+        }
+        // Fewer distinct curses than requested — allow duplicates so the draw count is honoured.
+        while (count($ids) < $n) {
+            $ids[] = $ids[array_rand($ids)];
+        }
+
+        $data['hand'] = array_merge($data['hand'] ?? [], $ids);
     }
 
     private function makeGuess(Session $session, Player $player, Action $action, array $data): ActionOutcome
@@ -494,7 +532,7 @@ class HideAndSeekMode implements GameMode
 
         $session->players()->update(['role' => null]);
         $data['round'] = $completed;
-        unset($data['hider_id'], $data['hiding_started_at'], $data['hiding_deadline'], $data['seeking_started_at']);
+        unset($data['hider_id'], $data['hiding_started_at'], $data['hiding_deadline'], $data['seeking_started_at'], $data['hand']);
 
         return new ActionOutcome($data, 'role_assignment', [$this->event('RoundStarted', ['round' => $completed])]);
     }

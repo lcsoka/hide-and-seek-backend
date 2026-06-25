@@ -52,8 +52,9 @@ class GameStatePresenter
             // the answer is just the constraint, so it never reveals the hider's location.
             'questions' => $this->questions($session),
             'curses' => $this->activeCurses($session),
-            // Only the hider sees their own hiding zone.
+            // Only the hider sees their own hiding zone + hand of curse cards.
             'hiding_zone' => ($player && $player->role === 'hider') ? ($session->state_data['hiding_zone'] ?? null) : null,
+            'hand' => ($player && $player->role === 'hider') ? $this->hand($session) : [],
             'timers' => $this->timers($session),
         ];
     }
@@ -121,6 +122,24 @@ class GameStatePresenter
                 'end' => ['lat' => $q['end_lat'] ?? null, 'lng' => $q['end_lng'] ?? null],
             ];
         }, $resolved);
+    }
+
+    /**
+     * The hider's hand of curse cards (curse_ids resolved to name/cost/description).
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function hand(Session $session): array
+    {
+        $ids = $session->state_data['hand'] ?? [];
+        $models = Curse::whereIn('id', array_values(array_unique($ids)))->get()->keyBy('id');
+
+        return array_map(fn ($id) => [
+            'curse_id' => $id,
+            'name' => $models->get($id)?->name,
+            'cost' => $models->get($id)?->cost,
+            'description' => $models->get($id)?->description,
+        ], $ids);
     }
 
     /**
