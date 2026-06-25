@@ -173,6 +173,8 @@ class GameplayTest extends TestCase
     public function test_hider_draws_cards_by_answering_and_plays_them(): void
     {
         $this->setUpSession();
+        // Deck = curses only, so the draw is deterministic for this test.
+        config(['game.hider_deck.time_bonuses' => [], 'game.hider_deck.powerups' => []]);
         $radar = Question::create([
             'key' => 'radar', 'category' => 'radar', 'title' => ['hu' => 'Radar', 'en' => 'Radar'],
             'prompt' => ['hu' => '?', 'en' => '?'], 'reward_draw' => 2, 'reward_keep' => 2, 'is_active' => true,
@@ -200,17 +202,23 @@ class GameplayTest extends TestCase
         $this->action('ask_question', ['question_id' => $radar->id, 'radius_m' => 5000]);
         $this->getJson("/api/sessions/{$this->sessionId}/state")->assertJsonPath('hand', []); // seekers never see it
 
+        // The hider answers, draws 2 and chooses which to keep (a draw modal).
         Sanctum::actingAs($this->host);
         $this->action('answer_question');
+        $draw = $this->getJson("/api/sessions/{$this->sessionId}/state")->json('pending_draw');
+        $this->assertCount(2, $draw['cards']);
+        $this->assertSame(2, $draw['keep']);
+
+        $this->action('keep_cards', ['uids' => array_column($draw['cards'], 'uid')]);
         $hand = $this->getJson("/api/sessions/{$this->sessionId}/state")->json('hand');
         $this->assertCount(2, $hand);
 
-        // Playing a card removes it.
-        $this->action('play_curse', ['curse_id' => $hand[0]['curse_id']])->assertOk();
+        // Playing a card removes it (by its hand uid).
+        $this->action('play_curse', ['card_uid' => $hand[0]['uid']])->assertOk();
         $this->assertCount(1, $this->getJson("/api/sessions/{$this->sessionId}/state")->json('hand'));
     }
 
-    public function test_hider_can_rehide_only_while_no_seeker_is_in_the_zone(): void
+    public function test_hider_is_locked_to_their_spot_once_seeking_starts(): void
     {
         $this->setUpSession();
         Sanctum::actingAs($this->host);
@@ -218,21 +226,17 @@ class GameplayTest extends TestCase
         $this->action('assign_hider', ['player_id' => $this->hostPlayerId]); // host is the hider
 
         Player::whereKey($this->hostPlayerId)->update(['last_lat' => 47.50, 'last_lng' => 19.00]);
+
+        // During hiding the hider may choose / adjust their station.
+        $hiding = $this->getJson("/api/sessions/{$this->sessionId}/state");
+        $this->assertContains('choose_station', $hiding->json('available_actions'));
         $this->action('choose_station', ['lat' => 47.50, 'lng' => 19.00]);
         $this->action('confirm_hidden')->assertJsonPath('state', 'seeking');
 
-        // Seeker far away → the hider may move to another station.
+        // Once seeking begins the hider is locked — even with no seeker nearby.
         Player::whereKey($this->seekerPlayerId)->update(['last_lat' => 47.70, 'last_lng' => 19.40]);
-        $state = $this->getJson("/api/sessions/{$this->sessionId}/state");
-        $this->assertContains('choose_station', $state->json('available_actions'));
-        $state->assertJsonPath('zone_locked', false);
-        $this->action('choose_station', ['lat' => 47.51, 'lng' => 19.01])->assertOk();
-
-        // Seeker enters the (new) zone → re-hiding is locked.
-        Player::whereKey($this->seekerPlayerId)->update(['last_lat' => 47.51, 'last_lng' => 19.01]);
-        $state = $this->getJson("/api/sessions/{$this->sessionId}/state");
-        $this->assertNotContains('choose_station', $state->json('available_actions'));
-        $state->assertJsonPath('zone_locked', true);
+        $seeking = $this->getJson("/api/sessions/{$this->sessionId}/state");
+        $this->assertNotContains('choose_station', $seeking->json('available_actions'));
     }
 
     public function test_catalog_endpoints_return_active_questions_and_curses(): void

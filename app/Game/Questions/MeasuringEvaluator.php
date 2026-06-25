@@ -43,6 +43,11 @@ class MeasuringEvaluator implements QuestionEvaluator
         $askerDistance = Geo::distanceMeters((float) $asker->last_lat, (float) $asker->last_lng, $reference->lat, $reference->lng);
         $hiderDistance = Geo::distanceMeters((float) $hider->last_lat, (float) $hider->last_lng, $reference->lat, $reference->lng);
 
-        return ['answer' => $hiderDistance <= $askerDistance ? 'closer' : 'further'];
+        return [
+            'answer' => $hiderDistance <= $askerDistance ? 'closer' : 'further',
+            'feature_name' => $reference->name,
+            'feature_lat' => $reference->lat,
+            'feature_lng' => $reference->lng,
+        ];
     }
 }

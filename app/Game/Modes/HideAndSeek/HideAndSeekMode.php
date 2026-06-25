@@ -83,11 +83,11 @@ class HideAndSeekMode implements GameMode
                     $pending ? ['declare_endgame'] : ['ask_question', 'declare_endgame'],
                     $this->curseAwaitingProof($session->state_data ?? []) ? ['complete_curse'] : [],
                 ),
-                // The hider answers while a question is pending and can always curse. They may
-                // also move to a NEW station (choose_station) as long as no seeker is in their zone.
+                // The hider is locked to their spot once seeking begins (they could only move
+                // during the hiding period). They answer pending questions and play cards.
                 'hider' => array_merge(
-                    $pending ? ['answer_question', 'play_curse'] : ['play_curse'],
-                    $this->canRehide($session) ? ['choose_station'] : [],
+                    $pending ? ['answer_question', 'play_curse', 'play_powerup'] : ['play_curse', 'play_powerup'],
+                    ($session->state_data['pending_draw'] ?? null) !== null ? ['keep_cards'] : [],
                 ),
                 default => [],
             },
@@ -146,6 +146,8 @@ class HideAndSeekMode implements GameMode
             'ask_question' => $this->askQuestion($session, $player, $action, $data),
             'answer_question' => $this->answerQuestion($session, $action, $data),
             'play_curse' => $this->playCurse($player, $action, $data),
+            'play_powerup' => $this->playPowerup($action, $data),
+            'keep_cards' => $this->keepCards($action, $data),
             'complete_curse' => $this->completeCurse($player, $action, $data),
             'declare_endgame' => new ActionOutcome($data, 'endgame', [$this->event('EndgameTriggered', ['by' => $player->id])]),
             'make_guess' => $this->makeGuess($session, $player, $action, $data),
@@ -472,9 +474,19 @@ class HideAndSeekMode implements GameMode
         $data['pending_question'] = null;
         $data['question_answer'] = null; // invalidate the deadline timer
 
-        // Answering a question rewards the hider with new curse cards.
+        // Answering rewards the hider: draw `reward_draw` cards and keep `reward_keep`.
+        // The hider chooses which to keep (a draw modal); auto-resolve keeps the first few.
         $question = isset($pending['question_id']) ? Question::find($pending['question_id']) : null;
-        $this->drawInto($data, (int) ($question?->reward_keep ?? 1));
+        $drawN = max(0, (int) ($question?->reward_draw ?? 1));
+        $keepN = max(0, (int) ($question?->reward_keep ?? 1));
+        if ($drawN > 0) {
+            $drawn = $this->drawCards($drawN);
+            if ($auto) {
+                $data['hand'] = array_merge($data['hand'] ?? [], array_slice($drawn, 0, $keepN));
+            } else {
+                $data['pending_draw'] = ['cards' => $drawn, 'keep' => min($keepN, count($drawn))];
+            }
+        }
 
         return new ActionOutcome($data, null, [
             $this->event('QuestionAnswered', ['seq' => $pending['seq'], 'question_id' => $pending['question_id'], 'auto' => $auto] + $answer),
@@ -499,18 +511,14 @@ class HideAndSeekMode implements GameMode
         return $evaluator->evaluate($session, $asker, $question, $pending['payload'] ?? []);
     }
 
-    /** The hider plays a curse from their hand (the card is removed) against the seekers. */
+    /** The hider plays a curse card from their hand (removed by uid) against the seekers. */
     private function playCurse(Player $player, Action $action, array $data): ActionOutcome
     {
-        $curseId = $action->payload['curse_id'] ?? null;
-
-        // Remove one matching card from the hand.
-        if ($curseId !== null && isset($data['hand'])) {
-            $index = array_search($curseId, $data['hand'], true);
-            if ($index !== false) {
-                array_splice($data['hand'], $index, 1);
-            }
+        $card = $this->takeFromHand($data, $action->payload['card_uid'] ?? null, 'curse');
+        if ($card === null) {
+            return new ActionOutcome($data);
         }
+        $curseId = $card['curse_id'] ?? null;
 
         // Resolve the curse's lifecycle (a time limit and/or required photo proof).
         $params = $curseId !== null ? (Curse::find($curseId)?->parameters ?? []) : [];
@@ -572,23 +580,119 @@ class HideAndSeekMode implements GameMode
         return false;
     }
 
-    /** Draw `n` random active curse cards into the hider's hand. */
-    private function drawInto(array &$data, int $n): void
+    /** The hider plays a powerup card (removed by uid). Veto is the key functional one. */
+    private function playPowerup(Action $action, array $data): ActionOutcome
     {
-        if ($n <= 0) {
-            return;
+        $card = $this->takeFromHand($data, $action->payload['card_uid'] ?? null, 'powerup');
+        if ($card === null) {
+            return new ActionOutcome($data);
+        }
+        $power = $card['power'] ?? null;
+
+        if ($power === 'veto' && ($data['pending_question'] ?? null) !== null) {
+            // Refuse the question: discard it with no answer and no draw.
+            $data['pending_question'] = null;
+            $data['question_answer'] = null;
+        } elseif ($power === 'duplicate') {
+            foreach ($data['hand'] ?? [] as $other) {
+                if (($other['uid'] ?? null) === ($action->payload['target_uid'] ?? null)) {
+                    $data['hand'][] = ['uid' => (string) Str::uuid()] + array_diff_key($other, ['uid' => true]);
+                    break;
+                }
+            }
+        } elseif ($power === 'discard') {
+            $data['hand'] = array_merge($data['hand'] ?? [], $this->drawCards(1));
+        } elseif ($power === 'randomize') {
+            $data['hand'] = $this->drawCards(count($data['hand'] ?? []));
+        }
+        // 'move' (relocate) is a manual, real-world action — recorded via the event.
+
+        return new ActionOutcome($data, null, [$this->event('PowerupPlayed', ['power' => $power])]);
+    }
+
+    /** The hider keeps the chosen cards from a draw; the rest are discarded. */
+    private function keepCards(Action $action, array $data): ActionOutcome
+    {
+        $draw = $data['pending_draw'] ?? null;
+        if ($draw === null) {
+            return new ActionOutcome($data);
         }
 
-        $ids = Curse::query()->where('is_active', true)->inRandomOrder()->limit($n)->pluck('id')->all();
-        if ($ids === []) {
-            return;
-        }
-        // Fewer distinct curses than requested — allow duplicates so the draw count is honoured.
-        while (count($ids) < $n) {
-            $ids[] = $ids[array_rand($ids)];
+        $keepUids = (array) ($action->payload['uids'] ?? []);
+        $kept = array_values(array_filter($draw['cards'] ?? [], fn ($c) => in_array($c['uid'] ?? null, $keepUids, true)));
+        $kept = array_slice($kept, 0, (int) ($draw['keep'] ?? 0));
+
+        $data['hand'] = array_merge($data['hand'] ?? [], $kept);
+        $data['pending_draw'] = null;
+
+        return new ActionOutcome($data, null, [$this->event('CardsKept', ['count' => count($kept)])]);
+    }
+
+    /** Remove and return the first hand card matching the uid (and type, if given). */
+    private function takeFromHand(array &$data, ?string $uid, ?string $type = null): ?array
+    {
+        foreach ($data['hand'] ?? [] as $i => $card) {
+            if (($card['uid'] ?? null) === $uid && ($type === null || ($card['type'] ?? 'curse') === $type)) {
+                array_splice($data['hand'], $i, 1);
+
+                return $card;
+            }
         }
 
-        $data['hand'] = array_merge($data['hand'] ?? [], $ids);
+        return null;
+    }
+
+    /** Build the hider draw pool: curse cards + time-bonus + powerup cards. */
+    private function deckPool(): array
+    {
+        $pool = [];
+        foreach (Curse::query()->where('is_active', true)->pluck('id') as $id) {
+            $pool[] = ['type' => 'curse', 'curse_id' => $id];
+        }
+        foreach ((array) config('game.hider_deck.time_bonuses', []) as $bonus) {
+            for ($i = 0; $i < (int) ($bonus['count'] ?? 1); $i++) {
+                $pool[] = ['type' => 'time_bonus', 'minutes' => (int) ($bonus['minutes'] ?? 0)];
+            }
+        }
+        foreach ((array) config('game.hider_deck.powerups', []) as $powerup) {
+            for ($i = 0; $i < (int) ($powerup['count'] ?? 1); $i++) {
+                $pool[] = ['type' => 'powerup', 'power' => $powerup['power']];
+            }
+        }
+
+        return $pool;
+    }
+
+    /** Draw `n` cards from the pool, each tagged with a unique instance id. */
+    private function drawCards(int $n): array
+    {
+        $pool = $this->deckPool();
+        if ($pool === [] || $n <= 0) {
+            return [];
+        }
+
+        $cards = [];
+        for ($i = 0; $i < $n; $i++) {
+            $cards[] = $pool[array_rand($pool)] + ['uid' => (string) Str::uuid()];
+        }
+
+        return $cards;
+    }
+
+    /**
+     * The answer the hider is about to give (so they can confirm knowingly). Null for
+     * photo questions (they upload) or until an async/deferred truth is available.
+     */
+    public function previewAnswer(Session $session): ?array
+    {
+        $pending = $session->state_data['pending_question'] ?? null;
+        if ($pending === null) {
+            return null;
+        }
+
+        return $pending['truth']
+            ?? $this->evaluateTruth($session, $pending)
+            ?? $this->deferredAnswer($session, $pending);
     }
 
     private function makeGuess(Session $session, Player $player, Action $action, array $data): ActionOutcome

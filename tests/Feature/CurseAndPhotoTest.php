@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Events\GameEventBroadcast;
 use App\Models\Curse;
 use App\Models\Question;
+use App\Models\Session;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -36,6 +37,14 @@ class CurseAndPhotoTest extends TestCase
         $this->postJson("/api/sessions/{$sessionId}/actions", ['type' => 'confirm_hidden']);
 
         return compact('sessionId', 'hiderId', 'host', 'seeker');
+    }
+
+    private function giveHiderCard(string $sessionId, array $card): void
+    {
+        $session = Session::find($sessionId);
+        $data = $session->state_data;
+        $data['hand'] = array_merge($data['hand'] ?? [], [$card]);
+        $session->update(['state_data' => $data]);
     }
 
     public function test_a_player_can_upload_an_image_to_their_session(): void
@@ -83,9 +92,10 @@ class CurseAndPhotoTest extends TestCase
             'parameters' => ['requires_proof' => true], 'is_active' => true,
         ]);
 
-        // The hider plays the curse.
+        // Put the curse card in the hider's hand, then play it.
+        $this->giveHiderCard($ctx['sessionId'], ['uid' => 'h1', 'type' => 'curse', 'curse_id' => $curse->id]);
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'play_curse', 'payload' => ['curse_id' => $curse->id]])->assertOk();
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'play_curse', 'payload' => ['card_uid' => 'h1']])->assertOk();
 
         // The seeker now sees an active proof-curse and may clear it.
         Sanctum::actingAs($ctx['seeker']);
@@ -104,6 +114,41 @@ class CurseAndPhotoTest extends TestCase
         $this->assertSame('http://localhost/storage/media/x/proof.jpg', $curses[0]['proof_url']);
     }
 
+    public function test_time_bonus_cards_in_hand_add_to_the_hiders_banked_time(): void
+    {
+        Event::fake([GameEventBroadcast::class]);
+        $ctx = $this->setUpSeeking();
+        $this->giveHiderCard($ctx['sessionId'], ['uid' => 't1', 'type' => 'time_bonus', 'minutes' => 10]);
+        $this->giveHiderCard($ctx['sessionId'], ['uid' => 't2', 'type' => 'time_bonus', 'minutes' => 5]);
+
+        Sanctum::actingAs($ctx['host']);
+        $this->assertSame(900, $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('time_bonus_s'));
+    }
+
+    public function test_veto_powerup_discards_the_pending_question(): void
+    {
+        Event::fake([GameEventBroadcast::class]);
+        $ctx = $this->setUpSeeking();
+        $question = Question::create([
+            'key' => 'radar', 'category' => 'radar', 'title' => ['en' => 'Radar'], 'prompt' => ['en' => '?'],
+            'reward_draw' => 1, 'reward_keep' => 1, 'is_active' => true,
+        ]);
+        $this->giveHiderCard($ctx['sessionId'], ['uid' => 'v1', 'type' => 'powerup', 'power' => 'veto']);
+
+        Sanctum::actingAs($ctx['seeker']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $question->id, 'radius_m' => 5000]])->assertOk();
+
+        Sanctum::actingAs($ctx['host']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'play_powerup', 'payload' => ['card_uid' => 'v1']])->assertOk();
+
+        // The question is gone (no answer recorded) and the seeker can ask again.
+        Sanctum::actingAs($ctx['seeker']);
+        $state = $this->getJson("/api/sessions/{$ctx['sessionId']}/state");
+        $this->assertNull($state->json('pending_question'));
+        $this->assertCount(0, $state->json('questions'));
+        $this->assertContains('ask_question', $state->json('available_actions'));
+    }
+
     public function test_a_timed_curse_carries_an_expiry(): void
     {
         Event::fake([GameEventBroadcast::class]);
@@ -113,8 +158,9 @@ class CurseAndPhotoTest extends TestCase
             'parameters' => ['duration_s' => 1800], 'is_active' => true,
         ]);
 
+        $this->giveHiderCard($ctx['sessionId'], ['uid' => 'h1', 'type' => 'curse', 'curse_id' => $curse->id]);
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'play_curse', 'payload' => ['curse_id' => $curse->id]])->assertOk();
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'play_curse', 'payload' => ['card_uid' => 'h1']])->assertOk();
 
         $played = $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('curses.0');
         $this->assertSame('active', $played['status']);

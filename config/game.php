@@ -97,6 +97,31 @@ return [
     ],
 
     /*
+     | The hider's draw deck. Answering a question lets the hider draw `reward_draw`
+     | cards and keep `reward_keep` (per the question). The deck mixes curse cards
+     | (from the curses table) with time-bonus and powerup cards defined here.
+     */
+    'hider_deck' => [
+        // Minutes added to the hider's run time; `count` = copies in the deck.
+        'time_bonuses' => [
+            ['minutes' => 3, 'count' => 4],
+            ['minutes' => 5, 'count' => 4],
+            ['minutes' => 8, 'count' => 3],
+            ['minutes' => 10, 'count' => 3],
+            ['minutes' => 15, 'count' => 2],
+            ['minutes' => 20, 'count' => 1],
+        ],
+        // Powerup cards (names/descriptions in lang/{locale}/cards.php).
+        'powerups' => [
+            ['power' => 'veto', 'count' => 3],
+            ['power' => 'duplicate', 'count' => 2],
+            ['power' => 'move', 'count' => 1],
+            ['power' => 'randomize', 'count' => 2],
+            ['power' => 'discard', 'count' => 2],
+        ],
+    ],
+
+    /*
      | Abandoned-game cleanup (see App\Console\Commands\PruneAbandonedSessions,
      | scheduled in routes/console.php).
      */

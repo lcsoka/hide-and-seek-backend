@@ -2,9 +2,12 @@
 
 namespace App\Game;
 
+use App\Game\Contracts\GameMode;
+use App\Game\Modes\HideAndSeek\HideAndSeekMode;
 use App\Game\Support\Geo;
 use App\Models\Curse;
 use App\Models\Player;
+use App\Models\Question;
 use App\Models\Session;
 
 class GameStatePresenter
@@ -21,6 +24,7 @@ class GameStatePresenter
         $session->loadMissing('players', 'teams');
         $mode = $this->modes->make($session->game_mode->value);
         $filter = $player ? $mode->locationVisibility($session, $player) : null;
+        $isHider = $player && $player->role === 'hider';
 
         return [
             'session_id' => $session->id,
@@ -48,28 +52,35 @@ class GameStatePresenter
                 'id' => $team->id, 'name' => $team->name, 'color' => $team->color,
             ]),
             'available_actions' => $player ? $mode->availableActions($session, $player) : [],
-            'pending_question' => $this->pendingQuestion($session),
+            'pending_question' => $this->pendingQuestion($session, $isHider, $mode),
             // The answered-question history — geometry is the seeker's own positions and
             // the answer is just the constraint, so it never reveals the hider's location.
             'questions' => $this->questions($session),
             'curses' => $this->activeCurses($session),
-            // Only the hider sees their own hiding zone + hand of curse cards.
-            'hiding_zone' => ($player && $player->role === 'hider') ? ($session->state_data['hiding_zone'] ?? null) : null,
-            // Whether a seeker is inside the zone (the hider can re-hide only while it's unlocked).
-            'zone_locked' => ($player && $player->role === 'hider') ? $this->zoneLocked($session) : false,
-            'hand' => ($player && $player->role === 'hider') ? $this->hand($session) : [],
+            // Only the hider sees their own hiding zone, hand, draw, and banked time.
+            'hiding_zone' => $isHider ? ($session->state_data['hiding_zone'] ?? null) : null,
+            'zone_locked' => $isHider ? $this->zoneLocked($session) : false,
+            'hand' => $isHider ? $this->hand($session) : [],
+            'pending_draw' => $isHider ? $this->pendingDraw($session) : null,
+            'time_bonus_s' => $isHider ? $this->handTimeBonusSeconds($session) : null,
             'timers' => $this->timers($session),
         ];
     }
 
-    /** The open question (if any) — with the server-held truth stripped out. */
-    private function pendingQuestion(Session $session): ?array
+    /**
+     * The open question (if any). The server-held truth is stripped, BUT the hider is
+     * shown the full question and the answer they're about to give (their preview), so
+     * they can confirm knowingly. Seekers see only the bare metadata.
+     */
+    private function pendingQuestion(Session $session, bool $isHider, GameMode $mode): ?array
     {
         $pending = $session->state_data['pending_question'] ?? null;
-
         if ($pending === null) {
             return null;
         }
+
+        $question = isset($pending['question_id']) ? Question::find($pending['question_id']) : null;
+        $payload = $pending['payload'] ?? [];
 
         return [
             'seq' => $pending['seq'] ?? null,
@@ -77,6 +88,17 @@ class GameStatePresenter
             'category' => $pending['category'] ?? null,
             'asked_by' => $pending['asked_by'] ?? null,
             'deadline' => $pending['deadline'] ?? null,
+            'title' => $question?->title,
+            'prompt' => $question?->prompt,
+            'params' => [
+                'radius_m' => $payload['radius_m'] ?? null,
+                'feature' => $payload['feature'] ?? null,
+            ],
+            'ask' => [
+                'lat' => $payload['ask_lat'] ?? $payload['start_lat'] ?? null,
+                'lng' => $payload['ask_lng'] ?? $payload['start_lng'] ?? null,
+            ],
+            'preview_answer' => $isHider && $mode instanceof HideAndSeekMode ? $mode->previewAnswer($session) : null,
         ];
     }
 
@@ -149,15 +171,74 @@ class GameStatePresenter
      */
     private function hand(Session $session): array
     {
-        $ids = $session->state_data['hand'] ?? [];
-        $models = Curse::whereIn('id', array_values(array_unique($ids)))->get()->keyBy('id');
+        return $this->resolveCards($session->state_data['hand'] ?? []);
+    }
 
-        return array_map(fn ($id) => [
-            'curse_id' => $id,
-            'name' => $models->get($id)?->name,
-            'cost' => $models->get($id)?->cost,
-            'description' => $models->get($id)?->description,
-        ], $ids);
+    /** Cards the hider just drew and must choose from (hider-only). */
+    private function pendingDraw(Session $session): ?array
+    {
+        $draw = $session->state_data['pending_draw'] ?? null;
+        if ($draw === null) {
+            return null;
+        }
+
+        return [
+            'keep' => (int) ($draw['keep'] ?? 1),
+            'cards' => $this->resolveCards($draw['cards'] ?? []),
+        ];
+    }
+
+    /** Banked time-bonus seconds from time-bonus cards in the hand (hider-only). */
+    private function handTimeBonusSeconds(Session $session): int
+    {
+        return array_sum(array_map(
+            fn ($c) => ($c['type'] ?? 'curse') === 'time_bonus' ? (int) ($c['minutes'] ?? 0) * 60 : 0,
+            $session->state_data['hand'] ?? [],
+        ));
+    }
+
+    /**
+     * Resolve raw card descriptors (curse/time_bonus/powerup) to display cards with
+     * localized names + descriptions.
+     *
+     * @param  array<int, array<string, mixed>>  $cards
+     * @return array<int, array<string, mixed>>
+     */
+    private function resolveCards(array $cards): array
+    {
+        $curseIds = array_values(array_filter(array_map(fn ($c) => $c['curse_id'] ?? null, $cards)));
+        $models = Curse::whereIn('id', array_unique($curseIds))->get()->keyBy('id');
+
+        return array_map(function ($card) use ($models) {
+            $type = $card['type'] ?? 'curse';
+
+            if ($type === 'time_bonus') {
+                $minutes = (int) ($card['minutes'] ?? 0);
+
+                return [
+                    'uid' => $card['uid'] ?? null, 'type' => 'time_bonus', 'minutes' => $minutes,
+                    'name' => __('cards.time_bonus.name', ['minutes' => $minutes]),
+                    'description' => __('cards.time_bonus.description', ['minutes' => $minutes]),
+                ];
+            }
+
+            if ($type === 'powerup') {
+                $power = (string) ($card['power'] ?? '');
+
+                return [
+                    'uid' => $card['uid'] ?? null, 'type' => 'powerup', 'power' => $power,
+                    'name' => __("cards.powerups.{$power}.name"),
+                    'description' => __("cards.powerups.{$power}.description"),
+                ];
+            }
+
+            $model = isset($card['curse_id']) ? $models->get($card['curse_id']) : null;
+
+            return [
+                'uid' => $card['uid'] ?? null, 'type' => 'curse', 'curse_id' => $card['curse_id'] ?? null,
+                'name' => $model?->name, 'cost' => $model?->cost, 'description' => $model?->description,
+            ];
+        }, $cards);
     }
 
     /**

@@ -39,6 +39,12 @@ class MatchingEvaluator implements QuestionEvaluator
             return null; // no map data — fall back to a manual answer
         }
 
-        return ['answer' => $hiderNearest->id === $askerNearest->id ? 'yes' : 'no'];
+        // Reveal the SEEKER's nearest feature (the place compared) — never the hider's.
+        return [
+            'answer' => $hiderNearest->id === $askerNearest->id ? 'yes' : 'no',
+            'feature_name' => $askerNearest->name,
+            'feature_lat' => $askerNearest->lat,
+            'feature_lng' => $askerNearest->lng,
+        ];
     }
 }

@@ -30,6 +30,8 @@ class FullGameplayE2eTest extends TestCase
             'key' => 'c1', 'name' => ['hu' => 'Átok', 'en' => 'Curse'], 'cost' => ['hu' => 'x', 'en' => 'x'],
             'description' => ['hu' => 'x', 'en' => 'x'], 'is_active' => true,
         ]);
+        // Deck = curses only, so the drawn/kept card is a playable curse.
+        config(['game.hider_deck.time_bonuses' => [], 'game.hider_deck.powerups' => []]);
 
         // Host creates; a second player joins.
         $host = User::factory()->create();
@@ -61,10 +63,13 @@ class FullGameplayE2eTest extends TestCase
         // While pending, the seeker cannot ask another.
         $this->assertNotContains('ask_question', $this->getJson("/api/sessions/{$sid}/state")->json('available_actions'));
 
-        // Hider answers (radar truth: ~8 km apart, 5 km radius → "no") and draws a card.
+        // Hider answers (radar truth: ~8 km apart, 5 km radius → "no"), draws 2, keeps 1.
         Sanctum::actingAs($host);
         $this->action($sid, 'answer_question')->assertOk();
-        $this->assertCount(1, $this->getJson("/api/sessions/{$sid}/state")->json('hand'), 'hider drew reward_keep card');
+        $draw = $this->getJson("/api/sessions/{$sid}/state")->json('pending_draw');
+        $this->assertCount(2, $draw['cards'], 'hider drew reward_draw cards');
+        $this->action($sid, 'keep_cards', ['uids' => [$draw['cards'][0]['uid']]])->assertOk();
+        $this->assertCount(1, $this->getJson("/api/sessions/{$sid}/state")->json('hand'), 'hider kept reward_keep card');
 
         // THE REGRESSION GUARD: the seeker can ask again after the answer, and sees it.
         Sanctum::actingAs($seeker);
@@ -73,10 +78,10 @@ class FullGameplayE2eTest extends TestCase
         $this->assertSame('no', $state->json('questions.0.answer.answer'));
         $this->action($sid, 'ask_question', ['question_id' => $radar->id, 'radius_m' => 50000])->assertOk();
 
-        // Hider plays a curse from hand, then answers.
+        // Hider plays a curse from hand (by uid), then answers.
         Sanctum::actingAs($host);
-        $card = $this->getJson("/api/sessions/{$sid}/state")->json('hand.0.curse_id');
-        $this->action($sid, 'play_curse', ['curse_id' => $card])->assertOk();
+        $cardUid = $this->getJson("/api/sessions/{$sid}/state")->json('hand.0.uid');
+        $this->action($sid, 'play_curse', ['card_uid' => $cardUid])->assertOk();
         $this->action($sid, 'answer_question')->assertOk();
 
         // Seeker declares endgame and guesses correctly at the hider's spot.

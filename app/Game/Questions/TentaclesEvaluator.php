@@ -49,6 +49,12 @@ class TentaclesEvaluator implements QuestionEvaluator
             return null; // in range but no map data — manual fallback
         }
 
-        return ['answer' => 'in_range', 'feature_id' => $nearest->id, 'feature_name' => $nearest->name];
+        return [
+            'answer' => 'in_range',
+            'feature_id' => $nearest->id,
+            'feature_name' => $nearest->name,
+            'feature_lat' => $nearest->lat,
+            'feature_lng' => $nearest->lng,
+        ];
     }
 }
