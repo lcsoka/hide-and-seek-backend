@@ -170,6 +170,29 @@ class GameplayTest extends TestCase
         $this->assertNull($hider['lng']);
     }
 
+    public function test_pending_deadline_uses_the_questions_own_answer_time(): void
+    {
+        $this->setUpSession();
+        Sanctum::actingAs($this->host);
+        $this->postJson("/api/sessions/{$this->sessionId}/start");
+        $this->action('assign_hider', ['player_id' => $this->hostPlayerId]);
+        Player::whereKey($this->hostPlayerId)->update(['last_lat' => 47.50, 'last_lng' => 19.00]);
+        Player::whereKey($this->seekerPlayerId)->update(['last_lat' => 47.55, 'last_lng' => 19.10]);
+        $this->action('confirm_hidden');
+
+        $q = Question::create([
+            'key' => 'radar', 'category' => 'radar', 'title' => ['en' => 'Radar'], 'prompt' => ['en' => '?'],
+            'reward_draw' => 1, 'reward_keep' => 1, 'answer_time_s' => 120, 'is_active' => true,
+        ]);
+
+        Sanctum::actingAs($this->seeker);
+        $state = $this->action('ask_question', ['question_id' => $q->id, 'radius_m' => 5000]);
+        $deadline = $state->json('pending_question.deadline');
+        $now = $state->json('timers.now');
+        // ~120s window (not the 600s default).
+        $this->assertEqualsWithDelta(120, $deadline - $now, 5);
+    }
+
     public function test_hider_draws_cards_by_answering_and_plays_them(): void
     {
         $this->setUpSession();

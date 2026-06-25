@@ -79,11 +79,7 @@ class HideAndSeekMode implements GameMode
             'seeking' => match ($player->role) {
                 // A seeker can't ask while a question is awaiting the hider's answer. They
                 // can clear an active curse that demands photo proof.
-                'seeker' => array_merge(
-                    $pending ? ['declare_endgame'] : ['ask_question', 'declare_endgame'],
-                    $this->curseAwaitingProof($session->state_data ?? []) ? ['complete_curse'] : [],
-                    $this->curseWithDiceActive($session->state_data ?? []) ? ['roll_dice'] : [],
-                ),
+                'seeker' => $this->seekerActions($session, $pending),
                 // The hider is locked to their spot once seeking begins (they could only move
                 // during the hiding period). They answer pending questions and play cards.
                 'hider' => array_merge(
@@ -145,6 +141,8 @@ class HideAndSeekMode implements GameMode
             'choose_station' => $this->chooseStation($session, $player, $action, $data),
             'confirm_hidden' => $this->confirmHidden($data),
             'ask_question' => $this->askQuestion($session, $player, $action, $data),
+            'start_thermometer' => $this->startThermometer($player, $action, $data),
+            'stop_thermometer' => $this->stopThermometer($session, $player, $data),
             'answer_question' => $this->answerQuestion($session, $action, $data),
             'play_curse' => $this->playCurse($player, $action, $data),
             'play_powerup' => $this->playPowerup($action, $data),
@@ -329,6 +327,80 @@ class HideAndSeekMode implements GameMode
         return ValidationResult::pass();
     }
 
+    /** The seeker's available actions, accounting for a running thermometer. */
+    private function seekerActions(Session $session, bool $pending): array
+    {
+        $data = $session->state_data ?? [];
+
+        // Mid-thermometer: the seeker is travelling and can only stop it.
+        if (($data['thermometer'] ?? null) !== null) {
+            return ['stop_thermometer', 'declare_endgame'];
+        }
+
+        return array_merge(
+            $pending ? ['declare_endgame'] : ['ask_question', 'start_thermometer', 'declare_endgame'],
+            $this->curseAwaitingProof($data) ? ['complete_curse'] : [],
+            $this->curseWithDiceActive($data) ? ['roll_dice'] : [],
+        );
+    }
+
+    /** Begin a thermometer: capture the seeker's start position + the distance to travel. */
+    private function startThermometer(Player $player, Action $action, array $data): ActionOutcome
+    {
+        $data['thermometer'] = [
+            'asked_by' => $player->id,
+            'question_id' => $action->payload['question_id'] ?? null,
+            'start_lat' => $player->last_lat,
+            'start_lng' => $player->last_lng,
+            'distance_m' => $action->payload['distance_m'] ?? null,
+            'distance_label' => $action->payload['distance_label'] ?? null,
+            'started_at' => now()->timestamp,
+        ];
+
+        return new ActionOutcome($data, null, [$this->event('ThermometerStarted', ['asked_by' => $player->id])]);
+    }
+
+    /** Stop the running thermometer: capture the end, compute the result, ask the hider. */
+    private function stopThermometer(Session $session, Player $player, array $data): ActionOutcome
+    {
+        $running = $data['thermometer'] ?? null;
+        if ($running === null) {
+            return new ActionOutcome($data);
+        }
+
+        $question = isset($running['question_id']) ? Question::find($running['question_id']) : null;
+        $payload = [
+            'ask_lat' => $running['start_lat'], 'ask_lng' => $running['start_lng'],
+            'start_lat' => $running['start_lat'], 'start_lng' => $running['start_lng'],
+            'end_lat' => $player->last_lat, 'end_lng' => $player->last_lng,
+            'radius_m' => $running['distance_m'], 'distance_label' => $running['distance_label'],
+        ];
+        $truth = $this->evaluators->for(QuestionCategory::Thermometer)?->evaluate($session, $player, $question ?? new Question, $payload);
+
+        $window = $question?->answer_time_s ?? (int) ($session->config['question_answer_time_s'] ?? 600);
+        $seq = ($data['question_seq'] ?? 0) + 1;
+        $data['question_seq'] = $seq;
+        unset($data['thermometer']);
+        $data['pending_question'] = [
+            'seq' => $seq,
+            'question_id' => $running['question_id'],
+            'category' => 'thermometer',
+            'asked_by' => $running['asked_by'],
+            'payload' => $payload,
+            'asked_at' => now()->timestamp,
+            'deadline' => now()->addSeconds($window)->timestamp,
+            'truth' => $truth,
+        ];
+        $data['question_answer'] = $seq;
+
+        return new ActionOutcome(
+            $data,
+            null,
+            [$this->event('QuestionAsked', ['seq' => $seq, 'question_id' => $running['question_id'], 'category' => 'thermometer', 'asked_by' => $running['asked_by'], 'deadline' => $data['pending_question']['deadline']])],
+            [['op' => 'set', 'key' => 'question_answer', 'delay' => $window]],
+        );
+    }
+
     private function askQuestion(Session $session, Player $asker, Action $action, array $data): ActionOutcome
     {
         $payload = $action->payload;
@@ -346,7 +418,7 @@ class HideAndSeekMode implements GameMode
             $payload['radius_m'] = $payload['radius_m'] ?? ($question->parameters['radius_m'] ?? null);
         }
 
-        $window = (int) ($session->config['question_answer_time_s'] ?? 600);
+        $window = $question?->answer_time_s ?? (int) ($session->config['question_answer_time_s'] ?? 600);
         $seq = ($data['question_seq'] ?? 0) + 1;
 
         // Deferred (thermometer): capture the seeker's start position; resolve later.

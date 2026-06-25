@@ -141,11 +141,24 @@ class QuestionSeeder extends Seeder
                 'prompt' => ['en' => $promptEn, 'hu' => $promptHu],
                 'reward_draw' => $draw,
                 'reward_keep' => $keep,
+                'answer_time_s' => $this->answerTime($category),
                 'parameters' => $parameters,
                 'is_custom' => false,
                 'is_active' => true,
                 'sort' => ++$this->sort,
             ],
         );
+    }
+
+    /** Per-category seconds the hider gets to answer (cheap/geometric = quick; manual = long). */
+    private function answerTime(QuestionCategory $category): int
+    {
+        return match ($category) {
+            QuestionCategory::Radar => 180,
+            QuestionCategory::Thermometer => 300,
+            QuestionCategory::Matching, QuestionCategory::Measuring => 300,
+            QuestionCategory::Tentacles => 480,
+            QuestionCategory::Photo => 600,
+        };
     }
 }

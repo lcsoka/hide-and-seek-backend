@@ -53,6 +53,8 @@ class GameStatePresenter
             ]),
             'available_actions' => $player ? $mode->availableActions($session, $player) : [],
             'pending_question' => $this->pendingQuestion($session, $isHider, $mode),
+            // A thermometer the seeker has started but not yet stopped (shared so all see it).
+            'thermometer' => $session->state_data['thermometer'] ?? null,
             // The answered-question history — geometry is the seeker's own positions and
             // the answer is just the constraint, so it never reveals the hider's location.
             'questions' => $this->questions($session),

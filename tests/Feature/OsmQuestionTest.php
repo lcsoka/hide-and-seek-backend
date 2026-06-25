@@ -225,11 +225,15 @@ class OsmQuestionTest extends TestCase
             'title' => ['en' => 'Th'], 'prompt' => ['en' => 'Th'], 'reward_draw' => 2, 'reward_keep' => 1,
         ]);
 
+        // The seeker starts the thermometer (captures the far start position).
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id]])->assertOk();
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'start_thermometer', 'payload' => ['question_id' => $q->id, 'distance_m' => 5000]])->assertOk();
 
-        // Seeker travels toward the hider, then the hider answers.
+        // Seeker travels toward the hider, then STOPS (captures the closer end position).
         Player::whereKey($ctx['seekerPlayerId'])->update(['last_lat' => 47.5100, 'last_lng' => 19.0600]);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'stop_thermometer'])->assertOk();
+
+        // The hider answers — the stored start→end says the seeker got closer.
         Sanctum::actingAs($ctx['host']);
         $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question'])->assertOk();
 
