@@ -10,8 +10,9 @@ use App\Models\Question;
 use App\Models\Session;
 
 /**
- * "Compared to me, are you closer to or further from the nearest {feature}?" —
- * compares each player's distance to their own nearest feature of the type.
+ * "Is the hider closer to MY nearest {feature} than I am?" — the reference is the
+ * feature nearest the asking seeker; both players' distances are measured to THAT
+ * same feature.
  */
 class MeasuringEvaluator implements QuestionEvaluator
 {
@@ -33,15 +34,14 @@ class MeasuringEvaluator implements QuestionEvaluator
             return null;
         }
 
-        $hiderNearest = $this->map->nearest($feature, (float) $hider->last_lat, (float) $hider->last_lng);
-        $askerNearest = $this->map->nearest($feature, (float) $asker->last_lat, (float) $asker->last_lng);
-
-        if ($hiderNearest === null || $askerNearest === null) {
+        // The reference is the feature closest to the SEEKER; compare both to it.
+        $reference = $this->map->nearest($feature, (float) $asker->last_lat, (float) $asker->last_lng);
+        if ($reference === null) {
             return null;
         }
 
-        $hiderDistance = Geo::distanceMeters((float) $hider->last_lat, (float) $hider->last_lng, $hiderNearest->lat, $hiderNearest->lng);
-        $askerDistance = Geo::distanceMeters((float) $asker->last_lat, (float) $asker->last_lng, $askerNearest->lat, $askerNearest->lng);
+        $askerDistance = Geo::distanceMeters((float) $asker->last_lat, (float) $asker->last_lng, $reference->lat, $reference->lng);
+        $hiderDistance = Geo::distanceMeters((float) $hider->last_lat, (float) $hider->last_lng, $reference->lat, $reference->lng);
 
         return ['answer' => $hiderDistance <= $askerDistance ? 'closer' : 'further'];
     }

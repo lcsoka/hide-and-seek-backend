@@ -114,6 +114,23 @@ class OsmQuestionTest extends TestCase
         Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'QuestionAnswered' && ($e->payload['answer'] ?? null) === 'closer');
     }
 
+    public function test_measuring_uses_the_seekers_nearest_feature_as_the_shared_reference(): void
+    {
+        Event::fake([GameEventBroadcast::class]);
+        $ctx = $this->setUpSeeking();
+        // Seeker sits by museum A; the hider sits by museum B, far from A.
+        $this->placeBoth($ctx, [47.50, 19.00], [47.60, 19.20]);
+        $this->bindMuseums(
+            $this->museum('m/near-seeker', 47.605, 19.205),
+            $this->museum('m/near-hider', 47.505, 19.005),
+        );
+
+        $this->askAndAnswer($ctx, 'measuring');
+
+        // Reference is the seeker's nearest (near-seeker); the hider is far from it → "further".
+        Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'QuestionAnswered' && ($e->payload['answer'] ?? null) === 'further');
+    }
+
     public function test_falls_back_to_manual_when_no_map_data(): void
     {
         Event::fake([GameEventBroadcast::class]);
