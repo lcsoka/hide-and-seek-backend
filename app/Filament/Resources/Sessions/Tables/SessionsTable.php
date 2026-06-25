@@ -4,6 +4,8 @@ namespace App\Filament\Resources\Sessions\Tables;
 
 use App\Enums\GameMode;
 use App\Enums\SessionStatus;
+use App\Models\Session;
+use Filament\Actions\Action;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -52,6 +54,12 @@ class SessionsTable
                     ->options(GameMode::class),
             ])
             ->recordActions([
+                Action::make('replay')
+                    ->label('Replay')
+                    ->icon('heroicon-o-play-circle')
+                    ->color('success')
+                    ->url(fn (Session $record): string => rtrim(config('app.web_url'), '/').'/replay/s/'.$record->getKey())
+                    ->openUrlInNewTab(),
                 ViewAction::make(),
                 EditAction::make(),
             ])

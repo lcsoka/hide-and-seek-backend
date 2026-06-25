@@ -54,6 +54,9 @@ return [
 
     'url' => env('APP_URL', 'http://localhost'),
 
+    // The Angular web app base URL — used by the admin to link to the session replay.
+    'web_url' => env('WEB_APP_URL', 'http://localhost:4321'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

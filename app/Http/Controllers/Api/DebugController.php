@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Api;
 
 use App\Game\GameEngine;
+use App\Game\GameStatePresenter;
 use App\Game\Support\Action;
 use App\Http\Controllers\Controller;
+use App\Models\ActionLog;
 use App\Models\Session;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,7 +18,10 @@ use Illuminate\Http\Request;
  */
 class DebugController extends Controller
 {
-    public function __construct(private readonly GameEngine $engine) {}
+    public function __construct(
+        private readonly GameEngine $engine,
+        private readonly GameStatePresenter $presenter,
+    ) {}
 
     /** Unfiltered god view — bypasses locationVisibility (sees the hider too). */
     public function state(Session $session): JsonResponse
@@ -92,6 +97,7 @@ class DebugController extends Controller
     private function godView(Session $session): array
     {
         $session->load('players', 'teams');
+        $history = $this->presenter->history($session);
 
         return [
             'session_id' => $session->id,
@@ -105,6 +111,15 @@ class DebugController extends Controller
                 'is_host' => $p->is_host, 'team_id' => $p->team_id, 'lat' => $p->last_lat, 'lng' => $p->last_lng,
             ]),
             'teams' => $session->teams->map(fn ($t) => ['id' => $t->id, 'name' => $t->name, 'color' => $t->color]),
+            'questions' => $history['questions'],
+            'curses' => $history['curses'],
+            // The full step audit trail, for the admin replay timeline.
+            'action_logs' => ActionLog::query()->where('session_id', $session->id)->orderBy('created_at')->get()->map(fn (ActionLog $l) => [
+                'type' => $l->type,
+                'player_id' => $l->player_id,
+                'payload' => $l->payload,
+                'at' => $l->created_at?->timestamp,
+            ])->all(),
         ];
     }
 }

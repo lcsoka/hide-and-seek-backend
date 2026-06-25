@@ -77,6 +77,17 @@ class GameStatePresenter
     }
 
     /**
+     * The answered-question history and active curses — reused by the debug god view
+     * (and the admin replay) so it sees the same formatting as the seeker /state.
+     *
+     * @return array{questions: array<int, array<string, mixed>>, curses: array<int, array<string, mixed>>}
+     */
+    public function history(Session $session): array
+    {
+        return ['questions' => $this->questions($session), 'curses' => $this->activeCurses($session)];
+    }
+
+    /**
      * Answered questions, reduced to what a seeker needs to reconstruct the
      * deduction: the category, the seeker's own ask/resolve positions, and the
      * answer. The hider's location is never included.
