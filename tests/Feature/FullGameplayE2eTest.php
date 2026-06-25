@@ -84,10 +84,11 @@ class FullGameplayE2eTest extends TestCase
         $this->action($sid, 'play_curse', ['card_uid' => $cardUid])->assertOk();
         $this->action($sid, 'answer_question')->assertOk();
 
-        // Seeker declares endgame and guesses correctly at the hider's spot.
+        // Seeker reaches the hider's spot and confirms the catch.
         Sanctum::actingAs($seeker);
+        Player::whereKey($seekerPid)->update(['last_lat' => 47.4979, 'last_lng' => 19.0402]);
         $this->action($sid, 'declare_endgame')->assertJsonPath('state', 'endgame');
-        $this->action($sid, 'make_guess', ['lat' => 47.4979, 'lng' => 19.0402])->assertJsonPath('state', 'round_end');
+        $this->action($sid, 'confirm_found')->assertOk()->assertJsonPath('state', 'round_end');
 
         // Host advances → finished (single round).
         Sanctum::actingAs($host);

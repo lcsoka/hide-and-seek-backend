@@ -79,7 +79,7 @@ class GameplayTest extends TestCase
             ->assertJsonPath('status', 'finished');
     }
 
-    public function test_make_guess_within_radius_ends_the_round(): void
+    public function test_reaching_the_hider_and_confirming_ends_the_round(): void
     {
         $this->setUpSession();
 
@@ -88,13 +88,13 @@ class GameplayTest extends TestCase
         $this->action('assign_hider', ['player_id' => $this->hostPlayerId]);
         $this->action('confirm_hidden');
 
-        // Hider's known location (no location endpoint yet this slice).
+        // Hider's spot; the seeker walks right up to it.
         Player::whereKey($this->hostPlayerId)->update(['last_lat' => 47.4979, 'last_lng' => 19.0402]);
+        Player::whereKey($this->seekerPlayerId)->update(['last_lat' => 47.4979, 'last_lng' => 19.0402]);
 
         Sanctum::actingAs($this->seeker);
         $this->action('declare_endgame')->assertJsonPath('state', 'endgame');
-        $this->action('make_guess', ['lat' => 47.4979, 'lng' => 19.0402])
-            ->assertOk()->assertJsonPath('state', 'round_end');
+        $this->action('confirm_found')->assertOk()->assertJsonPath('state', 'round_end');
     }
 
     public function test_non_host_cannot_start(): void

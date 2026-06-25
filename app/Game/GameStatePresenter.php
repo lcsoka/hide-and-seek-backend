@@ -68,7 +68,30 @@ class GameStatePresenter
             'pending_draw' => $isHider ? $this->pendingDraw($session) : null,
             'time_bonus_s' => $isHider ? $this->handTimeBonusSeconds($session) : null,
             'timers' => $this->timers($session),
+            // Running scoreboard, and the just-ended round's reveal/recap (round_end + finished).
+            'standings' => $this->standings($session),
+            'last_round' => $session->state_data['last_round'] ?? null,
         ];
+    }
+
+    /** Players ranked by total banked hiding time (longest survivor leads). */
+    private function standings(Session $session): array
+    {
+        $scores = $session->state_data['scores'] ?? [];
+        arsort($scores);
+
+        $rank = 1;
+        $out = [];
+        foreach ($scores as $playerId => $seconds) {
+            $out[] = [
+                'player_id' => $playerId,
+                'display_name' => $session->players->firstWhere('id', $playerId)?->display_name,
+                'total_hiding_time_s' => $seconds,
+                'rank' => $rank++,
+            ];
+        }
+
+        return $out;
     }
 
     /**

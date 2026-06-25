@@ -52,6 +52,8 @@ class HideAndSeekMode implements GameMode
             'play_radius_km' => $size->playRadiusKm(),
             'hiding_time_limit_s' => $size->hidingTimeLimitSeconds(),
             'endgame_radius_m' => 500,
+            // A seeker this close to the hider's spot can catch them (the final "found".)
+            'endgame_catch_radius_m' => 75,
             // A seeker must stay inside the hiding zone this long before the endgame
             // auto-starts — so briefly passing through early on never triggers it.
             'endgame_dwell_s' => 60,
@@ -84,8 +86,12 @@ class HideAndSeekMode implements GameMode
             'hiding' => $player->role === 'hider' ? ['choose_station', 'confirm_hidden'] : [],
             'seeking' => match ($player->role) {
                 // A seeker can't ask while a question is awaiting the hider's answer. They
-                // can clear an active curse that demands photo proof.
-                'seeker' => $this->seekerActions($session, $pending),
+                // can clear an active curse that demands photo proof, and — once they've
+                // physically closed in — catch the hider.
+                'seeker' => array_merge(
+                    $this->seekerActions($session, $pending),
+                    $this->seekerCanCatch($session, $player) ? ['confirm_found'] : [],
+                ),
                 // The hider is locked to their spot once seeking begins. They answer pending
                 // questions and play cards — unless a 'move' powerup put them in relocating
                 // mode, in which case they re-confirm their new spot.
@@ -97,7 +103,7 @@ class HideAndSeekMode implements GameMode
                 default => [],
             },
             'endgame' => match ($player->role) {
-                'seeker' => ['make_guess'],
+                'seeker' => $this->seekerCanCatch($session, $player) ? ['confirm_found'] : [],
                 'hider' => ['surrender'],
                 default => [],
             },
@@ -120,9 +126,9 @@ class HideAndSeekMode implements GameMode
             'assign_hider' => (! isset($action->payload['player_id']) || $session->players()->whereKey($action->payload['player_id'])->exists())
                 ? ValidationResult::pass()
                 : ValidationResult::fail('player_id must be a player in this session.'),
-            'make_guess' => (isset($action->payload['lat'], $action->payload['lng']))
+            'confirm_found' => $this->seekerCanCatch($session, $player)
                 ? ValidationResult::pass()
-                : ValidationResult::fail('make_guess requires lat and lng.'),
+                : ValidationResult::fail('You are not close enough to the hider to catch them.'),
             'ask_question' => ($session->state_data['pending_question'] ?? null) === null
                 ? ValidationResult::pass()
                 : ValidationResult::fail('A question is already awaiting an answer.'),
@@ -158,8 +164,8 @@ class HideAndSeekMode implements GameMode
             'complete_curse' => $this->completeCurse($player, $action, $data),
             'roll_dice' => $this->rollDice($action, $data),
             'declare_endgame' => new ActionOutcome($data, 'endgame', [$this->event('EndgameTriggered', ['by' => $player->id])]),
-            'make_guess' => $this->makeGuess($session, $player, $action, $data),
-            'surrender' => $this->endRound($data, [$this->event('HiderFound', ['round' => $data['round'] ?? 0, 'surrendered' => true])]),
+            'confirm_found' => $this->endRound($session, $data, $player->id, surrendered: false),
+            'surrender' => $this->endRound($session, $data, null, surrendered: true),
             'advance_round' => $this->advanceRound($session, $data),
             'end_game' => new ActionOutcome(
                 array_merge($data, ['ended_reason' => 'host_ended']),
@@ -928,22 +934,23 @@ class HideAndSeekMode implements GameMode
         return $session->state_data['pending_question']['truth'] ?? null;
     }
 
-    private function makeGuess(Session $session, Player $player, Action $action, array $data): ActionOutcome
+    /** Is this seeker physically close enough to the hider's committed spot to catch them? */
+    public function seekerCanCatch(Session $session, Player $player): bool
     {
-        $radius = (float) ($session->config['endgame_radius_m'] ?? 500);
-        $hiderPoint = $this->hiderPoint($session); // the committed spot — what the seekers deduced
-
-        $correct = $hiderPoint !== null
-            && Geo::distanceMeters((float) $action->payload['lat'], (float) $action->payload['lng'], $hiderPoint[0], $hiderPoint[1]) <= $radius;
-
-        if ($correct) {
-            return $this->endRound($data, [$this->event('HiderFound', ['round' => $data['round'] ?? 0, 'found_by' => $player->id])]);
+        if ($player->role !== 'seeker' || ! in_array($session->state, ['seeking', 'endgame'], true)) {
+            return false;
         }
+        $hiderPoint = $this->hiderPoint($session);
+        if ($hiderPoint === null || $player->last_lat === null || $player->last_lng === null) {
+            return false;
+        }
+        $radius = (float) ($session->config['endgame_catch_radius_m'] ?? 75);
 
-        return new ActionOutcome($data, null, [$this->event('GuessMissed', ['by' => $player->id])]);
+        return Geo::distanceMeters((float) $player->last_lat, (float) $player->last_lng, $hiderPoint[0], $hiderPoint[1]) <= $radius;
     }
 
-    private function endRound(array $data, array $events): ActionOutcome
+    /** End the round: bank the hider's survival time and record the reveal summary. */
+    private function endRound(Session $session, array $data, ?string $finderId, bool $surrendered): ActionOutcome
     {
         $hiderId = $data['hider_id'] ?? null;
         $seconds = max(0, now()->timestamp - (int) ($data['hiding_started_at'] ?? now()->timestamp));
@@ -951,8 +958,32 @@ class HideAndSeekMode implements GameMode
             $data['scores'][$hiderId] = ($data['scores'][$hiderId] ?? 0) + $seconds;
         }
         $data['last_round_seconds'] = $seconds;
+        $data['last_round'] = $this->roundSummary($session, $data, $finderId, $surrendered, $seconds);
 
-        return new ActionOutcome($data, 'round_end', $events);
+        $event = $surrendered
+            ? $this->event('HiderFound', ['round' => $data['round'] ?? 0, 'surrendered' => true])
+            : $this->event('HiderFound', ['round' => $data['round'] ?? 0, 'found_by' => $finderId]);
+
+        return new ActionOutcome($data, 'round_end', [$event]);
+    }
+
+    /** The reveal/recap shown on the round-end screen (the hider's spot is now safe to show). */
+    private function roundSummary(Session $session, array $data, ?string $finderId, bool $surrendered, int $seconds): array
+    {
+        $hider = ($id = $data['hider_id'] ?? null) ? $session->players->firstWhere('id', $id) : null;
+        $finder = $finderId ? $session->players->firstWhere('id', $finderId) : null;
+
+        return [
+            'hider_id' => $data['hider_id'] ?? null,
+            'hider_name' => $hider?->display_name,
+            'found_by' => $finderId,
+            'found_by_name' => $finder?->display_name,
+            'surrendered' => $surrendered,
+            'seconds' => $seconds,
+            'hider_position' => $data['hider_position'] ?? null, // the committed spot, now revealed
+            'questions_count' => count($data['questions'] ?? []),
+            'curses_played' => count($data['curses_played'] ?? []),
+        ];
     }
 
     private function advanceRound(Session $session, array $data): ActionOutcome
@@ -966,7 +997,12 @@ class HideAndSeekMode implements GameMode
 
         $session->players()->update(['role' => null]);
         $data['round'] = $completed;
-        unset($data['hider_id'], $data['hiding_started_at'], $data['hiding_deadline'], $data['seeking_started_at'], $data['hand']);
+        // Clear all round-scoped state so the next round starts clean (scores persist).
+        unset(
+            $data['hider_id'], $data['hiding_started_at'], $data['hiding_deadline'], $data['seeking_started_at'], $data['hand'],
+            $data['questions'], $data['curses_played'], $data['hider_position'], $data['relocating'], $data['endgame_dwell'],
+            $data['pending_question'], $data['question_answer'], $data['thermometer'], $data['last_round'],
+        );
 
         return new ActionOutcome($data, 'role_assignment', [$this->event('RoundStarted', ['round' => $completed])]);
     }

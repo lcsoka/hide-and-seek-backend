@@ -29,19 +29,48 @@ class EndgameTest extends TestCase
         $s->update(['state_data' => array_merge($s->state_data, $patch)]);
     }
 
-    public function test_a_guess_is_scored_against_the_committed_spot_not_live_drift(): void
+    public function test_the_catch_is_judged_against_the_committed_spot_not_live_drift(): void
     {
         $ctx = $this->startSeeking();
         // Committed spot A; the hider's live GPS has since drifted far to B.
         $this->patchState($ctx['sessionId'], ['hider_position' => ['lat' => 47.50, 'lng' => 19.04]]);
         Player::whereKey($ctx['hiderId'])->update(['last_lat' => 47.80, 'last_lng' => 19.60]);
+        Sanctum::actingAs($ctx['seeker']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'declare_endgame'])->assertOk();
+
+        // Standing on the live drift B, the seeker is NOT close enough to catch.
+        Player::whereKey($ctx['seekerId'])->update(['last_lat' => 47.80, 'last_lng' => 19.60]);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'confirm_found'])->assertStatus(422);
+
+        // Standing on the committed spot A, they can catch.
+        Player::whereKey($ctx['seekerId'])->update(['last_lat' => 47.50, 'last_lng' => 19.04]);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'confirm_found'])->assertOk();
+        $session = Session::find($ctx['sessionId']);
+        $this->assertSame('round_end', $session->state);
+        $this->assertSame($ctx['seekerId'], $session->state_data['last_round']['found_by']);
+    }
+
+    public function test_round_end_exposes_the_reveal_and_standings(): void
+    {
+        $ctx = $this->startSeeking();
+        $this->patchState($ctx['sessionId'], [
+            'hider_position' => ['lat' => 47.50, 'lng' => 19.04],
+            'hiding_started_at' => now()->subSeconds(120)->timestamp,
+        ]);
+        Player::whereKey($ctx['seekerId'])->update(['last_lat' => 47.50, 'last_lng' => 19.04]);
 
         Sanctum::actingAs($ctx['seeker']);
         $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'declare_endgame'])->assertOk();
-        // A guess on A is correct (within 500 m), even though the live position B is far away.
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'make_guess', 'payload' => ['lat' => 47.501, 'lng' => 19.041]])->assertOk();
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'confirm_found'])->assertOk();
 
-        $this->assertSame('round_end', Session::find($ctx['sessionId'])->state);
+        $state = $this->getJson("/api/sessions/{$ctx['sessionId']}/state");
+        $state->assertJsonPath('state', 'round_end');
+        $state->assertJsonPath('last_round.found_by', $ctx['seekerId']);
+        $state->assertJsonPath('last_round.hider_id', $ctx['hiderId']);
+        $this->assertEqualsWithDelta(47.50, $state->json('last_round.hider_position.lat'), 0.001);
+        $this->assertGreaterThanOrEqual(120, $state->json('last_round.seconds'));
+        // The hider banked the survival time, so they lead the standings.
+        $state->assertJsonPath('standings.0.player_id', $ctx['hiderId']);
     }
 
     public function test_endgame_auto_starts_after_a_seeker_dwells_in_the_zone(): void
