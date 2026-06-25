@@ -110,6 +110,11 @@ class GameEngine
             }
         }
 
+        // Dispatched only now that state_data is persisted, so the jobs see fresh state.
+        foreach ($outcome->jobs as $job) {
+            dispatch($job);
+        }
+
         return $session->refresh();
     }
 }

@@ -13,6 +13,7 @@ use App\Game\Support\ActionOutcome;
 use App\Game\Support\Geo;
 use App\Game\Support\LocationFilter;
 use App\Game\Support\ValidationResult;
+use App\Jobs\ComputeQuestionTruth;
 use App\Models\Player;
 use App\Models\Question;
 use App\Models\Session;
@@ -300,18 +301,25 @@ class HideAndSeekMode implements GameMode
             $payload['radius_m'] = $payload['radius_m'] ?? ($question->parameters['radius_m'] ?? null);
         }
 
-        // Deferred (thermometer): capture the seeker's start position; the answer is
-        // computed when the question resolves. Others: pre-compute the truth now.
+        $window = (int) ($session->config['question_answer_time_s'] ?? 600);
+        $seq = ($data['question_seq'] ?? 0) + 1;
+
+        // Deferred (thermometer): capture the seeker's start position; resolve later.
+        // Overpass-backed categories (matching/measuring/tentacles) compute truth in a
+        // queued job so the ask returns immediately. Radar is pure geometry → inline.
         $truth = null;
+        $jobs = [];
         if ($evaluator instanceof DeferredQuestionEvaluator) {
             $payload['start_lat'] = $asker->last_lat;
             $payload['start_lng'] = $asker->last_lng;
         } elseif ($evaluator !== null) {
-            $truth = $evaluator->evaluate($session, $asker, $question, $payload);
+            if (in_array($question->category->value, ['matching', 'measuring', 'tentacles'], true)) {
+                $jobs[] = new ComputeQuestionTruth($session->id, $seq);
+            } else {
+                $truth = $evaluator->evaluate($session, $asker, $question, $payload);
+            }
         }
 
-        $window = (int) ($session->config['question_answer_time_s'] ?? 600);
-        $seq = ($data['question_seq'] ?? 0) + 1;
         $data['question_seq'] = $seq;
         $data['pending_question'] = [
             'seq' => $seq,
@@ -336,7 +344,46 @@ class HideAndSeekMode implements GameMode
                 'deadline' => $data['pending_question']['deadline'],
             ])],
             [['op' => 'set', 'key' => 'question_answer', 'delay' => $window]],
+            $jobs,
         );
+    }
+
+    /**
+     * Fill in the pending question's authoritative answer (called by ComputeQuestionTruth
+     * off the request path). Guarded by seq so a superseded/answered question is skipped.
+     */
+    public function computePendingTruth(Session $session, int $seq): void
+    {
+        $data = $session->state_data ?? [];
+        $pending = $data['pending_question'] ?? null;
+        if ($pending === null || ($pending['seq'] ?? null) !== $seq || ($pending['truth'] ?? null) !== null) {
+            return;
+        }
+
+        $truth = $this->evaluateTruth($session, $pending);
+        if ($truth !== null) {
+            $data['pending_question']['truth'] = $truth;
+            $session->state_data = $data;
+            $session->save();
+        }
+    }
+
+    /** Run the non-deferred evaluator for a pending question (radar inline / OSM via job). */
+    private function evaluateTruth(Session $session, array $pending): ?array
+    {
+        $category = isset($pending['category']) ? QuestionCategory::tryFrom($pending['category']) : null;
+        $evaluator = $category ? $this->evaluators->for($category) : null;
+        if ($evaluator === null || $evaluator instanceof DeferredQuestionEvaluator) {
+            return null;
+        }
+
+        $asker = $session->players()->find($pending['asked_by'] ?? null);
+        $question = isset($pending['question_id']) ? Question::find($pending['question_id']) : null;
+        if ($asker === null || $question === null) {
+            return null;
+        }
+
+        return $evaluator->evaluate($session, $asker, $question, $pending['payload'] ?? []);
     }
 
     private function answerQuestion(Session $session, Action $action, array $data): ActionOutcome
@@ -355,7 +402,12 @@ class HideAndSeekMode implements GameMode
             return new ActionOutcome($data);
         }
 
-        $answer = $pending['truth'] ?? $this->deferredAnswer($session, $pending) ?? ['answer' => $hiderAnswer];
+        // Prefer the pre-computed truth; if the job hasn't landed yet, compute it now
+        // (Overpass is likely warm from the job's attempt), then deferred, then manual.
+        $answer = $pending['truth']
+            ?? $this->evaluateTruth($session, $pending)
+            ?? $this->deferredAnswer($session, $pending)
+            ?? ['answer' => $hiderAnswer];
 
         // The seeker's resolve-time position (thermometer B) — their own location.
         $asker = $session->players()->find($pending['asked_by'] ?? null);

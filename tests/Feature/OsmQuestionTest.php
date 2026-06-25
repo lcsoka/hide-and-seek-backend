@@ -6,11 +6,15 @@ use App\Events\GameEventBroadcast;
 use App\Game\Geo\ArrayMapDataSource;
 use App\Game\Geo\GeoFeature;
 use App\Game\Geo\MapDataSource;
+use App\Game\Modes\HideAndSeek\HideAndSeekMode;
+use App\Jobs\ComputeQuestionTruth;
 use App\Models\Player;
 use App\Models\Question;
+use App\Models\Session;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Queue;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -166,6 +170,30 @@ class OsmQuestionTest extends TestCase
         $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question'])->assertOk();
 
         Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'QuestionAnswered' && ($e->payload['answer'] ?? null) === 'out_of_range');
+    }
+
+    public function test_overpass_questions_defer_truth_to_a_queued_job(): void
+    {
+        Event::fake([GameEventBroadcast::class]);
+        $ctx = $this->setUpSeeking();
+        $this->placeBoth($ctx, [47.50, 19.00], [47.60, 19.20]);
+        $this->bindMuseums($this->museum('m/1', 47.55, 19.10));
+
+        $q = Question::create([
+            'key' => 'matching.museum', 'category' => 'matching',
+            'title' => ['en' => 'Q'], 'prompt' => ['en' => 'Q'], 'reward_draw' => 3, 'reward_keep' => 1,
+        ]);
+
+        // Asking does NOT compute truth inline (Overpass is slow) — it queues a job.
+        Sanctum::actingAs($ctx['seeker']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'feature' => 'museum']])->assertOk();
+
+        Queue::assertPushed(ComputeQuestionTruth::class);
+        $this->assertNull(Session::find($ctx['sessionId'])->state_data['pending_question']['truth']);
+
+        // Running the job fills in the authoritative truth.
+        (new ComputeQuestionTruth($ctx['sessionId'], 1))->handle(app(HideAndSeekMode::class));
+        $this->assertSame('yes', Session::find($ctx['sessionId'])->state_data['pending_question']['truth']['answer'] ?? null);
     }
 
     public function test_thermometer_reports_hotter_when_seeker_moves_closer(): void
