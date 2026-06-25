@@ -14,6 +14,8 @@ class CurseSeeder extends Seeder
      */
     public function run(): void
     {
+        $parameters = $this->parameters();
+
         foreach ($this->curses() as $i => $curse) {
             Curse::updateOrCreate(
                 ['key' => $curse['key']],
@@ -21,12 +23,39 @@ class CurseSeeder extends Seeder
                     'name' => $curse['name'],
                     'cost' => $curse['cost'],
                     'description' => $curse['description'],
+                    'parameters' => $parameters[$curse['key']] ?? null,
                     'is_custom' => false,
                     'is_active' => true,
                     'sort' => $i + 1,
                 ],
             );
         }
+    }
+
+    /**
+     * Lifecycle metadata per curse: `requires_proof` (seekers must upload a photo to
+     * clear it) and/or `duration_s` (auto-expires after this many seconds). Derived
+     * from the official cost/effect; tune in the admin. Curses absent here are plain
+     * rule-effects with no timer or proof.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function parameters(): array
+    {
+        return [
+            // "Photograph / film X" curses — cleared with a photo.
+            'the_luxury_car' => ['requires_proof' => true],
+            'the_zoologist' => ['requires_proof' => true],
+            'the_bird_guide' => ['requires_proof' => true],
+            'the_cairn' => ['requires_proof' => true],
+            'the_ransom_note' => ['requires_proof' => true],
+            'the_labyrinth' => ['requires_proof' => true],
+            'the_mediocre_travel_agent' => ['requires_proof' => true],
+            // Timed effects (representative midpoints of the official ranges).
+            'the_jammed_door' => ['duration_s' => 3600],     // 0.5–3 h
+            'the_gamblers_feet' => ['duration_s' => 1800],   // 20–60 min
+            'the_right_turn' => ['duration_s' => 1800],      // 20–60 min
+        ];
     }
 
     private function curses(): array

@@ -18,6 +18,7 @@ use App\Models\Curse;
 use App\Models\Player;
 use App\Models\Question;
 use App\Models\Session;
+use Illuminate\Support\Str;
 
 /**
  * States: lobby -> role_assignment -> hiding -> seeking -> endgame
@@ -76,8 +77,12 @@ class HideAndSeekMode implements GameMode
             'role_assignment' => $player->is_host ? ['assign_hider'] : [],
             'hiding' => $player->role === 'hider' ? ['choose_station', 'confirm_hidden'] : [],
             'seeking' => match ($player->role) {
-                // A seeker can't ask while a question is awaiting the hider's answer.
-                'seeker' => $pending ? ['declare_endgame'] : ['ask_question', 'declare_endgame'],
+                // A seeker can't ask while a question is awaiting the hider's answer. They
+                // can clear an active curse that demands photo proof.
+                'seeker' => array_merge(
+                    $pending ? ['declare_endgame'] : ['ask_question', 'declare_endgame'],
+                    $this->curseAwaitingProof($session->state_data ?? []) ? ['complete_curse'] : [],
+                ),
                 // The hider answers while a question is pending and can always curse. They may
                 // also move to a NEW station (choose_station) as long as no seeker is in their zone.
                 'hider' => array_merge(
@@ -141,6 +146,7 @@ class HideAndSeekMode implements GameMode
             'ask_question' => $this->askQuestion($session, $player, $action, $data),
             'answer_question' => $this->answerQuestion($session, $action, $data),
             'play_curse' => $this->playCurse($player, $action, $data),
+            'complete_curse' => $this->completeCurse($player, $action, $data),
             'declare_endgame' => new ActionOutcome($data, 'endgame', [$this->event('EndgameTriggered', ['by' => $player->id])]),
             'make_guess' => $this->makeGuess($session, $player, $action, $data),
             'surrender' => $this->endRound($data, [$this->event('HiderFound', ['round' => $data['round'] ?? 0, 'surrendered' => true])]),
@@ -423,7 +429,12 @@ class HideAndSeekMode implements GameMode
 
     private function answerQuestion(Session $session, Action $action, array $data): ActionOutcome
     {
-        return $this->resolveQuestion($session, $data, $action->payload['answer'] ?? null, auto: false);
+        // Photo questions are answered with an uploaded image, not a verdict.
+        $manual = isset($action->payload['photo_url'])
+            ? ['answer' => 'photo', 'photo_url' => $action->payload['photo_url']]
+            : ['answer' => $action->payload['answer'] ?? null];
+
+        return $this->resolveQuestion($session, $data, $manual, auto: false);
     }
 
     /**
@@ -439,10 +450,11 @@ class HideAndSeekMode implements GameMode
 
         // Prefer the pre-computed truth; if the job hasn't landed yet, compute it now
         // (Overpass is likely warm from the job's attempt), then deferred, then manual.
+        $manual = is_array($hiderAnswer) ? $hiderAnswer : ['answer' => $hiderAnswer];
         $answer = $pending['truth']
             ?? $this->evaluateTruth($session, $pending)
             ?? $this->deferredAnswer($session, $pending)
-            ?? ['answer' => $hiderAnswer];
+            ?? $manual;
 
         // The seeker's resolve-time position (thermometer B) — their own location.
         $asker = $session->players()->find($pending['asked_by'] ?? null);
@@ -500,9 +512,64 @@ class HideAndSeekMode implements GameMode
             }
         }
 
-        $data['curses_played'][] = ['by' => $player->id, 'round' => $data['round'] ?? 0, 'at' => now()->timestamp] + $action->payload;
+        // Resolve the curse's lifecycle (a time limit and/or required photo proof).
+        $params = $curseId !== null ? (Curse::find($curseId)?->parameters ?? []) : [];
+        $duration = isset($params['duration_s']) ? (int) $params['duration_s'] : null;
+        $now = now()->timestamp;
 
-        return new ActionOutcome($data, null, [$this->event('CursePlayed', $action->payload)]);
+        $data['curses_played'][] = [
+            'uid' => (string) Str::uuid(),
+            'curse_id' => $curseId,
+            'by' => $player->id,
+            'round' => $data['round'] ?? 0,
+            'at' => $now,
+            'requires_proof' => (bool) ($params['requires_proof'] ?? false),
+            'expires_at' => $duration !== null ? $now + $duration : null,
+            'status' => 'active',
+            'proof_url' => null,
+            'completed_at' => null,
+        ];
+
+        return new ActionOutcome($data, null, [$this->event('CursePlayed', ['curse_id' => $curseId])]);
+    }
+
+    /** A seeker clears an active curse, attaching photo proof when the curse demands it. */
+    private function completeCurse(Player $player, Action $action, array $data): ActionOutcome
+    {
+        $uid = $action->payload['curse_uid'] ?? null;
+        $proofUrl = $action->payload['proof_url'] ?? null;
+
+        foreach ($data['curses_played'] ?? [] as $i => $curse) {
+            if (($curse['uid'] ?? null) === $uid && ($curse['status'] ?? 'active') === 'active') {
+                $data['curses_played'][$i]['status'] = 'completed';
+                $data['curses_played'][$i]['proof_url'] = $proofUrl;
+                $data['curses_played'][$i]['completed_at'] = now()->timestamp;
+
+                return new ActionOutcome($data, null, [
+                    $this->event('CurseCompleted', ['uid' => $uid, 'by' => $player->id, 'has_proof' => $proofUrl !== null]),
+                ]);
+            }
+        }
+
+        return new ActionOutcome($data);
+    }
+
+    /** True if a curse in the current round still needs photo proof from the seekers. */
+    private function curseAwaitingProof(array $data): bool
+    {
+        $now = now()->timestamp;
+        $round = $data['round'] ?? 0;
+
+        foreach ($data['curses_played'] ?? [] as $curse) {
+            if (($curse['round'] ?? 0) === $round
+                && ($curse['status'] ?? 'active') === 'active'
+                && ! empty($curse['requires_proof'])
+                && (($curse['expires_at'] ?? null) === null || $curse['expires_at'] > $now)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** Draw `n` random active curse cards into the hider's hand. */

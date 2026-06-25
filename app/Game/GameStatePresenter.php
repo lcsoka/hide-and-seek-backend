@@ -173,14 +173,29 @@ class GameStatePresenter
             ->values();
 
         $models = Curse::whereIn('id', $played->pluck('curse_id')->filter()->unique()->all())->get()->keyBy('id');
+        $now = now()->timestamp;
 
-        return $played->map(fn ($c) => [
-            'curse_id' => $c['curse_id'] ?? null,
-            'by' => $c['by'] ?? null,
-            'at' => $c['at'] ?? null,
-            'name' => isset($c['curse_id']) ? $models->get($c['curse_id'])?->name : null,
-            'cost' => isset($c['curse_id']) ? $models->get($c['curse_id'])?->cost : null,
-        ])->all();
+        return $played->map(function ($c) use ($models, $now) {
+            $model = isset($c['curse_id']) ? $models->get($c['curse_id']) : null;
+            $expiresAt = $c['expires_at'] ?? null;
+            $status = ($c['status'] ?? 'active') === 'completed'
+                ? 'completed'
+                : ($expiresAt !== null && $now > $expiresAt ? 'expired' : 'active');
+
+            return [
+                'uid' => $c['uid'] ?? null,
+                'curse_id' => $c['curse_id'] ?? null,
+                'by' => $c['by'] ?? null,
+                'at' => $c['at'] ?? null,
+                'name' => $model?->name,
+                'cost' => $model?->cost,
+                'description' => $model?->description,
+                'requires_proof' => (bool) ($c['requires_proof'] ?? false),
+                'expires_at' => $expiresAt,
+                'status' => $status,
+                'proof_url' => $c['proof_url'] ?? null,
+            ];
+        })->all();
     }
 
     /**
