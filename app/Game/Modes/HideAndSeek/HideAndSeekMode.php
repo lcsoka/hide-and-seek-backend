@@ -893,11 +893,15 @@ class HideAndSeekMode implements GameMode
             return new ActionOutcome($data);
         }
         $power = $card['power'] ?? null;
+        $events = [$this->event('PowerupPlayed', ['power' => $power])];
 
         if ($power === 'veto' && ($data['pending_question'] ?? null) !== null) {
-            // Refuse the question: discard it with no answer and no draw.
+            // Refuse the question: discard it with no answer and no draw. The seeker is
+            // told so they know to ask again (rather than waiting on a silent question).
+            $vetoed = $data['pending_question'];
             $data['pending_question'] = null;
             $data['question_answer'] = null;
+            $events[] = $this->event('QuestionVetoed', ['seq' => $vetoed['seq'] ?? null, 'asked_by' => $vetoed['asked_by'] ?? null]);
         } elseif ($power === 'duplicate') {
             foreach ($data['hand'] ?? [] as $other) {
                 if (($other['uid'] ?? null) === ($action->payload['target_uid'] ?? null)) {
@@ -922,7 +926,7 @@ class HideAndSeekMode implements GameMode
             }
         }
 
-        return new ActionOutcome($data, null, [$this->event('PowerupPlayed', ['power' => $power])]);
+        return new ActionOutcome($data, null, $events);
     }
 
     /** The hider keeps the chosen cards from a draw; the rest are discarded. */

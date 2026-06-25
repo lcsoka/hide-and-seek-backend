@@ -87,12 +87,14 @@ return [
     ],
 
     /*
-     | Hider's hiding zone. `default_rule`: 'circle' = official (simple radius around
-     | the chosen station); 'nearest' = stricter variant where areas closer to another
-     | station are carved out (chosen station must be the hider's nearest).
+     | Hider's hiding zone. `default_rule`: 'nearest' = official rule — the zone is the
+     | radius around the chosen station carved at the perpendicular bisector toward every
+     | neighbouring station, so the chosen station is always the nearest and NO other
+     | station falls inside the zone. 'circle' = lenient variant (plain radius, other
+     | stations may be inside) for casual play.
      */
     'hiding_zone' => [
-        'default_rule' => 'circle',
+        'default_rule' => 'nearest',
         'station_feature' => 'rail_station',
     ],
 

@@ -78,11 +78,14 @@ class CardOutcomesTest extends TestCase
         Sanctum::actingAs($ctx['seeker']);
         $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'radius_m' => 5000]])->assertOk();
 
+        Event::fake([GameEventBroadcast::class]);
         $this->play($ctx, ['uid' => 'v', 'type' => 'powerup', 'power' => 'veto'], 'play_powerup');
 
         $state = $this->state($ctx);
         $this->assertNull($state['pending_question']);
         $this->assertCount(0, $state['questions']);
+        // The seeker is told their question was vetoed (rather than waiting on a vanished one).
+        Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'QuestionVetoed');
     }
 
     public function test_powerup_duplicate_copies_a_chosen_card(): void
