@@ -3,9 +3,11 @@
 namespace Tests\Feature;
 
 use App\Game\Modes\HideAndSeek\HideAndSeekMode;
+use App\Jobs\ComputeQuestionTruth;
 use App\Models\Question;
 use App\Models\Session;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Laravel\Sanctum\Sanctum;
 use Tests\Support\SeekingScenario;
 use Tests\TestCase;
@@ -58,6 +60,29 @@ class AnswerAmendTest extends TestCase
         // ...but a seeker never does.
         Sanctum::actingAs($ctx['seeker']);
         $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->assertJsonPath('pending_question.hider_nearest', null);
+    }
+
+    public function test_a_featureless_measuring_question_skips_the_truth_job_and_is_answered_manually(): void
+    {
+        Queue::fake();
+        $ctx = $this->startSeeking();
+        $this->place($ctx, [47.50, 19.04], [47.51, 19.05]);
+
+        // "International border" et al. carry no OSM point feature → not auto-computable.
+        $question = Question::create([
+            'key' => 'measuring.international_border', 'category' => 'measuring',
+            'title' => ['en' => 'Measuring — International Border'], 'prompt' => ['en' => 'Q'], 'parameters' => null,
+        ]);
+        Sanctum::actingAs($ctx['seeker']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $question->id]])->assertOk();
+
+        // No truth job is queued (it would only fail + retry forever).
+        Queue::assertNotPushed(ComputeQuestionTruth::class);
+
+        // The hider answers it themselves — no error, recorded as manual.
+        Sanctum::actingAs($ctx['host']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question', 'payload' => ['answer' => 'closer']])->assertOk();
+        $this->assertSame('closer', $this->lastAnswer($ctx)['answer']);
     }
 
     public function test_hider_can_amend_a_manual_answer_within_the_window(): void

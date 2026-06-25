@@ -528,7 +528,13 @@ class HideAndSeekMode implements GameMode
             $payload['start_lng'] = $asker->last_lng;
         } elseif ($evaluator !== null) {
             if (in_array($question->category->value, ['matching', 'measuring', 'tentacles'], true)) {
-                $jobs[] = new ComputeQuestionTruth($session->id, $seq);
+                // Only worth a truth job when there's an OSM point feature to resolve.
+                // Subjects with no feature (e.g. "international border", "sea level",
+                // "coastline") aren't auto-computable — the hider answers them manually,
+                // so skip the job rather than have it fail and retry forever.
+                if (($payload['feature'] ?? null) !== null) {
+                    $jobs[] = new ComputeQuestionTruth($session->id, $seq);
+                }
             } else {
                 $truth = $evaluator->evaluate($session, $asker, $question, $payload);
             }
