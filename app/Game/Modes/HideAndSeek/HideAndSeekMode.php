@@ -78,8 +78,12 @@ class HideAndSeekMode implements GameMode
             'seeking' => match ($player->role) {
                 // A seeker can't ask while a question is awaiting the hider's answer.
                 'seeker' => $pending ? ['declare_endgame'] : ['ask_question', 'declare_endgame'],
-                // The hider answers only while a question is pending; can always curse.
-                'hider' => $pending ? ['answer_question', 'play_curse'] : ['play_curse'],
+                // The hider answers while a question is pending and can always curse. They may
+                // also move to a NEW station (choose_station) as long as no seeker is in their zone.
+                'hider' => array_merge(
+                    $pending ? ['answer_question', 'play_curse'] : ['play_curse'],
+                    $this->canRehide($session) ? ['choose_station'] : [],
+                ),
                 default => [],
             },
             'endgame' => match ($player->role) {
@@ -210,9 +214,8 @@ class HideAndSeekMode implements GameMode
         $data['hiding_started_at'] = now()->timestamp;
         $data['hiding_deadline'] = now()->addSeconds($limit)->timestamp;
 
-        // The hider starts with a small hand of curse cards; more are drawn as questions resolve.
+        // The hider starts empty-handed; cards are drawn as questions are answered.
         $data['hand'] = [];
-        $this->drawInto($data, 3);
 
         return new ActionOutcome(
             $data,
@@ -227,6 +230,33 @@ class HideAndSeekMode implements GameMode
         $data['seeking_started_at'] = now()->timestamp;
 
         return new ActionOutcome($data, 'seeking', [$this->event('SeekingStarted', ['round' => $data['round'] ?? 0])]);
+    }
+
+    /** The hider may re-hide (move to a new station) only while no seeker is inside their zone. */
+    public function canRehide(Session $session): bool
+    {
+        $zone = $session->state_data['hiding_zone'] ?? null;
+
+        return $session->state === 'seeking' && $zone !== null && ! $this->seekerInZone($session, $zone);
+    }
+
+    /** Is any seeker currently within the hider's zone? (Locks re-hiding once they close in.) */
+    public function seekerInZone(Session $session, array $zone): bool
+    {
+        $center = $zone['center'] ?? null;
+        if ($center === null) {
+            return false;
+        }
+        $radius = (float) ($zone['radius_m'] ?? 0);
+
+        foreach ($session->players as $p) {
+            if ($p->role === 'seeker' && $p->last_lat !== null && $p->last_lng !== null
+                && Geo::distanceMeters((float) $p->last_lat, (float) $p->last_lng, (float) $center['lat'], (float) $center['lng']) <= $radius) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -170,9 +170,13 @@ class GameplayTest extends TestCase
         $this->assertNull($hider['lng']);
     }
 
-    public function test_hider_draws_and_plays_curse_cards(): void
+    public function test_hider_draws_cards_by_answering_and_plays_them(): void
     {
         $this->setUpSession();
+        $radar = Question::create([
+            'key' => 'radar', 'category' => 'radar', 'title' => ['hu' => 'Radar', 'en' => 'Radar'],
+            'prompt' => ['hu' => '?', 'en' => '?'], 'reward_draw' => 2, 'reward_keep' => 2, 'is_active' => true,
+        ]);
         foreach (['c1', 'c2', 'c3'] as $key) {
             Curse::create([
                 'key' => $key, 'name' => ['hu' => $key, 'en' => $key], 'cost' => ['hu' => 'x', 'en' => 'x'],
@@ -184,20 +188,51 @@ class GameplayTest extends TestCase
         $this->postJson("/api/sessions/{$this->sessionId}/start");
         $this->action('assign_hider', ['player_id' => $this->hostPlayerId]); // host is the hider
 
-        // The hider starts with a hand of 3 cards.
-        $hand = $this->getJson("/api/sessions/{$this->sessionId}/state")->assertOk()->json('hand');
-        $this->assertCount(3, $hand);
-        $this->assertNotNull($hand[0]['name']);
+        // The hand starts EMPTY (cards are earned by answering questions).
+        $this->assertCount(0, $this->getJson("/api/sessions/{$this->sessionId}/state")->json('hand'));
 
-        // Seekers never see the hider's hand.
-        Sanctum::actingAs($this->seeker);
-        $this->getJson("/api/sessions/{$this->sessionId}/state")->assertJsonPath('hand', []);
-
-        // Playing a card removes it from the hand.
-        Sanctum::actingAs($this->host);
+        Player::whereKey($this->hostPlayerId)->update(['last_lat' => 47.50, 'last_lng' => 19.00]);
+        Player::whereKey($this->seekerPlayerId)->update(['last_lat' => 47.55, 'last_lng' => 19.10]);
         $this->action('confirm_hidden')->assertJsonPath('state', 'seeking');
+
+        // Seeker asks; the hider answers and draws reward_keep (2) cards.
+        Sanctum::actingAs($this->seeker);
+        $this->action('ask_question', ['question_id' => $radar->id, 'radius_m' => 5000]);
+        $this->getJson("/api/sessions/{$this->sessionId}/state")->assertJsonPath('hand', []); // seekers never see it
+
+        Sanctum::actingAs($this->host);
+        $this->action('answer_question');
+        $hand = $this->getJson("/api/sessions/{$this->sessionId}/state")->json('hand');
+        $this->assertCount(2, $hand);
+
+        // Playing a card removes it.
         $this->action('play_curse', ['curse_id' => $hand[0]['curse_id']])->assertOk();
-        $this->assertCount(2, $this->getJson("/api/sessions/{$this->sessionId}/state")->json('hand'));
+        $this->assertCount(1, $this->getJson("/api/sessions/{$this->sessionId}/state")->json('hand'));
+    }
+
+    public function test_hider_can_rehide_only_while_no_seeker_is_in_the_zone(): void
+    {
+        $this->setUpSession();
+        Sanctum::actingAs($this->host);
+        $this->postJson("/api/sessions/{$this->sessionId}/start");
+        $this->action('assign_hider', ['player_id' => $this->hostPlayerId]); // host is the hider
+
+        Player::whereKey($this->hostPlayerId)->update(['last_lat' => 47.50, 'last_lng' => 19.00]);
+        $this->action('choose_station', ['lat' => 47.50, 'lng' => 19.00]);
+        $this->action('confirm_hidden')->assertJsonPath('state', 'seeking');
+
+        // Seeker far away → the hider may move to another station.
+        Player::whereKey($this->seekerPlayerId)->update(['last_lat' => 47.70, 'last_lng' => 19.40]);
+        $state = $this->getJson("/api/sessions/{$this->sessionId}/state");
+        $this->assertContains('choose_station', $state->json('available_actions'));
+        $state->assertJsonPath('zone_locked', false);
+        $this->action('choose_station', ['lat' => 47.51, 'lng' => 19.01])->assertOk();
+
+        // Seeker enters the (new) zone → re-hiding is locked.
+        Player::whereKey($this->seekerPlayerId)->update(['last_lat' => 47.51, 'last_lng' => 19.01]);
+        $state = $this->getJson("/api/sessions/{$this->sessionId}/state");
+        $this->assertNotContains('choose_station', $state->json('available_actions'));
+        $state->assertJsonPath('zone_locked', true);
     }
 
     public function test_catalog_endpoints_return_active_questions_and_curses(): void

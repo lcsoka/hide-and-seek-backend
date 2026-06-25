@@ -2,6 +2,7 @@
 
 namespace App\Game;
 
+use App\Game\Support\Geo;
 use App\Models\Curse;
 use App\Models\Player;
 use App\Models\Session;
@@ -54,6 +55,8 @@ class GameStatePresenter
             'curses' => $this->activeCurses($session),
             // Only the hider sees their own hiding zone + hand of curse cards.
             'hiding_zone' => ($player && $player->role === 'hider') ? ($session->state_data['hiding_zone'] ?? null) : null,
+            // Whether a seeker is inside the zone (the hider can re-hide only while it's unlocked).
+            'zone_locked' => ($player && $player->role === 'hider') ? $this->zoneLocked($session) : false,
             'hand' => ($player && $player->role === 'hider') ? $this->hand($session) : [],
             'timers' => $this->timers($session),
         ];
@@ -122,6 +125,21 @@ class GameStatePresenter
                 'end' => ['lat' => $q['end_lat'] ?? null, 'lng' => $q['end_lng'] ?? null],
             ];
         }, $resolved);
+    }
+
+    /** True if any seeker is within the hider's zone — re-hiding is locked while so. */
+    private function zoneLocked(Session $session): bool
+    {
+        $zone = $session->state_data['hiding_zone'] ?? null;
+        $center = $zone['center'] ?? null;
+        if ($center === null) {
+            return false;
+        }
+        $radius = (float) ($zone['radius_m'] ?? 0);
+
+        return $session->players->contains(fn (Player $p) => $p->role === 'seeker'
+            && $p->last_lat !== null && $p->last_lng !== null
+            && Geo::distanceMeters((float) $p->last_lat, (float) $p->last_lng, (float) $center['lat'], (float) $center['lng']) <= $radius);
     }
 
     /**

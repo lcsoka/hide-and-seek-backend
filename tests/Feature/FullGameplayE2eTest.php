@@ -46,7 +46,7 @@ class FullGameplayE2eTest extends TestCase
         Sanctum::actingAs($host);
         $this->postJson("/api/sessions/{$sid}/start")->assertJsonPath('state', 'role_assignment');
         $this->action($sid, 'assign_hider', ['player_id' => $hostPid])->assertJsonPath('state', 'hiding');
-        $this->assertCount(3, $this->getJson("/api/sessions/{$sid}/state")->json('hand'), 'hider starts with 3 cards');
+        $this->assertCount(0, $this->getJson("/api/sessions/{$sid}/state")->json('hand'), 'hider starts empty-handed');
 
         // Real positions: ~8 km apart.
         Player::whereKey($hostPid)->update(['last_lat' => 47.4979, 'last_lng' => 19.0402]);
@@ -64,7 +64,7 @@ class FullGameplayE2eTest extends TestCase
         // Hider answers (radar truth: ~8 km apart, 5 km radius → "no") and draws a card.
         Sanctum::actingAs($host);
         $this->action($sid, 'answer_question')->assertOk();
-        $this->assertCount(4, $this->getJson("/api/sessions/{$sid}/state")->json('hand'), 'hider drew reward_keep card');
+        $this->assertCount(1, $this->getJson("/api/sessions/{$sid}/state")->json('hand'), 'hider drew reward_keep card');
 
         // THE REGRESSION GUARD: the seeker can ask again after the answer, and sees it.
         Sanctum::actingAs($seeker);
