@@ -146,7 +146,12 @@ class GameStatePresenter
                     'start_lat' => $payload['start_lat'] ?? null,
                     'start_lng' => $payload['start_lng'] ?? null,
                 ],
-                'end' => ['lat' => $q['end_lat'] ?? null, 'lng' => $q['end_lng'] ?? null],
+                // For a thermometer the end is the seeker's STOP point (captured when they
+                // stopped), not their position when the hider got round to answering.
+                'end' => [
+                    'lat' => $payload['end_lat'] ?? $q['end_lat'] ?? null,
+                    'lng' => $payload['end_lng'] ?? $q['end_lng'] ?? null,
+                ],
             ];
         }, $resolved);
     }
