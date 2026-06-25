@@ -82,7 +82,7 @@ final class OverpassMapDataSource implements MapDataSource
      */
     private function fetch(string $key, string $value, int $radius, float $lat, float $lng): ?array
     {
-        $ql = '[out:json][timeout:25];('
+        $ql = '[out:json][timeout:15];('
             ."node[\"{$key}\"=\"{$value}\"](around:{$radius},{$lat},{$lng});"
             ."way[\"{$key}\"=\"{$value}\"](around:{$radius},{$lat},{$lng});"
             ."relation[\"{$key}\"=\"{$value}\"](around:{$radius},{$lat},{$lng});"
@@ -93,8 +93,10 @@ final class OverpassMapDataSource implements MapDataSource
 
         foreach ($endpoints as $endpoint) {
             try {
+                // Bounded so a slow/throttled mirror can never exhaust PHP's request time
+                // limit (two endpoints × 12 s < 30 s); a failure falls back to a manual answer.
                 $response = Http::withHeaders(['User-Agent' => $userAgent])
-                    ->asForm()->timeout(30)->post($endpoint, ['data' => $ql]);
+                    ->asForm()->connectTimeout(5)->timeout(12)->post($endpoint, ['data' => $ql]);
 
                 if ($response->successful()) {
                     return $response->json('elements') ?? [];

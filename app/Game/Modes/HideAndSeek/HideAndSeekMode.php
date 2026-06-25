@@ -812,19 +812,14 @@ class HideAndSeekMode implements GameMode
     }
 
     /**
-     * The answer the hider is about to give (so they can confirm knowingly). Null for
-     * photo questions (they upload) or until an async/deferred truth is available.
+     * The answer the hider is about to give (so they can confirm knowingly). Returns
+     * only the PRE-COMPUTED truth (radar inline at ask, OSM via the queued job,
+     * thermometer at stop). Never evaluates inline — this runs on the /state read path
+     * and must not make a blocking Overpass call. Null = "computing…" / photo upload.
      */
     public function previewAnswer(Session $session): ?array
     {
-        $pending = $session->state_data['pending_question'] ?? null;
-        if ($pending === null) {
-            return null;
-        }
-
-        return $pending['truth']
-            ?? $this->evaluateTruth($session, $pending)
-            ?? $this->deferredAnswer($session, $pending);
+        return $session->state_data['pending_question']['truth'] ?? null;
     }
 
     private function makeGuess(Session $session, Player $player, Action $action, array $data): ActionOutcome

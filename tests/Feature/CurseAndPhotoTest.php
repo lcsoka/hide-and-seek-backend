@@ -47,6 +47,24 @@ class CurseAndPhotoTest extends TestCase
         $session->update(['state_data' => $data]);
     }
 
+    public function test_pending_preview_only_shows_the_precomputed_truth(): void
+    {
+        Event::fake([GameEventBroadcast::class]);
+        $ctx = $this->setUpSeeking();
+        $session = Session::find($ctx['sessionId']);
+        $base = ['seq' => 1, 'question_id' => null, 'category' => 'matching', 'asked_by' => $ctx['hiderId'], 'payload' => ['feature' => 'museum'], 'deadline' => now()->addMinutes(5)->timestamp];
+
+        // Pre-computed truth → shown to the hider.
+        $session->update(['state_data' => array_merge($session->state_data, ['pending_question' => $base + ['truth' => ['answer' => 'yes']]])]);
+        Sanctum::actingAs($ctx['host']);
+        $this->assertSame('yes', $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('pending_question.preview_answer.answer'));
+
+        // No truth yet → null. The /state read path must never evaluate it inline
+        // (that previously hit Overpass synchronously and timed the request out).
+        $session->update(['state_data' => array_merge($session->state_data, ['pending_question' => $base + ['truth' => null]])]);
+        $this->assertNull($this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('pending_question.preview_answer'));
+    }
+
     public function test_seeker_movement_broadcasts_but_the_hiders_does_not(): void
     {
         Event::fake([GameEventBroadcast::class]);
