@@ -43,6 +43,10 @@ class MatchingEvaluator implements QuestionEvaluator
             return null; // no map data — fall back to a manual answer
         }
 
+        // The hider's own nearest feature — shown ONLY to the hider (so they can answer
+        // "same?" knowingly). Stripped before the answer reaches the seeker-visible history.
+        $hiderNearestInfo = ['name' => $hiderNearest->name, 'lat' => $hiderNearest->lat, 'lng' => $hiderNearest->lng];
+
         // The seeker's confirmed reference place, if they picked one.
         $refLat = $payload['ref_lat'] ?? null;
         $refLng = $payload['ref_lng'] ?? null;
@@ -54,6 +58,7 @@ class MatchingEvaluator implements QuestionEvaluator
                 'feature_name' => $payload['ref_name'] ?? null,
                 'feature_lat' => (float) $refLat,
                 'feature_lng' => (float) $refLng,
+                'hider_nearest' => $hiderNearestInfo,
             ];
         }
 
@@ -72,6 +77,7 @@ class MatchingEvaluator implements QuestionEvaluator
             'feature_name' => $askerNearest->name,
             'feature_lat' => $askerNearest->lat,
             'feature_lng' => $askerNearest->lng,
+            'hider_nearest' => $hiderNearestInfo,
         ];
     }
 }

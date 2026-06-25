@@ -59,6 +59,8 @@ class HideAndSeekMode implements GameMode
             'endgame_dwell_s' => 60,
             'question_cooldown_s' => 300,
             'question_answer_time_s' => 600, // hider's window to answer a question (10 min)
+            'amend_window_s' => 120, // after answering, the hider can fix a manual answer this long
+
             'hiding_zone_radius_m' => $size->hidingZoneRadiusMeters(),
             'hiding_zone_rule' => config('game.hiding_zone.default_rule', 'circle'),
             'time_bonus_s' => $size->timeBonusSeconds(),
@@ -99,6 +101,7 @@ class HideAndSeekMode implements GameMode
                     $pending ? ['answer_question', 'play_curse', 'play_powerup'] : ['play_curse', 'play_powerup'],
                     ($session->state_data['pending_draw'] ?? null) !== null ? ['keep_cards'] : [],
                     ($session->state_data['relocating'] ?? false) ? ['confirm_hidden'] : [],
+                    $this->amendableIndex($session) !== null ? ['amend_answer'] : [],
                 ),
                 default => [],
             },
@@ -129,6 +132,9 @@ class HideAndSeekMode implements GameMode
             'confirm_found' => $this->seekerCanCatch($session, $player)
                 ? ValidationResult::pass()
                 : ValidationResult::fail('You are not close enough to the hider to catch them.'),
+            'amend_answer' => ($this->amendableIndex($session) !== null && ($action->payload['answer'] ?? null) !== null)
+                ? ValidationResult::pass()
+                : ValidationResult::fail('There is no recent answer to change.'),
             'ask_question' => ($session->state_data['pending_question'] ?? null) === null
                 ? ValidationResult::pass()
                 : ValidationResult::fail('A question is already awaiting an answer.'),
@@ -161,6 +167,7 @@ class HideAndSeekMode implements GameMode
             'play_curse' => $this->playCurse($player, $action, $data),
             'play_powerup' => $this->playPowerup($action, $data),
             'keep_cards' => $this->keepCards($action, $data),
+            'amend_answer' => $this->amendAnswer($session, $action, $data),
             'complete_curse' => $this->completeCurse($player, $action, $data),
             'roll_dice' => $this->rollDice($action, $data),
             'declare_endgame' => new ActionOutcome($data, 'endgame', [$this->event('EndgameTriggered', ['by' => $player->id])]),
@@ -613,6 +620,45 @@ class HideAndSeekMode implements GameMode
      * (e.g. Overpass was unavailable and the hider didn't answer manually) the question is
      * VOIDED so the seeker can ask again, rather than recording a blank answer.
      */
+    /**
+     * Index of the most recent question the hider may still correct: it was answered by
+     * the hider's own input (manual) and resolved within `amend_window_s`. Null otherwise.
+     */
+    private function amendableIndex(Session $session): ?int
+    {
+        if ($session->state !== 'seeking') {
+            return null;
+        }
+        $questions = $session->state_data['questions'] ?? [];
+        if ($questions === []) {
+            return null;
+        }
+        $idx = array_key_last($questions);
+        $last = $questions[$idx];
+        $window = (int) ($session->config['amend_window_s'] ?? 120);
+
+        return ($last['manual'] ?? false) && (now()->timestamp - (int) ($last['resolved_at'] ?? 0)) <= $window
+            ? $idx
+            : null;
+    }
+
+    /** The hider corrects a manual answer they just gave (within the amend window). */
+    private function amendAnswer(Session $session, Action $action, array $data): ActionOutcome
+    {
+        $idx = $this->amendableIndex($session);
+        if ($idx === null) {
+            return new ActionOutcome($data);
+        }
+
+        $new = $action->payload['answer'];
+        $data['questions'][$idx]['answer']['answer'] = $new;
+        $data['questions'][$idx]['amended'] = true;
+
+        return new ActionOutcome($data, null, [
+            $this->event('QuestionAmended', ['seq' => $data['questions'][$idx]['seq'] ?? null, 'answer' => $new]),
+        ]);
+    }
+
     private function resolveQuestion(Session $session, array $data, mixed $hiderAnswer, bool $auto): ActionOutcome
     {
         $pending = $data['pending_question'] ?? null;
@@ -639,13 +685,32 @@ class HideAndSeekMode implements GameMode
             ]);
         }
 
+        // Matching: always carry the seeker's reference place on the answer (the place the
+        // deduction's Voronoi cell is built around) — even when answered manually, where the
+        // evaluator's feature_* was never attached. The hider's own nearest is hider-only and
+        // must never reach the seeker-visible history, so strip it here.
+        unset($answer['hider_nearest']);
+        if (($pending['category'] ?? null) === 'matching' && ($answer['feature_lat'] ?? null) === null) {
+            $payload = $pending['payload'] ?? [];
+            if (isset($payload['ref_lat'], $payload['ref_lng'])) {
+                $answer['feature_lat'] = (float) $payload['ref_lat'];
+                $answer['feature_lng'] = (float) $payload['ref_lng'];
+                $answer['feature_name'] = $payload['ref_name'] ?? null;
+            }
+        }
+
         // The seeker's resolve-time position (thermometer B) — their own location.
         $asker = $session->players()->find($pending['asked_by'] ?? null);
+
+        // True when the hider's own input set the answer (no server truth) — only these are
+        // amendable, so the server-computed (anti-cheat) answers can't be overridden.
+        $manualAnswer = ($pending['truth'] ?? null) === null && $hasManual;
 
         $resolved = $pending + [
             'answer' => $answer,
             'resolved_at' => now()->timestamp,
             'auto' => $auto,
+            'manual' => $manualAnswer,
             'end_lat' => $asker?->last_lat,
             'end_lng' => $asker?->last_lng,
         ];

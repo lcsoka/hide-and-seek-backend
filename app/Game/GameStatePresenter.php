@@ -130,6 +130,9 @@ class GameStatePresenter
             // which object is closest to the seeker. From the seeker's confirmed pick
             // (Overpass-free) or the computed truth's feature.
             'reference' => $this->questionReference($payload, $truth),
+            // The hider's OWN nearest feature (matching) — hider-only, so they can answer
+            // "same place?" knowingly. Comes from the hider-only truth, never shown to seekers.
+            'hider_nearest' => $truth['hider_nearest'] ?? null,
             'preview_answer' => $truth,
         ];
     }
