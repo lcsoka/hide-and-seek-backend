@@ -83,6 +83,7 @@ class GameStatePresenter
 
         $question = isset($pending['question_id']) ? Question::find($pending['question_id']) : null;
         $payload = $pending['payload'] ?? [];
+        $truth = $isHider && $mode instanceof HideAndSeekMode ? $mode->previewAnswer($session) : null;
 
         return [
             'seq' => $pending['seq'] ?? null,
@@ -100,8 +101,32 @@ class GameStatePresenter
                 'lat' => $payload['ask_lat'] ?? $payload['start_lat'] ?? null,
                 'lng' => $payload['ask_lng'] ?? $payload['start_lng'] ?? null,
             ],
-            'preview_answer' => $isHider && $mode instanceof HideAndSeekMode ? $mode->previewAnswer($session) : null,
+            // The seeker's reference place for matching/measuring — so the hider can see
+            // which object is closest to the seeker. From the seeker's confirmed pick
+            // (Overpass-free) or the computed truth's feature.
+            'reference' => $this->questionReference($payload, $truth),
+            'preview_answer' => $truth,
         ];
+    }
+
+    /**
+     * The seeker's reference place (name + coords) for a place-based question, or null.
+     * Prefers the seeker's confirmed pick (always present, no Overpass) over the
+     * computed truth's feature.
+     *
+     * @param  array<string, mixed>  $payload
+     * @param  array<string, mixed>|null  $truth
+     */
+    private function questionReference(array $payload, ?array $truth): ?array
+    {
+        if (isset($payload['ref_lat'], $payload['ref_lng'])) {
+            return ['name' => $payload['ref_name'] ?? null, 'lat' => (float) $payload['ref_lat'], 'lng' => (float) $payload['ref_lng']];
+        }
+        if (isset($truth['feature_lat'], $truth['feature_lng'])) {
+            return ['name' => $truth['feature_name'] ?? null, 'lat' => (float) $truth['feature_lat'], 'lng' => (float) $truth['feature_lng']];
+        }
+
+        return null;
     }
 
     /**

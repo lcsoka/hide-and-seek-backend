@@ -51,6 +51,39 @@ class QuestionCategoryOutcomesTest extends TestCase
         $this->assertSame('no', $this->lastAnswer($ctx)['answer']);
     }
 
+    public function test_matching_uses_the_seekers_confirmed_place_when_provided(): void
+    {
+        $ctx = $this->startSeeking();
+        $this->place($ctx, [47.50, 19.00], [47.60, 19.20]);
+        $this->bindFeatures($this->feature('m/1', 'museum', 47.55, 19.10)); // the hider's nearest museum
+
+        // Seeker confirms a place ON the hider's nearest museum → same place → yes.
+        $this->askAndAnswer($ctx, 'matching', ['feature' => 'museum', 'ref_lat' => 47.55, 'ref_lng' => 19.10, 'ref_name' => 'My Museum']);
+        $this->assertSame('yes', $this->lastAnswer($ctx)['answer']);
+
+        // Seeker confirms a far-away place → not the hider's → no.
+        $this->askAndAnswer($ctx, 'matching', ['feature' => 'museum', 'ref_lat' => 47.20, 'ref_lng' => 18.50, 'ref_name' => 'Other Museum']);
+        $this->assertSame('no', $this->lastAnswer($ctx)['answer']);
+    }
+
+    public function test_hider_sees_the_seekers_closest_place_for_matching(): void
+    {
+        $ctx = $this->startSeeking();
+        $this->place($ctx, [47.50, 19.00], [47.60, 19.20]);
+        $this->bindFeatures($this->feature('m/1', 'museum', 47.55, 19.10));
+
+        // Seeker asks a matching question with a confirmed reference place.
+        Sanctum::actingAs($ctx['seeker']);
+        $q = Question::create(['key' => 'matching.m'.uniqid(), 'category' => 'matching', 'title' => ['en' => 'M'], 'prompt' => ['en' => '?'], 'reward_draw' => 1, 'reward_keep' => 1]);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'feature' => 'museum', 'ref_lat' => 47.21, 'ref_lng' => 19.11, 'ref_name' => 'Seeker Museum']])->assertOk();
+
+        // The hider's /state shows the seeker's closest place on the pending question.
+        Sanctum::actingAs($ctx['host']);
+        $ref = $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('pending_question.reference');
+        $this->assertSame('Seeker Museum', $ref['name']);
+        $this->assertEqualsWithDelta(47.21, $ref['lat'], 0.001);
+    }
+
     public function test_measuring_closer_and_further_against_the_seekers_reference(): void
     {
         $ctx = $this->startSeeking();
