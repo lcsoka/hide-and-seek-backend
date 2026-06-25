@@ -4,12 +4,16 @@ namespace Tests\Feature;
 
 use App\Enums\GameMode;
 use App\Enums\SessionStatus;
+use App\Filament\Widgets\GameStatsOverview;
+use App\Filament\Widgets\RecentSessions;
+use App\Filament\Widgets\SessionsChart;
 use App\Models\Curse;
 use App\Models\Feedback;
 use App\Models\Question;
 use App\Models\Session;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Livewire\Livewire;
 use Tests\TestCase;
 
 class AdminPanelTest extends TestCase
@@ -91,5 +95,23 @@ class AdminPanelTest extends TestCase
             'type' => 'bug', 'message' => 'something broke', 'status' => 'open',
         ]);
         $this->get("/admin/feedback/{$feedback->getKey()}/edit")->assertSuccessful();
+    }
+
+    public function test_dashboard_renders_the_stats_widgets(): void
+    {
+        $this->seedSession();
+        $this->actingAs(User::factory()->create());
+
+        // The dashboard page builds without error (widgets register).
+        $this->get('/admin')->assertSuccessful();
+
+        // The widgets render their content (queries don't throw).
+        Livewire::test(GameStatsOverview::class)
+            ->assertOk()
+            ->assertSee('Live games')
+            ->assertSee('Questions asked')
+            ->assertSee('Open feedback');
+        Livewire::test(SessionsChart::class)->assertOk();
+        Livewire::test(RecentSessions::class)->assertOk()->assertSee('TEST01');
     }
 }
