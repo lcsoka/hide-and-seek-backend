@@ -25,6 +25,9 @@ class LocationController extends Controller
         // Location pings count as activity (keeps the session off the abandonment list).
         $session->update(['last_activity_at' => now()]);
 
+        // Let the mode react to the new position (e.g. the endgame proximity trigger).
+        $this->engine->observeLocation($session, $player);
+
         // Broadcast SEEKER movement so others (incl. the hider) see it live. The hider's
         // own position is concealed from seekers, so it is never broadcast. Throttled to
         // ~once per 2s per player to keep the event volume sane.

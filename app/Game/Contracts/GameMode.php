@@ -43,6 +43,12 @@ interface GameMode
     /** A server timer fired (e.g. hiding_deadline). Applied exactly like an action. */
     public function onTimerExpired(Session $session, string $timerKey): ActionOutcome;
 
+    /**
+     * A player just reported a new position. Return an outcome to apply (e.g. proximity
+     * triggers), or null for no change. Called after the position is persisted.
+     */
+    public function onLocationReported(Session $session, Player $player): ?ActionOutcome;
+
     /** Which players' locations $viewer may see in the session's current state. */
     public function locationVisibility(Session $session, Player $viewer): LocationFilter;
 

@@ -62,6 +62,8 @@ class GameStatePresenter
             // Only the hider sees their own hiding zone, hand, draw, and banked time.
             'hiding_zone' => $isHider ? ($session->state_data['hiding_zone'] ?? null) : null,
             'zone_locked' => $isHider ? $this->zoneLocked($session) : false,
+            // The hider played 'move' and must re-confirm their new spot.
+            'relocating' => $isHider ? (bool) ($session->state_data['relocating'] ?? false) : false,
             'hand' => $isHider ? $this->hand($session) : [],
             'pending_draw' => $isHider ? $this->pendingDraw($session) : null,
             'time_bonus_s' => $isHider ? $this->handTimeBonusSeconds($session) : null,

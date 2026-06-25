@@ -51,10 +51,11 @@ class DebugController extends Controller
             'lng' => ['required', 'numeric', 'between:-180,180'],
         ]);
 
-        $session->players()->findOrFail($data['player_id'])
-            ->update(['last_lat' => $data['lat'], 'last_lng' => $data['lng'], 'last_location_at' => now()]);
+        $player = $session->players()->findOrFail($data['player_id']);
+        $player->update(['last_lat' => $data['lat'], 'last_lng' => $data['lng'], 'last_location_at' => now()]);
+        $this->engine->observeLocation($session->refresh(), $player->refresh());
 
-        return response()->json($this->godView($session));
+        return response()->json($this->godView($session->refresh()));
     }
 
     public function seedPlayers(Request $request, Session $session): JsonResponse

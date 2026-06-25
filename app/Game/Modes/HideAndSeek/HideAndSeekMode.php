@@ -8,6 +8,7 @@ use App\Game\Contracts\GameMode;
 use App\Game\Geo\MapDataSource;
 use App\Game\Questions\DeferredQuestionEvaluator;
 use App\Game\Questions\QuestionEvaluatorRegistry;
+use App\Game\Questions\ResolvesHiderLocation;
 use App\Game\Support\Action;
 use App\Game\Support\ActionOutcome;
 use App\Game\Support\Geo;
@@ -26,6 +27,8 @@ use Illuminate\Support\Str;
  */
 class HideAndSeekMode implements GameMode
 {
+    use ResolvesHiderLocation;
+
     public function __construct(
         private readonly QuestionEvaluatorRegistry $evaluators,
         private readonly MapDataSource $map,
@@ -49,6 +52,9 @@ class HideAndSeekMode implements GameMode
             'play_radius_km' => $size->playRadiusKm(),
             'hiding_time_limit_s' => $size->hidingTimeLimitSeconds(),
             'endgame_radius_m' => 500,
+            // A seeker must stay inside the hiding zone this long before the endgame
+            // auto-starts — so briefly passing through early on never triggers it.
+            'endgame_dwell_s' => 60,
             'question_cooldown_s' => 300,
             'question_answer_time_s' => 600, // hider's window to answer a question (10 min)
             'hiding_zone_radius_m' => $size->hidingZoneRadiusMeters(),
@@ -80,11 +86,13 @@ class HideAndSeekMode implements GameMode
                 // A seeker can't ask while a question is awaiting the hider's answer. They
                 // can clear an active curse that demands photo proof.
                 'seeker' => $this->seekerActions($session, $pending),
-                // The hider is locked to their spot once seeking begins (they could only move
-                // during the hiding period). They answer pending questions and play cards.
+                // The hider is locked to their spot once seeking begins. They answer pending
+                // questions and play cards — unless a 'move' powerup put them in relocating
+                // mode, in which case they re-confirm their new spot.
                 'hider' => array_merge(
                     $pending ? ['answer_question', 'play_curse', 'play_powerup'] : ['play_curse', 'play_powerup'],
                     ($session->state_data['pending_draw'] ?? null) !== null ? ['keep_cards'] : [],
+                    ($session->state_data['relocating'] ?? false) ? ['confirm_hidden'] : [],
                 ),
                 default => [],
             },
@@ -185,6 +193,20 @@ class HideAndSeekMode implements GameMode
             return $this->resolveQuestion($session, $data, null, auto: true);
         }
 
+        // A seeker has dwelled in the hiding zone for the full window: start the endgame.
+        // Re-checked at fire time, so a seeker who has since left (or gone stale) won't
+        // trigger it. The dwell stamp is cleared either way.
+        if ($timerKey === 'endgame_dwell' && $session->state === 'seeking') {
+            unset($data['endgame_dwell']);
+            $zone = $session->state_data['hiding_zone'] ?? null;
+            $dweller = $zone !== null ? $this->seekerInZone($session, $zone, (int) ($session->config['endgame_dwell_s'] ?? 60)) : null;
+            if ($dweller !== null) {
+                return new ActionOutcome($data, 'endgame', [$this->event('EndgameTriggered', ['by' => $dweller, 'reason' => 'reached_zone'])]);
+            }
+
+            return new ActionOutcome($data);
+        }
+
         return new ActionOutcome($data);
     }
 
@@ -235,8 +257,6 @@ class HideAndSeekMode implements GameMode
 
     private function confirmHidden(Session $session, array $data): ActionOutcome
     {
-        $data['seeking_started_at'] = now()->timestamp;
-
         // Snapshot the hider's committed spot. Every question is answered against THIS
         // fixed point, so the deduction stays consistent even if the hider's live GPS
         // drifts within their zone afterwards.
@@ -245,34 +265,82 @@ class HideAndSeekMode implements GameMode
             $data['hider_position'] = ['lat' => (float) $hider->last_lat, 'lng' => (float) $hider->last_lng];
         }
 
+        // Re-confirming after a 'move' powerup: just commit the new spot, stay in seeking.
+        if (($data['relocating'] ?? false) && $session->state === 'seeking') {
+            unset($data['relocating']);
+
+            return new ActionOutcome($data, null, [$this->event('HiderRelocated', ['round' => $data['round'] ?? 0])]);
+        }
+
+        $data['seeking_started_at'] = now()->timestamp;
+
         return new ActionOutcome($data, 'seeking', [$this->event('SeekingStarted', ['round' => $data['round'] ?? 0])]);
     }
 
     /** The hider may re-hide (move to a new station) only while no seeker is inside their zone. */
-    public function canRehide(Session $session): bool
-    {
-        $zone = $session->state_data['hiding_zone'] ?? null;
-
-        return $session->state === 'seeking' && $zone !== null && ! $this->seekerInZone($session, $zone);
-    }
-
-    /** Is any seeker currently within the hider's zone? (Locks re-hiding once they close in.) */
-    public function seekerInZone(Session $session, array $zone): bool
+    /**
+     * The id of a seeker currently within the hider's zone (or null). When
+     * $maxAgeSeconds is given, only a recently-reported position counts — so a seeker
+     * whose app went silent while inside can't keep the zone "occupied" with a stale fix.
+     */
+    public function seekerInZone(Session $session, array $zone, ?int $maxAgeSeconds = null): ?string
     {
         $center = $zone['center'] ?? null;
         if ($center === null) {
-            return false;
+            return null;
         }
         $radius = (float) ($zone['radius_m'] ?? 0);
+        $cutoff = $maxAgeSeconds !== null ? now()->subSeconds($maxAgeSeconds * 2) : null;
 
         foreach ($session->players as $p) {
-            if ($p->role === 'seeker' && $p->last_lat !== null && $p->last_lng !== null
-                && Geo::distanceMeters((float) $p->last_lat, (float) $p->last_lng, (float) $center['lat'], (float) $center['lng']) <= $radius) {
-                return true;
+            if ($p->role !== 'seeker' || $p->last_lat === null || $p->last_lng === null) {
+                continue;
+            }
+            if ($cutoff !== null && ($p->last_location_at === null || $p->last_location_at->lt($cutoff))) {
+                continue;
+            }
+            if (Geo::distanceMeters((float) $p->last_lat, (float) $p->last_lng, (float) $center['lat'], (float) $center['lng']) <= $radius) {
+                return $p->id;
             }
         }
 
-        return false;
+        return null;
+    }
+
+    /**
+     * After a seeker reports a position, start (or cancel) the endgame dwell clock:
+     * the endgame auto-starts only once a seeker has stayed in the hiding zone for the
+     * full `endgame_dwell_s`, so a brief accidental pass-through never triggers it.
+     */
+    public function onLocationReported(Session $session, Player $player): ?ActionOutcome
+    {
+        if ($session->state !== 'seeking' || $player->role !== 'seeker') {
+            return null;
+        }
+        $zone = $session->state_data['hiding_zone'] ?? null;
+        $center = $zone['center'] ?? null;
+        if ($center === null || $player->last_lat === null || $player->last_lng === null) {
+            return null;
+        }
+
+        $inZone = Geo::distanceMeters((float) $player->last_lat, (float) $player->last_lng, (float) $center['lat'], (float) $center['lng']) <= (float) ($zone['radius_m'] ?? 0);
+        $data = $session->state_data;
+        $pending = $data['endgame_dwell'] ?? null;
+
+        if ($inZone && $pending === null) {
+            $data['endgame_dwell'] = now()->timestamp; // guards the timer below
+            $delay = (int) ($session->config['endgame_dwell_s'] ?? 60);
+
+            return new ActionOutcome($data, null, [], [['op' => 'set', 'key' => 'endgame_dwell', 'delay' => $delay]]);
+        }
+
+        if (! $inZone && $pending !== null) {
+            unset($data['endgame_dwell']); // left in time — the pending timer goes stale
+
+            return new ActionOutcome($data);
+        }
+
+        return null;
     }
 
     /**
@@ -306,6 +374,14 @@ class HideAndSeekMode implements GameMode
 
     private function validateWithinHidingZone(Session $session, Player $hider): ValidationResult
     {
+        // Relocating via the 'move' powerup: the whole point is to leave the zone, so
+        // only a known position is required — no zone bound.
+        if ($session->state_data['relocating'] ?? false) {
+            return ($hider->last_lat === null || $hider->last_lng === null)
+                ? ValidationResult::fail('Report your location before confirming.')
+                : ValidationResult::pass();
+        }
+
         $zone = $session->state_data['hiding_zone'] ?? null;
         if ($zone === null) {
             return ValidationResult::pass(); // no station chosen yet — not enforced
@@ -761,7 +837,12 @@ class HideAndSeekMode implements GameMode
                 $cards = $this->drawCards($draw);
                 $data['pending_draw'] = ['cards' => $cards, 'keep' => count($cards)];
             }
-            // 'move' (relocate) is a manual, real-world action — recorded via the event.
+            // 'move' lets the hider relocate: drop the committed spot (questions fall back
+            // to live GPS meanwhile) and require them to re-confirm their new spot.
+            if ($power === 'move') {
+                $data['relocating'] = true;
+                unset($data['hider_position']);
+            }
         }
 
         return new ActionOutcome($data, null, [$this->event('PowerupPlayed', ['power' => $power])]);
@@ -849,11 +930,11 @@ class HideAndSeekMode implements GameMode
 
     private function makeGuess(Session $session, Player $player, Action $action, array $data): ActionOutcome
     {
-        $hider = $session->players()->find($data['hider_id'] ?? null);
         $radius = (float) ($session->config['endgame_radius_m'] ?? 500);
+        $hiderPoint = $this->hiderPoint($session); // the committed spot — what the seekers deduced
 
-        $correct = $hider && $hider->last_lat !== null && $hider->last_lng !== null
-            && Geo::distanceMeters((float) $action->payload['lat'], (float) $action->payload['lng'], (float) $hider->last_lat, (float) $hider->last_lng) <= $radius;
+        $correct = $hiderPoint !== null
+            && Geo::distanceMeters((float) $action->payload['lat'], (float) $action->payload['lng'], $hiderPoint[0], $hiderPoint[1]) <= $radius;
 
         if ($correct) {
             return $this->endRound($data, [$this->event('HiderFound', ['round' => $data['round'] ?? 0, 'found_by' => $player->id])]);

@@ -58,6 +58,20 @@ class GameEngine
         $this->apply($session, $outcome, "timer:{$key}", null, []);
     }
 
+    /**
+     * Let the mode react to a player's freshly-reported position (e.g. proximity
+     * triggers). A no-op when the mode returns null.
+     */
+    public function observeLocation(Session $session, Player $player): void
+    {
+        $mode = $this->modes->make($session->game_mode->value);
+        $outcome = $mode->onLocationReported($session, $player);
+
+        if ($outcome !== null) {
+            $this->apply($session, $outcome, 'location:observed', $player->id, []);
+        }
+    }
+
     /** Resolve the acting player for an authenticated user, or 403. */
     public function playerFor(Session $session, User $user): Player
     {
