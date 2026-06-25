@@ -47,6 +47,22 @@ class CurseAndPhotoTest extends TestCase
         $session->update(['state_data' => $data]);
     }
 
+    public function test_seeker_movement_broadcasts_but_the_hiders_does_not(): void
+    {
+        Event::fake([GameEventBroadcast::class]);
+        $ctx = $this->setUpSeeking();
+
+        // A seeker moving is broadcast (others, incl. the hider, see it).
+        Sanctum::actingAs($ctx['seeker']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/location", ['lat' => 47.50, 'lng' => 19.05])->assertNoContent();
+        Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'PlayerMoved');
+
+        // The hider's position is concealed — never broadcast.
+        Sanctum::actingAs($ctx['host']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/location", ['lat' => 47.49, 'lng' => 19.04])->assertNoContent();
+        Event::assertNotDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'PlayerMoved' && ($e->payload['player_id'] ?? null) === $ctx['hiderId']);
+    }
+
     public function test_a_player_can_upload_an_image_to_their_session(): void
     {
         Event::fake([GameEventBroadcast::class]);
