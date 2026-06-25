@@ -583,10 +583,16 @@ class HideAndSeekMode implements GameMode
                     $values[] = random_int(1, $sides);
                 }
                 $sum = array_sum($values);
-                $roll = ['values' => $values, 'sum' => $sum, 'success' => $target !== null ? $sum >= (int) $target : null, 'at' => now()->timestamp];
-                $data['curses_played'][$i]['rolls'][] = $roll;
+                $success = $target !== null ? $sum >= (int) $target : null;
+                $data['curses_played'][$i]['rolls'][] = ['values' => $values, 'sum' => $sum, 'success' => $success, 'at' => now()->timestamp];
 
-                return new ActionOutcome($data, null, [$this->event('DiceRolled', ['uid' => $uid, 'values' => $values, 'sum' => $sum])]);
+                // A successful roll satisfies the curse — it's cleared.
+                if ($success === true) {
+                    $data['curses_played'][$i]['status'] = 'completed';
+                    $data['curses_played'][$i]['completed_at'] = now()->timestamp;
+                }
+
+                return new ActionOutcome($data, null, [$this->event('DiceRolled', ['uid' => $uid, 'values' => $values, 'sum' => $sum, 'success' => $success])]);
             }
         }
 
@@ -649,12 +655,17 @@ class HideAndSeekMode implements GameMode
                     break;
                 }
             }
-        } elseif ($power === 'discard') {
-            $data['hand'] = array_merge($data['hand'] ?? [], $this->drawCards(1));
         } elseif ($power === 'randomize') {
             $data['hand'] = $this->drawCards(count($data['hand'] ?? []));
+        } else {
+            // Draw powerups: reveal the new cards through the keep-draw modal.
+            $draw = ['discard_1_draw_2' => 2, 'discard_2_draw_3' => 3, 'draw_1_expand_1' => 1][$power] ?? 0;
+            if ($draw > 0) {
+                $cards = $this->drawCards($draw);
+                $data['pending_draw'] = ['cards' => $cards, 'keep' => count($cards)];
+            }
+            // 'move' (relocate) is a manual, real-world action — recorded via the event.
         }
-        // 'move' (relocate) is a manual, real-world action — recorded via the event.
 
         return new ActionOutcome($data, null, [$this->event('PowerupPlayed', ['power' => $power])]);
     }

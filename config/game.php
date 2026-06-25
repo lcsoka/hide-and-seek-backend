@@ -100,24 +100,34 @@ return [
      | The hider's draw deck. Answering a question lets the hider draw `reward_draw`
      | cards and keep `reward_keep` (per the question). The deck mixes curse cards
      | (from the curses table) with time-bonus and powerup cards defined here.
+     | Composition mirrors the official deck: 25 time-bonus, 21 powerup, 24 curse cards.
      */
     'hider_deck' => [
-        // Minutes added to the hider's run time; `count` = copies in the deck.
+        // Minutes added to the hider's run time (official 5-tier set); `count` = copies.
         'time_bonuses' => [
-            ['minutes' => 3, 'count' => 4],
-            ['minutes' => 5, 'count' => 4],
-            ['minutes' => 8, 'count' => 3],
-            ['minutes' => 10, 'count' => 3],
+            ['minutes' => 2, 'count' => 2],
+            ['minutes' => 3, 'count' => 2],
+            ['minutes' => 4, 'count' => 2],
+            ['minutes' => 5, 'count' => 2],
+            ['minutes' => 6, 'count' => 3],
+            ['minutes' => 8, 'count' => 2],
+            ['minutes' => 9, 'count' => 2],
+            ['minutes' => 10, 'count' => 2],
+            ['minutes' => 12, 'count' => 2],
             ['minutes' => 15, 'count' => 2],
+            ['minutes' => 18, 'count' => 1],
             ['minutes' => 20, 'count' => 1],
+            ['minutes' => 30, 'count' => 2],
         ],
-        // Powerup cards (names/descriptions in lang/{locale}/cards.php).
+        // Powerup cards (names/descriptions in lang/{locale}/cards.php). Official mix.
         'powerups' => [
-            ['power' => 'veto', 'count' => 3],
+            ['power' => 'randomize', 'count' => 4],
+            ['power' => 'veto', 'count' => 4],
             ['power' => 'duplicate', 'count' => 2],
             ['power' => 'move', 'count' => 1],
-            ['power' => 'randomize', 'count' => 2],
-            ['power' => 'discard', 'count' => 2],
+            ['power' => 'discard_1_draw_2', 'count' => 4],
+            ['power' => 'discard_2_draw_3', 'count' => 4],
+            ['power' => 'draw_1_expand_1', 'count' => 2],
         ],
     ],
 

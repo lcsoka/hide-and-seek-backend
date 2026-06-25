@@ -18,9 +18,17 @@ return [
             'name' => 'Randomize',
             'description' => 'Discard your hand and draw the same number of new cards.',
         ],
-        'discard' => [
-            'name' => 'Discard',
-            'description' => 'Discard this card to draw a fresh one.',
+        'discard_1_draw_2' => [
+            'name' => 'Discard 1, Draw 2',
+            'description' => 'Discard this card to draw two new ones.',
+        ],
+        'discard_2_draw_3' => [
+            'name' => 'Discard 2, Draw 3',
+            'description' => 'Discard this card to draw three new ones.',
+        ],
+        'draw_1_expand_1' => [
+            'name' => 'Draw 1, Expand 1',
+            'description' => 'Draw a new card and expand your hand.',
         ],
     ],
     'time_bonus' => [
