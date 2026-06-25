@@ -41,24 +41,18 @@ final class OverpassMapDataSource implements MapDataSource
 
         [$key, $value] = explode('=', $tag, 2);
         $radius = (int) $radiusM;
-        $endpoint = (string) config('game.overpass.endpoint');
         $cacheKey = sprintf('overpass:%s:%d:%.3f:%.3f', $type, $radius, $lat, $lng);
 
-        try {
-            $elements = Cache::remember($cacheKey, now()->addHours(6), function () use ($key, $value, $radius, $lat, $lng, $endpoint) {
-                $ql = '[out:json][timeout:25];('
-                    ."node[\"{$key}\"=\"{$value}\"](around:{$radius},{$lat},{$lng});"
-                    ."way[\"{$key}\"=\"{$value}\"](around:{$radius},{$lat},{$lng});"
-                    ."relation[\"{$key}\"=\"{$value}\"](around:{$radius},{$lat},{$lng});"
-                    .');out center;';
-
-                $response = Http::asForm()->timeout(30)->post($endpoint, ['data' => $ql]);
-
-                return $response->successful() ? ($response->json('elements') ?? []) : [];
-            });
-        } catch (Throwable) {
-            return [];
+        // Only successful responses are cached; a failed fetch returns [] and retries
+        // next time instead of poisoning the cache with an empty result for hours.
+        $elements = Cache::get($cacheKey);
+        if ($elements === null) {
+            $elements = $this->fetch($key, $value, $radius, $lat, $lng);
+            if ($elements !== null) {
+                Cache::put($cacheKey, $elements, now()->addHours(6));
+            }
         }
+        $elements ??= [];
 
         $features = [];
         foreach ($elements as $element) {
@@ -78,5 +72,38 @@ final class OverpassMapDataSource implements MapDataSource
         }
 
         return $features;
+    }
+
+    /**
+     * Query Overpass across the configured endpoints. Returns the elements on the
+     * first success, or null if every endpoint failed (so the caller won't cache it).
+     *
+     * @return array<int, array<string, mixed>>|null
+     */
+    private function fetch(string $key, string $value, int $radius, float $lat, float $lng): ?array
+    {
+        $ql = '[out:json][timeout:25];('
+            ."node[\"{$key}\"=\"{$value}\"](around:{$radius},{$lat},{$lng});"
+            ."way[\"{$key}\"=\"{$value}\"](around:{$radius},{$lat},{$lng});"
+            ."relation[\"{$key}\"=\"{$value}\"](around:{$radius},{$lat},{$lng});"
+            .');out center;';
+
+        $endpoints = (array) config('game.overpass.endpoints', [config('game.overpass.endpoint')]);
+        $userAgent = (string) config('game.overpass.user_agent', 'JetLagHungary/1.0');
+
+        foreach ($endpoints as $endpoint) {
+            try {
+                $response = Http::withHeaders(['User-Agent' => $userAgent])
+                    ->asForm()->timeout(30)->post($endpoint, ['data' => $ql]);
+
+                if ($response->successful()) {
+                    return $response->json('elements') ?? [];
+                }
+            } catch (Throwable) {
+                // try the next endpoint
+            }
+        }
+
+        return null;
     }
 }

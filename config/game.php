@@ -46,6 +46,13 @@ return [
      */
     'overpass' => [
         'endpoint' => env('OVERPASS_ENDPOINT', 'https://overpass-api.de/api/interpreter'),
+        // Tried in order; the public mirrors rate-limit, so a fallback keeps questions answerable.
+        'endpoints' => [
+            env('OVERPASS_ENDPOINT', 'https://overpass-api.de/api/interpreter'),
+            'https://overpass.private.coffee/api/interpreter',
+        ],
+        // overpass-api.de rejects requests without a descriptive User-Agent (HTTP 406).
+        'user_agent' => env('OVERPASS_USER_AGENT', 'JetLagHungary/1.0 (+https://hide-and-seek.test)'),
         'search_radius_m' => 50_000,
         'features' => [
             'airport' => 'aeroway=aerodrome',
