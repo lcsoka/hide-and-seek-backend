@@ -30,6 +30,14 @@ class DebugController extends Controller
         return response()->json($this->godView($session));
     }
 
+    /** Resolve a join code to the god view, so the dev spectate flow accepts a code OR an id. */
+    public function resolveCode(string $code): JsonResponse
+    {
+        $session = Session::where('join_code', strtoupper($code))->firstOrFail();
+
+        return response()->json($this->godView($session));
+    }
+
     public function actAs(Request $request, Session $session): JsonResponse
     {
         $data = $request->validate([

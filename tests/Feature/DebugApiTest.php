@@ -102,6 +102,20 @@ class DebugApiTest extends TestCase
             ->getJson("/api/sessions/{$session->id}/state")->assertOk();
     }
 
+    public function test_resolve_code_returns_the_god_view(): void
+    {
+        $session = $this->makeSession();
+
+        $this->debug()->getJson("/api/debug/sessions/{$session->join_code}")
+            ->assertOk()
+            ->assertJsonPath('session_id', $session->id)
+            ->assertJsonStructure(['players', 'state']);
+
+        // case-insensitive, and unknown codes 404
+        $this->debug()->getJson('/api/debug/sessions/'.strtolower($session->join_code))->assertOk();
+        $this->debug()->getJson('/api/debug/sessions/ZZZZZZ')->assertNotFound();
+    }
+
     public function test_act_as_any_player(): void
     {
         $session = $this->makeSession();

@@ -36,15 +36,31 @@ class TentaclesEvaluator implements QuestionEvaluator
             return null;
         }
 
+        // The query origin is the SEEKER. If the hider isn't within the radius of the
+        // seeker it's an automatic miss — no matter how close they are to some other
+        // instance of the feature elsewhere.
         $inRange = Geo::distanceMeters((float) $asker->last_lat, (float) $asker->last_lng, $hiderPoint[0], $hiderPoint[1]) <= $radius;
 
         if (! $inRange) {
             return ['answer' => 'out_of_range'];
         }
 
-        $nearest = $this->map->nearest($feature, $hiderPoint[0], $hiderPoint[1]);
+        // Candidates are the features within the radius of the SEEKER — exactly the set the
+        // seeker's tentacle map is drawn from. The hider reveals which of THOSE they are
+        // nearest to, so the revealed place always lands inside the drawn region (a global
+        // nearest could fall outside the circle and have no tentacle to match).
+        $candidates = $this->map->within($feature, (float) $asker->last_lat, (float) $asker->last_lng, $radius);
+        $nearest = null;
+        $nearestDistance = INF;
+        foreach ($candidates as $candidate) {
+            $distance = Geo::distanceMeters($hiderPoint[0], $hiderPoint[1], $candidate->lat, $candidate->lng);
+            if ($distance < $nearestDistance) {
+                $nearestDistance = $distance;
+                $nearest = $candidate;
+            }
+        }
         if ($nearest === null) {
-            return null; // in range but no map data — manual fallback
+            return null; // in range but no candidates in the radius (or no map data) — manual fallback
         }
 
         return [

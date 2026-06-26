@@ -32,6 +32,8 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 // Developer/debug API — gated by GAME_DEBUG + developer token; unreachable in production.
+// Resolve a join code → god view (so the dev "spectate" can take a code or a session id).
+Route::middleware(EnsureDebugAccess::class)->get('debug/sessions/{code}', [DebugController::class, 'resolveCode']);
 Route::middleware(EnsureDebugAccess::class)->prefix('sessions/{session}/debug')->group(function () {
     Route::get('/state', [DebugController::class, 'state']);
     Route::post('/act-as', [DebugController::class, 'actAs']);
