@@ -5,7 +5,7 @@ namespace Tests\Feature;
 use App\Enums\GameMode;
 use App\Enums\QuestionCategory;
 use App\Enums\SessionStatus;
-use App\Models\Curse;
+use App\Models\Card;
 use App\Models\Question;
 use App\Models\Session;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -76,7 +76,7 @@ class GameModelsTest extends TestCase
 
     public function test_content_models_are_translatable(): void
     {
-        $curse = Curse::create([
+        $curse = Card::create([
             'key' => 'test_curse',
             'name' => ['en' => 'Test', 'hu' => 'Teszt'],
             'cost' => ['en' => 'Free', 'hu' => 'Ingyen'],

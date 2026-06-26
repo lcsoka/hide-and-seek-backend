@@ -1,25 +1,24 @@
 <?php
 
-namespace App\Filament\Resources\Curses\Pages;
+namespace App\Filament\Resources\Cards\Pages;
 
 use App\Filament\Concerns\PacksTranslations;
-use App\Filament\Resources\Curses\CurseResource;
+use App\Filament\Resources\Cards\CardResource;
+use App\Models\Card;
 use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\EditRecord;
 
-class EditCurse extends EditRecord
+class EditCard extends EditRecord
 {
     use PacksTranslations;
 
     protected const TR = ['name', 'cost', 'description'];
 
-    protected static string $resource = CurseResource::class;
+    protected static string $resource = CardResource::class;
 
     protected function getHeaderActions(): array
     {
-        return [
-            DeleteAction::make(),
-        ];
+        return [DeleteAction::make()];
     }
 
     protected function mutateFormDataBeforeFill(array $data): array
@@ -29,6 +28,6 @@ class EditCurse extends EditRecord
 
     protected function mutateFormDataBeforeSave(array $data): array
     {
-        return $this->packTranslations($data);
+        return Card::normalizeFormData($this->packTranslations($data));
     }
 }

@@ -5,7 +5,7 @@ namespace App\Game;
 use App\Game\Contracts\GameMode;
 use App\Game\Modes\HideAndSeek\HideAndSeekMode;
 use App\Game\Support\Geo;
-use App\Models\Curse;
+use App\Models\Card;
 use App\Models\Player;
 use App\Models\Question;
 use App\Models\Session;
@@ -284,7 +284,7 @@ class GameStatePresenter
     private function resolveCards(array $cards): array
     {
         $curseIds = array_values(array_filter(array_map(fn ($c) => $c['curse_id'] ?? null, $cards)));
-        $models = Curse::whereIn('id', array_unique($curseIds))->get()->keyBy('id');
+        $models = Card::whereIn('id', array_unique($curseIds))->get()->keyBy('id');
 
         return array_map(function ($card) use ($models) {
             $type = $card['type'] ?? 'curse';
@@ -330,7 +330,7 @@ class GameStatePresenter
             ->filter(fn ($c) => ($c['round'] ?? 0) === $round)
             ->values();
 
-        $models = Curse::whereIn('id', $played->pluck('curse_id')->filter()->unique()->all())->get()->keyBy('id');
+        $models = Card::whereIn('id', $played->pluck('curse_id')->filter()->unique()->all())->get()->keyBy('id');
         $now = now()->timestamp;
 
         return $played->map(function ($c) use ($models, $now) {

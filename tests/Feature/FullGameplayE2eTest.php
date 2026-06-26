@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Models\Curse;
+use App\Models\Card;
 use App\Models\Player;
 use App\Models\Question;
 use App\Models\User;
@@ -30,7 +30,7 @@ class FullGameplayE2eTest extends TestCase
         // curse. Seed enough copies: the depleting deck never recycles, and the round draws
         // 2 per answer across two questions.
         for ($i = 1; $i <= 8; $i++) {
-            Curse::create([
+            Card::create([
                 'key' => "c{$i}", 'name' => ['hu' => 'Átok', 'en' => 'Curse'], 'cost' => ['hu' => 'x', 'en' => 'x'],
                 'description' => ['hu' => 'x', 'en' => 'x'], 'is_active' => true,
             ]);

@@ -3,7 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Curse;
+use App\Models\Card;
 use App\Models\Question;
 
 /**
@@ -28,13 +28,13 @@ class CatalogController extends Controller
 
     public function curses()
     {
-        return Curse::query()->where('is_active', true)->orderBy('sort')->get()->map(fn (Curse $c) => [
+        return Card::query()->where('type', 'curse')->where('is_active', true)->orderBy('sort')->get()->map(fn (Card $c) => [
             'id' => $c->id,
             'key' => $c->key,
             'name' => $c->name,
             'cost' => $c->cost,
             'description' => $c->description,
-            'parameters' => $c->parameters,
+            'effect' => $c->effect,
         ]);
     }
 }

@@ -3,9 +3,9 @@
 namespace Tests\Feature;
 
 use App\Enums\QuestionCategory;
-use App\Models\Curse;
+use App\Models\Card;
 use App\Models\Question;
-use Database\Seeders\CurseSeeder;
+use Database\Seeders\CardSeeder;
 use Database\Seeders\QuestionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -16,18 +16,25 @@ class ContentSeederTest extends TestCase
 
     public function test_seeds_the_official_jet_lag_content(): void
     {
-        $this->seed(CurseSeeder::class);
+        $this->seed(CardSeeder::class);
         $this->seed(QuestionSeeder::class);
 
-        $this->assertSame(24, Curse::count());
+        // The official deck: 24 curses + 7 powerup rows + 13 time-bonus rows.
+        $this->assertSame(24, Card::where('type', 'curse')->count());
+        $this->assertSame(7, Card::where('type', 'powerup')->count());
+        $this->assertSame(13, Card::where('type', 'time_bonus')->count());
+        // …expanding (by `count`) to 70 physical cards: 24 + 21 + 25.
+        $this->assertSame(70, (int) Card::sum('count'));
+        $this->assertSame(21, (int) Card::where('type', 'powerup')->sum('count'));
+        $this->assertSame(25, (int) Card::where('type', 'time_bonus')->sum('count'));
         $this->assertSame(66, Question::count());
 
         // All seeded content is official (not custom).
-        $this->assertSame(0, Curse::where('is_custom', true)->count());
+        $this->assertSame(0, Card::where('is_custom', true)->count());
         $this->assertSame(0, Question::where('is_custom', true)->count());
 
         // A known curse and every question category are present.
-        $this->assertTrue(Curse::where('key', 'the_labyrinth')->exists());
+        $this->assertTrue(Card::where('key', 'the_labyrinth')->exists());
         foreach (QuestionCategory::cases() as $category) {
             $this->assertTrue(
                 Question::where('category', $category->value)->exists(),
@@ -38,21 +45,21 @@ class ContentSeederTest extends TestCase
 
     public function test_seeding_is_idempotent(): void
     {
-        $this->seed(CurseSeeder::class);
-        $this->seed(CurseSeeder::class);
+        $this->seed(CardSeeder::class);
+        $this->seed(CardSeeder::class);
         $this->seed(QuestionSeeder::class);
         $this->seed(QuestionSeeder::class);
 
-        $this->assertSame(24, Curse::count());
+        $this->assertSame(44, Card::count()); // 24 + 7 + 13 rows, unchanged on re-seed
         $this->assertSame(66, Question::count());
     }
 
     public function test_official_content_is_bilingual(): void
     {
-        $this->seed(CurseSeeder::class);
+        $this->seed(CardSeeder::class);
         $this->seed(QuestionSeeder::class);
 
-        $curse = Curse::where('key', 'the_labyrinth')->firstOrFail();
+        $curse = Card::where('key', 'the_labyrinth')->firstOrFail();
         $this->assertSame('A labirintus', $curse->getTranslation('name', 'hu'));
         $this->assertSame('The Labyrinth', $curse->getTranslation('name', 'en'));
 

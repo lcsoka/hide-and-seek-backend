@@ -7,7 +7,7 @@ use App\Enums\SessionStatus;
 use App\Filament\Widgets\GameStatsOverview;
 use App\Filament\Widgets\RecentSessions;
 use App\Filament\Widgets\SessionsChart;
-use App\Models\Curse;
+use App\Models\Card;
 use App\Models\Feedback;
 use App\Models\Question;
 use App\Models\Session;
@@ -80,7 +80,7 @@ class AdminPanelTest extends TestCase
         $this->seed(); // questions + curses + sample session
         $this->actingAs(User::factory()->create());
 
-        foreach (['questions', 'curses', 'feedback'] as $slug) {
+        foreach (['questions', 'cards', 'feedback'] as $slug) {
             $this->get("/admin/{$slug}")->assertSuccessful();
         }
 
@@ -88,8 +88,8 @@ class AdminPanelTest extends TestCase
         $question = Question::query()->first();
         $this->get("/admin/questions/{$question->getKey()}/edit")->assertSuccessful();
 
-        $curse = Curse::query()->first();
-        $this->get("/admin/curses/{$curse->getKey()}/edit")->assertSuccessful();
+        $curse = Card::query()->first();
+        $this->get("/admin/cards/{$curse->getKey()}/edit")->assertSuccessful();
 
         $feedback = Feedback::create([
             'type' => 'bug', 'message' => 'something broke', 'status' => 'open',

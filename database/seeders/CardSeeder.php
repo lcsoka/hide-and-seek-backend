@@ -2,45 +2,82 @@
 
 namespace Database\Seeders;
 
-use App\Models\Curse;
+use App\Models\Card;
 use Illuminate\Database\Seeder;
 
-class CurseSeeder extends Seeder
+class CardSeeder extends Seeder
 {
     /**
-     * Official Jet Lag: Hide + Seek curses (bilingual en/hu).
-     * Source: https://jetlag.denull.ru/en/rules/curses/ (and the Jet Lag wiki).
-     * Hungarian is a first pass — refine wording in the admin (locale-aware).
+     * The official Jet Lag: Hide + Seek hider deck (bilingual en/hu): curses (with their
+     * structured `effect`), powerups, and time-bonuses — all rows in the `cards` table,
+     * each with a `count` of copies in the deck.
+     * Source: https://jetlag.denull.ru/en/rules/ (and the Jet Lag wiki).
      */
     public function run(): void
     {
-        $parameters = $this->parameters();
+        $effects = $this->effects();
+        $sort = 0;
 
-        foreach ($this->curses() as $i => $curse) {
-            Curse::updateOrCreate(
-                ['key' => $curse['key']],
-                [
-                    'name' => $curse['name'],
-                    'cost' => $curse['cost'],
-                    'description' => $curse['description'],
-                    'parameters' => $parameters[$curse['key']] ?? null,
-                    'is_custom' => false,
-                    'is_active' => true,
-                    'sort' => $i + 1,
-                ],
-            );
+        foreach ($this->curses() as $curse) {
+            Card::updateOrCreate(['key' => $curse['key']], [
+                'type' => 'curse',
+                'name' => $curse['name'],
+                'cost' => $curse['cost'],
+                'description' => $curse['description'],
+                'effect' => $effects[$curse['key']] ?? null,
+                'count' => 1,
+                'is_custom' => false,
+                'is_active' => true,
+                'sort' => ++$sort,
+            ]);
+        }
+
+        foreach ($this->powerups() as $power => $count) {
+            Card::updateOrCreate(['key' => "powerup.{$power}"], [
+                'type' => 'powerup',
+                'name' => ['en' => __('cards.'.$power.'.name', [], 'en'), 'hu' => __('cards.'.$power.'.name', [], 'hu')],
+                'description' => ['en' => __('cards.'.$power.'.description', [], 'en'), 'hu' => __('cards.'.$power.'.description', [], 'hu')],
+                'power' => $power,
+                'count' => $count,
+                'is_custom' => false,
+                'is_active' => true,
+                'sort' => ++$sort,
+            ]);
+        }
+
+        foreach ($this->timeBonuses() as $minutes => $count) {
+            Card::updateOrCreate(['key' => "time_bonus.{$minutes}"], [
+                'type' => 'time_bonus',
+                'name' => ['en' => "+{$minutes} min", 'hu' => "+{$minutes} perc"],
+                'description' => ['en' => "Adds {$minutes} minutes to the hider's time.", 'hu' => "{$minutes} percet ad a bújó idejéhez."],
+                'minutes' => $minutes,
+                'count' => $count,
+                'is_custom' => false,
+                'is_active' => true,
+                'sort' => ++$sort,
+            ]);
         }
     }
 
+    /** Powerup => copies in the deck (the official 21-card mix). */
+    private function powerups(): array
+    {
+        return ['randomize' => 4, 'veto' => 4, 'duplicate' => 2, 'move' => 1, 'discard_1_draw_2' => 4, 'discard_2_draw_3' => 4, 'draw_1_expand_1' => 2];
+    }
+
+    /** Minutes => copies in the deck (the official 25-card time-bonus set). */
+    private function timeBonuses(): array
+    {
+        return [2 => 2, 3 => 2, 4 => 2, 5 => 2, 6 => 3, 8 => 2, 9 => 2, 10 => 2, 12 => 2, 15 => 2, 18 => 1, 20 => 1, 30 => 2];
+    }
+
     /**
-     * Lifecycle metadata per curse: `requires_proof` (seekers must upload a photo to
-     * clear it) and/or `duration_s` (auto-expires after this many seconds). Derived
-     * from the official cost/effect; tune in the admin. Curses absent here are plain
-     * rule-effects with no timer or proof.
+     * Structured consequence per curse (requires_proof / duration_s / dice / blocks_asking /
+     * disable_categories / bonus_draws). Curses absent here are plain social rule-effects.
      *
      * @return array<string, array<string, mixed>>
      */
-    private function parameters(): array
+    private function effects(): array
     {
         return [
             // "Photograph / film X before asking" — a photo clears them; they block asking until done.

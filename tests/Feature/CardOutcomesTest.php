@@ -3,9 +3,9 @@
 namespace Tests\Feature;
 
 use App\Events\GameEventBroadcast;
-use App\Models\Curse;
+use App\Models\Card;
 use App\Models\Question;
-use Database\Seeders\CurseSeeder;
+use Database\Seeders\CardSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Laravel\Sanctum\Sanctum;
@@ -20,6 +20,7 @@ class CardOutcomesTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+        $this->seed(CardSeeder::class); // the deck is now DB-backed — give it cards to draw
         Event::fake([GameEventBroadcast::class]);
     }
 
@@ -39,9 +40,9 @@ class CardOutcomesTest extends TestCase
 
     public function test_every_official_curse_plays_and_reflects_its_parameters(): void
     {
-        $this->seed(CurseSeeder::class);
+        $this->seed(CardSeeder::class);
         $ctx = $this->startSeeking();
-        $curses = Curse::where('is_active', true)->get();
+        $curses = Card::where('type', 'curse')->where('is_active', true)->get();
         $this->assertGreaterThanOrEqual(24, $curses->count());
 
         foreach ($curses->values() as $i => $curse) {
@@ -51,7 +52,7 @@ class CardOutcomesTest extends TestCase
             $this->assertNotNull($active, "curse {$curse->key} should be active after playing");
             $this->assertNotNull($active['name']);
 
-            $params = $curse->parameters ?? [];
+            $params = $curse->effect ?? [];
             $this->assertSame((bool) ($params['requires_proof'] ?? false), $active['requires_proof'], "{$curse->key} requires_proof");
             $this->assertSame($params['dice'] ?? null, $active['dice'], "{$curse->key} dice");
             if (isset($params['duration_s'])) {
@@ -90,8 +91,8 @@ class CardOutcomesTest extends TestCase
 
     public function test_overflowing_chalice_grants_an_extra_draw_on_the_next_answer(): void
     {
-        $this->seed(CurseSeeder::class);
-        $chalice = Curse::where('key', 'the_overflowing_chalice')->firstOrFail();
+        $this->seed(CardSeeder::class);
+        $chalice = Card::where('key', 'the_overflowing_chalice')->firstOrFail();
         $ctx = $this->startSeeking();
         $this->place($ctx, [47.50, 19.04], [47.55, 19.10]);
 

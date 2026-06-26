@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Models\Curse;
+use App\Models\Card;
 use App\Models\Player;
 use App\Models\Question;
 use App\Models\User;
@@ -203,7 +203,7 @@ class GameplayTest extends TestCase
             'prompt' => ['hu' => '?', 'en' => '?'], 'reward_draw' => 2, 'reward_keep' => 2, 'is_active' => true,
         ]);
         foreach (['c1', 'c2', 'c3'] as $key) {
-            Curse::create([
+            Card::create([
                 'key' => $key, 'name' => ['hu' => $key, 'en' => $key], 'cost' => ['hu' => 'x', 'en' => 'x'],
                 'description' => ['hu' => 'x', 'en' => 'x'], 'is_active' => true,
             ]);
@@ -272,7 +272,7 @@ class GameplayTest extends TestCase
             'key' => 'hidden', 'category' => 'radar',
             'title' => ['hu' => 'Rejtett', 'en' => 'Hidden'], 'prompt' => ['hu' => 'x', 'en' => 'x'], 'is_active' => false,
         ]);
-        Curse::create([
+        Card::create([
             'key' => 'luxury_car', 'name' => ['hu' => 'A luxusautó', 'en' => 'The Luxury Car'],
             'cost' => ['hu' => 'Fotó', 'en' => 'A photo'], 'description' => ['hu' => 'x', 'en' => 'x'], 'is_active' => true,
         ]);

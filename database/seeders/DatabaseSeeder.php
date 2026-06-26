@@ -21,7 +21,7 @@ class DatabaseSeeder extends Seeder
 
         // Official Jet Lag content (questions + curses).
         $this->call([
-            CurseSeeder::class,
+            CardSeeder::class,
             QuestionSeeder::class,
         ]);
 

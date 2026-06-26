@@ -3,7 +3,7 @@
 namespace Tests\Feature;
 
 use App\Events\GameEventBroadcast;
-use App\Models\Curse;
+use App\Models\Card;
 use App\Models\Question;
 use App\Models\Session;
 use App\Models\User;
@@ -121,9 +121,9 @@ class CurseAndPhotoTest extends TestCase
     {
         Event::fake([GameEventBroadcast::class]);
         $ctx = $this->setUpSeeking();
-        $curse = Curse::create([
+        $curse = Card::create([
             'key' => 'proof_curse', 'name' => ['en' => 'Proof curse'], 'description' => ['en' => 'Photograph a car'],
-            'parameters' => ['requires_proof' => true], 'is_active' => true,
+            'effect' => ['requires_proof' => true], 'is_active' => true,
         ]);
 
         // Put the curse card in the hider's hand, then play it.
@@ -187,9 +187,9 @@ class CurseAndPhotoTest extends TestCase
     {
         Event::fake([GameEventBroadcast::class]);
         $ctx = $this->setUpSeeking();
-        $curse = Curse::create([
+        $curse = Card::create([
             'key' => 'dice_curse', 'name' => ['en' => 'Jammed Door'], 'description' => ['en' => 'Roll 7+ to enter'],
-            'parameters' => ['dice' => ['count' => 2, 'sides' => 6, 'target' => 7]], 'is_active' => true,
+            'effect' => ['dice' => ['count' => 2, 'sides' => 6, 'target' => 7]], 'is_active' => true,
         ]);
         $this->giveHiderCard($ctx['sessionId'], ['uid' => 'h1', 'type' => 'curse', 'curse_id' => $curse->id]);
 
@@ -215,9 +215,9 @@ class CurseAndPhotoTest extends TestCase
     {
         Event::fake([GameEventBroadcast::class]);
         $ctx = $this->setUpSeeking();
-        $curse = Curse::create([
+        $curse = Card::create([
             'key' => 'timed_curse', 'name' => ['en' => 'Timed curse'], 'description' => ['en' => 'For 30 minutes…'],
-            'parameters' => ['duration_s' => 1800], 'is_active' => true,
+            'effect' => ['duration_s' => 1800], 'is_active' => true,
         ]);
 
         $this->giveHiderCard($ctx['sessionId'], ['uid' => 'h1', 'type' => 'curse', 'curse_id' => $curse->id]);

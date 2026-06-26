@@ -15,7 +15,7 @@ use App\Game\Support\Geo;
 use App\Game\Support\LocationFilter;
 use App\Game\Support\ValidationResult;
 use App\Jobs\ComputeQuestionTruth;
-use App\Models\Curse;
+use App\Models\Card;
 use App\Models\Player;
 use App\Models\Question;
 use App\Models\Session;
@@ -844,8 +844,8 @@ class HideAndSeekMode implements GameMode
         $curseId = $card['curse_id'] ?? null;
 
         // The curse's structured effect drives every consequence (no hardcoded keys).
-        $curse = $curseId !== null ? Curse::find($curseId) : null;
-        $effect = $curse?->parameters ?? [];
+        $curse = $curseId !== null ? Card::find($curseId) : null;
+        $effect = $curse?->effect ?? [];
         $duration = isset($effect['duration_s']) ? (int) $effect['duration_s'] : null;
         $now = now()->timestamp;
         $uid = (string) Str::uuid();
@@ -1077,17 +1077,14 @@ class HideAndSeekMode implements GameMode
     private function deckPool(): array
     {
         $pool = [];
-        foreach (Curse::query()->where('is_active', true)->pluck('id') as $id) {
-            $pool[] = ['type' => 'curse', 'curse_id' => $id];
-        }
-        foreach ((array) config('game.hider_deck.time_bonuses', []) as $bonus) {
-            for ($i = 0; $i < (int) ($bonus['count'] ?? 1); $i++) {
-                $pool[] = ['type' => 'time_bonus', 'minutes' => (int) ($bonus['minutes'] ?? 0)];
-            }
-        }
-        foreach ((array) config('game.hider_deck.powerups', []) as $powerup) {
-            for ($i = 0; $i < (int) ($powerup['count'] ?? 1); $i++) {
-                $pool[] = ['type' => 'powerup', 'power' => $powerup['power']];
+        foreach (Card::query()->where('is_active', true)->orderBy('sort')->get() as $card) {
+            $descriptor = match ($card->type) {
+                'powerup' => ['type' => 'powerup', 'power' => $card->power],
+                'time_bonus' => ['type' => 'time_bonus', 'minutes' => (int) $card->minutes],
+                default => ['type' => 'curse', 'curse_id' => $card->id],
+            };
+            for ($i = 0, $n = max(1, (int) $card->count); $i < $n; $i++) {
+                $pool[] = $descriptor;
             }
         }
 
