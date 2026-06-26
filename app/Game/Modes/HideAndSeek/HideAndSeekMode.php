@@ -63,6 +63,8 @@ class HideAndSeekMode implements GameMode
 
             'hiding_zone_radius_m' => $size->hidingZoneRadiusMeters(),
             'hiding_zone_rule' => config('game.hiding_zone.default_rule', 'circle'),
+            // Which transit stops players may hide at (and that bound the hiding zone).
+            'transit_modes' => config('game.hiding_zone.default_modes', ['metro', 'tram']),
             'time_bonus_s' => $size->timeBonusSeconds(),
             'units' => 'metric', // 'metric' | 'imperial' — display preference for the clients
         ];

@@ -49,6 +49,23 @@ class SessionApiTest extends TestCase
             ->assertStatus(422)->assertJsonValidationErrors(['game_size']);
     }
 
+    public function test_transit_modes_default_and_override(): void
+    {
+        $this->signInGuest();
+
+        // Defaults when not supplied.
+        $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'medium'])
+            ->assertCreated()->assertJsonPath('config.transit_modes', ['metro', 'tram']);
+
+        // Caller can choose which stops players hide at.
+        $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'medium', 'config' => ['transit_modes' => ['rail', 'bus']]])
+            ->assertCreated()->assertJsonPath('config.transit_modes', ['rail', 'bus']);
+
+        // Unknown modes are rejected.
+        $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'medium', 'config' => ['transit_modes' => ['spaceship']]])
+            ->assertStatus(422)->assertJsonValidationErrors(['config.transit_modes.0']);
+    }
+
     public function test_join_by_code_adds_a_player(): void
     {
         $this->signInGuest();

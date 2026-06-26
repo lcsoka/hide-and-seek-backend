@@ -23,6 +23,8 @@ class StoreSessionRequest extends FormRequest
             'city' => ['required', Rule::in(array_keys(config('game.cities', [])))],
             'game_size' => ['required', Rule::enum(GameSize::class)],
             'config' => ['nullable', 'array'],
+            'config.transit_modes' => ['sometimes', 'array', 'min:1'],
+            'config.transit_modes.*' => ['string', Rule::in(['metro', 'tram', 'rail', 'light_rail', 'bus', 'trolleybus'])],
             'display_name' => ['nullable', 'string', 'max:50'],
         ];
     }
