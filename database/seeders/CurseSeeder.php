@@ -43,20 +43,27 @@ class CurseSeeder extends Seeder
     private function parameters(): array
     {
         return [
-            // "Photograph / film X" curses — cleared with a photo.
-            'the_luxury_car' => ['requires_proof' => true],
-            'the_zoologist' => ['requires_proof' => true],
-            'the_bird_guide' => ['requires_proof' => true],
-            'the_cairn' => ['requires_proof' => true],
-            'the_ransom_note' => ['requires_proof' => true],
-            'the_labyrinth' => ['requires_proof' => true],
-            'the_mediocre_travel_agent' => ['requires_proof' => true],
+            // "Photograph / film X before asking" — a photo clears them; they block asking until done.
+            'the_luxury_car' => ['requires_proof' => true, 'blocks_asking' => true],
+            'the_zoologist' => ['requires_proof' => true, 'blocks_asking' => true],
+            'the_bird_guide' => ['requires_proof' => true, 'blocks_asking' => true],
+            'the_cairn' => ['requires_proof' => true, 'blocks_asking' => true],
+            'the_ransom_note' => ['requires_proof' => true, 'blocks_asking' => true],
+            'the_labyrinth' => ['requires_proof' => true, 'blocks_asking' => true],
+            'the_mediocre_travel_agent' => ['requires_proof' => true], // a side-quest, not a hard block
+            // "Solve before asking" with no photo — cleared by marking it done (honor system).
+            'the_hidden_hangman' => ['blocks_asking' => true],
             // Timed effects (representative midpoints of the official ranges).
             'the_jammed_door' => ['duration_s' => 3600, 'dice' => ['count' => 2, 'sides' => 6, 'target' => 7]], // roll 7+ to enter
             'the_gamblers_feet' => ['duration_s' => 1800, 'dice' => ['count' => 1, 'sides' => 6]],              // roll before each step
             'the_right_turn' => ['duration_s' => 1800],      // 20–60 min
-            // Dice-only effect.
-            'the_endless_tumble' => ['dice' => ['count' => 1, 'sides' => 6, 'target' => 5]], // roll 5–6 to proceed
+            // Roll-before-asking effect.
+            'the_endless_tumble' => ['dice' => ['count' => 1, 'sides' => 6, 'target' => 5], 'blocks_asking' => true],
+            // Hider self-buff: +1 card draw on each of the next three answers.
+            'the_overflowing_chalice' => ['bonus_draws' => ['count' => 3]],
+            // Disable question categories for the seekers.
+            'spotty_memory' => ['disable_categories' => ['count' => 1, 'mode' => 'random', 'rotates' => true]],
+            'the_drained_brain' => ['disable_categories' => ['count' => 3, 'mode' => 'choose', 'rotates' => false]],
         ];
     }
 

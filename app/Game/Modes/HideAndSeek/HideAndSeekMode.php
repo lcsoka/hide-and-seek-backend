@@ -100,6 +100,7 @@ class HideAndSeekMode implements GameMode
                 'hider' => array_merge(
                     $pending ? ['answer_question', 'play_curse', 'play_powerup'] : ['play_curse', 'play_powerup'],
                     ($session->state_data['pending_draw'] ?? null) !== null ? ['keep_cards'] : [],
+                    ($session->state_data['pending_curse_choice'] ?? null) !== null ? ['choose_disabled_categories'] : [],
                     ($session->state_data['relocating'] ?? false) ? ['confirm_hidden'] : [],
                     $this->amendableIndex($session) !== null ? ['amend_answer'] : [],
                 ),
@@ -135,9 +136,8 @@ class HideAndSeekMode implements GameMode
             'amend_answer' => ($this->amendableIndex($session) !== null && ($action->payload['answer'] ?? null) !== null)
                 ? ValidationResult::pass()
                 : ValidationResult::fail('There is no recent answer to change.'),
-            'ask_question' => ($session->state_data['pending_question'] ?? null) === null
-                ? ValidationResult::pass()
-                : ValidationResult::fail('A question is already awaiting an answer.'),
+            'ask_question' => $this->validateAsk($session, $this->questionCategoryOf($action)),
+            'start_thermometer' => $this->validateAsk($session, QuestionCategory::Thermometer->value),
             'answer_question' => ($session->state_data['pending_question'] ?? null) !== null
                 ? ValidationResult::pass()
                 : ValidationResult::fail('There is no question to answer.'),
@@ -145,6 +145,7 @@ class HideAndSeekMode implements GameMode
                 ? ValidationResult::pass()
                 : ValidationResult::fail('choose_station requires the station lat and lng.'),
             'confirm_hidden' => $this->validateWithinHidingZone($session, $player),
+            'choose_disabled_categories' => $this->validateChooseDisabled($session, $action),
             default => ValidationResult::pass(),
         };
     }
@@ -167,6 +168,7 @@ class HideAndSeekMode implements GameMode
             'play_curse' => $this->playCurse($player, $action, $data),
             'play_powerup' => $this->playPowerup($action, $data),
             'keep_cards' => $this->keepCards($action, $data),
+            'choose_disabled_categories' => $this->chooseDisabledCategories($action, $data),
             'amend_answer' => $this->amendAnswer($session, $action, $data),
             'complete_curse' => $this->completeCurse($player, $action, $data),
             'roll_dice' => $this->rollDice($action, $data),
@@ -424,7 +426,63 @@ class HideAndSeekMode implements GameMode
         return ValidationResult::pass();
     }
 
-    /** The seeker's available actions, accounting for a running thermometer. */
+    /** The category of the question being asked (from its question_id), or null. */
+    private function questionCategoryOf(Action $action): ?string
+    {
+        $id = $action->payload['question_id'] ?? null;
+
+        return $id !== null ? Question::find($id)?->category?->value : null;
+    }
+
+    /** A question may be asked only with no pending question, no blocking curse, and an enabled category. */
+    private function validateAsk(Session $session, ?string $category): ValidationResult
+    {
+        $data = $session->state_data ?? [];
+        if (($data['pending_question'] ?? null) !== null) {
+            return ValidationResult::fail('A question is already awaiting an answer.');
+        }
+        if ($this->hasBlockingCurse($data)) {
+            return ValidationResult::fail('Clear the active curse before asking a question.');
+        }
+        if ($category !== null && in_array($category, $this->disabledCategories($data), true)) {
+            return ValidationResult::fail('That question category is disabled by a curse.');
+        }
+
+        return ValidationResult::pass();
+    }
+
+    /** The hider must choose exactly the curse-required number of (valid) categories to disable. */
+    private function validateChooseDisabled(Session $session, Action $action): ValidationResult
+    {
+        $choice = $session->state_data['pending_curse_choice'] ?? null;
+        if ($choice === null) {
+            return ValidationResult::fail('No curse is awaiting a category choice.');
+        }
+        $valid = array_map(fn ($c) => $c->value, QuestionCategory::cases());
+        $chosen = array_values(array_unique(array_intersect((array) ($action->payload['categories'] ?? []), $valid)));
+
+        return count($chosen) === (int) ($choice['count'] ?? 3)
+            ? ValidationResult::pass()
+            : ValidationResult::fail('Choose exactly '.($choice['count'] ?? 3).' question categories.');
+    }
+
+    /** The hider picks which categories The Drained Brain disables for the round. */
+    private function chooseDisabledCategories(Action $action, array $data): ActionOutcome
+    {
+        $choice = $data['pending_curse_choice'] ?? null;
+        if ($choice === null) {
+            return new ActionOutcome($data);
+        }
+        $valid = array_map(fn ($c) => $c->value, QuestionCategory::cases());
+        $chosen = array_slice(array_values(array_unique(array_intersect((array) ($action->payload['categories'] ?? []), $valid))), 0, (int) ($choice['count'] ?? 3));
+
+        $data['disabled_categories'] = array_values(array_unique(array_merge($data['disabled_categories'] ?? [], $chosen)));
+        $data['pending_curse_choice'] = null;
+
+        return new ActionOutcome($data, null, [$this->event('CategoriesDisabled', ['categories' => $chosen])]);
+    }
+
+    /** The seeker's available actions, accounting for a running thermometer + active curses. */
     private function seekerActions(Session $session, bool $pending): array
     {
         $data = $session->state_data ?? [];
@@ -434,10 +492,16 @@ class HideAndSeekMode implements GameMode
             return ['stop_thermometer', 'declare_endgame'];
         }
 
+        $active = $this->activeCurseInstances($data);
+        // A blocking curse locks questions until the seekers clear it.
+        $blocked = (bool) array_filter($active, fn ($c) => ! empty($c['blocks_asking']));
+        $canComplete = (bool) array_filter($active, fn ($c) => (! empty($c['requires_proof']) || ! empty($c['blocks_asking'])) && empty($c['dice']));
+        $canRoll = (bool) array_filter($active, fn ($c) => ! empty($c['dice']));
+
         return array_merge(
-            $pending ? ['declare_endgame'] : ['ask_question', 'start_thermometer', 'declare_endgame'],
-            $this->curseAwaitingProof($data) ? ['complete_curse'] : [],
-            $this->curseWithDiceActive($data) ? ['roll_dice'] : [],
+            $pending || $blocked ? ['declare_endgame'] : ['ask_question', 'start_thermometer', 'declare_endgame'],
+            $canComplete ? ['complete_curse'] : [],
+            $canRoll ? ['roll_dice'] : [],
         );
     }
 
@@ -725,6 +789,7 @@ class HideAndSeekMode implements GameMode
         $data['questions'][] = $resolved;
         $data['pending_question'] = null;
         $data['question_answer'] = null; // invalidate the deadline timer
+        $this->rotateSpotty($data); // Spotty Memory changes its disabled category after each question
 
         // Answering rewards the hider: draw `reward_draw` cards and keep `reward_keep`.
         // The hider chooses which to keep (a draw modal); auto-resolve keeps the first few.
@@ -738,7 +803,7 @@ class HideAndSeekMode implements GameMode
             $data['bonus_draws']--;
         }
         if ($drawN > 0) {
-            $drawn = $this->drawCards($drawN);
+            $drawn = $this->drawFromDeck($data, $drawN);
             if ($auto) {
                 $data['hand'] = array_merge($data['hand'] ?? [], array_slice($drawn, 0, $keepN));
             } else {
@@ -778,20 +843,22 @@ class HideAndSeekMode implements GameMode
         }
         $curseId = $card['curse_id'] ?? null;
 
-        // Resolve the curse's lifecycle (a time limit and/or required photo proof).
+        // The curse's structured effect drives every consequence (no hardcoded keys).
         $curse = $curseId !== null ? Curse::find($curseId) : null;
-        $params = $curse?->parameters ?? [];
-        $duration = isset($params['duration_s']) ? (int) $params['duration_s'] : null;
+        $effect = $curse?->parameters ?? [];
+        $duration = isset($effect['duration_s']) ? (int) $effect['duration_s'] : null;
         $now = now()->timestamp;
+        $uid = (string) Str::uuid();
 
         $instance = [
-            'uid' => (string) Str::uuid(),
+            'uid' => $uid,
             'curse_id' => $curseId,
             'by' => $player->id,
             'round' => $data['round'] ?? 0,
             'at' => $now,
-            'requires_proof' => (bool) ($params['requires_proof'] ?? false),
-            'dice' => $params['dice'] ?? null,
+            'requires_proof' => (bool) ($effect['requires_proof'] ?? false),
+            'blocks_asking' => (bool) ($effect['blocks_asking'] ?? false),
+            'dice' => $effect['dice'] ?? null,
             'rolls' => [],
             'expires_at' => $duration !== null ? $now + $duration : null,
             'status' => 'active',
@@ -799,12 +866,29 @@ class HideAndSeekMode implements GameMode
             'completed_at' => null,
         ];
 
-        // The Overflowing Chalice is a hider self-buff with no seeker task: grant +1 card
-        // draw on the next three answers, and mark it done so it doesn't linger as active.
-        if ($curse?->key === 'the_overflowing_chalice') {
-            $data['bonus_draws'] = ($data['bonus_draws'] ?? 0) + 3;
+        // bonus_draws: a hider self-buff (no seeker task) → grant the draws + resolve at once.
+        if ($bonus = (int) ($effect['bonus_draws']['count'] ?? 0)) {
+            $data['bonus_draws'] = ($data['bonus_draws'] ?? 0) + $bonus;
             $instance['status'] = 'completed';
             $instance['completed_at'] = $now;
+        }
+
+        // disable_categories: 'choose' opens a hider picker; 'random' disables one now
+        // (rotating each question if configured).
+        if (is_array($disable = $effect['disable_categories'] ?? null)) {
+            $count = max(1, (int) ($disable['count'] ?? 1));
+            if (($disable['mode'] ?? 'random') === 'choose') {
+                $data['pending_curse_choice'] = ['uid' => $uid, 'curse_id' => $curseId, 'count' => $count];
+            } elseif (! empty($disable['rotates'])) {
+                $instance['rotates_category'] = true;
+                $data['spotty_category'] = $this->randomCategory($this->disabledCategories($data));
+            } else {
+                for ($i = 0; $i < $count; $i++) {
+                    if ($cat = $this->randomCategory($data['disabled_categories'] ?? [])) {
+                        $data['disabled_categories'][] = $cat;
+                    }
+                }
+            }
         }
 
         $data['curses_played'][] = $instance;
@@ -866,40 +950,50 @@ class HideAndSeekMode implements GameMode
         return new ActionOutcome($data);
     }
 
-    /** True if a current-round curse still has dice the seekers can roll. */
-    private function curseWithDiceActive(array $data): bool
+    /** Active (current-round, unexpired) curse instances. */
+    private function activeCurseInstances(array $data): array
     {
         $now = now()->timestamp;
         $round = $data['round'] ?? 0;
 
-        foreach ($data['curses_played'] ?? [] as $curse) {
-            if (($curse['round'] ?? 0) === $round
-                && ($curse['status'] ?? 'active') === 'active'
-                && ($curse['dice'] ?? null) !== null
-                && (($curse['expires_at'] ?? null) === null || $curse['expires_at'] > $now)) {
-                return true;
-            }
-        }
-
-        return false;
+        return array_values(array_filter($data['curses_played'] ?? [], fn ($c) => ($c['round'] ?? 0) === $round
+            && ($c['status'] ?? 'active') === 'active'
+            && (($c['expires_at'] ?? null) === null || $c['expires_at'] > $now)));
     }
 
-    /** True if a curse in the current round still needs photo proof from the seekers. */
-    private function curseAwaitingProof(array $data): bool
+    /** True if an active curse blocks the seekers from asking until they clear it. */
+    private function hasBlockingCurse(array $data): bool
     {
-        $now = now()->timestamp;
-        $round = $data['round'] ?? 0;
+        return (bool) array_filter($this->activeCurseInstances($data), fn ($c) => ! empty($c['blocks_asking']));
+    }
 
-        foreach ($data['curses_played'] ?? [] as $curse) {
-            if (($curse['round'] ?? 0) === $round
-                && ($curse['status'] ?? 'active') === 'active'
-                && ! empty($curse['requires_proof'])
-                && (($curse['expires_at'] ?? null) === null || $curse['expires_at'] > $now)) {
-                return true;
-            }
+    /** Question categories the seekers currently can't ask (Drained Brain + the rotating Spotty Memory). */
+    private function disabledCategories(array $data): array
+    {
+        $disabled = $data['disabled_categories'] ?? [];
+        if (! empty($data['spotty_category'])) {
+            $disabled[] = $data['spotty_category'];
         }
 
-        return false;
+        return array_values(array_unique($disabled));
+    }
+
+    /** A random question category not in $exclude, or null if all are excluded. */
+    private function randomCategory(array $exclude): ?string
+    {
+        $pool = array_values(array_diff(array_map(fn ($c) => $c->value, QuestionCategory::cases()), $exclude));
+
+        return $pool === [] ? null : $pool[array_rand($pool)];
+    }
+
+    /** Spotty Memory "changes after each question": rotate its disabled category to a new one. */
+    private function rotateSpotty(array &$data): void
+    {
+        $rotating = (bool) array_filter($this->activeCurseInstances($data), fn ($c) => ! empty($c['rotates_category']));
+        if ($rotating) {
+            $exclude = array_merge($data['disabled_categories'] ?? [], [$data['spotty_category'] ?? null]);
+            $data['spotty_category'] = $this->randomCategory(array_filter($exclude));
+        }
     }
 
     /** The hider plays a powerup card (removed by uid). Veto is the key functional one. */
@@ -927,12 +1021,13 @@ class HideAndSeekMode implements GameMode
                 }
             }
         } elseif ($power === 'randomize') {
-            $data['hand'] = $this->drawCards(count($data['hand'] ?? []));
+            // Discard the whole hand (gone, not returned to the deck) and draw fresh.
+            $data['hand'] = $this->drawFromDeck($data, count($data['hand'] ?? []));
         } else {
             // Draw powerups: reveal the new cards through the keep-draw modal.
             $draw = ['discard_1_draw_2' => 2, 'discard_2_draw_3' => 3, 'draw_1_expand_1' => 1][$power] ?? 0;
             if ($draw > 0) {
-                $cards = $this->drawCards($draw);
+                $cards = $this->drawFromDeck($data, $draw);
                 $data['pending_draw'] = ['cards' => $cards, 'keep' => count($cards)];
             }
             // 'move' lets the hider relocate: drop the committed spot (questions fall back
@@ -999,17 +1094,23 @@ class HideAndSeekMode implements GameMode
         return $pool;
     }
 
-    /** Draw `n` cards from the pool, each tagged with a unique instance id. */
-    private function drawCards(int $n): array
+    /**
+     * Draw `n` cards off the top of the game deck, each tagged with a unique instance id.
+     * The deck is a shuffled, depleting pile built once and persisted in state_data: it is
+     * NOT refilled, so a card drawn (or played) in an earlier round can never be drawn again
+     * — unless the deck holds multiple copies of it. Runs out → fewer/no cards (never errors).
+     */
+    private function drawFromDeck(array &$data, int $n): array
     {
-        $pool = $this->deckPool();
-        if ($pool === [] || $n <= 0) {
-            return [];
+        if (! isset($data['deck'])) {
+            $deck = $this->deckPool();
+            shuffle($deck);
+            $data['deck'] = $deck;
         }
 
         $cards = [];
-        for ($i = 0; $i < $n; $i++) {
-            $cards[] = $pool[array_rand($pool)] + ['uid' => (string) Str::uuid()];
+        for ($i = 0; $i < $n && ! empty($data['deck']); $i++) {
+            $cards[] = array_shift($data['deck']) + ['uid' => (string) Str::uuid()];
         }
 
         return $cards;
@@ -1105,6 +1206,7 @@ class HideAndSeekMode implements GameMode
             $data['hider_id'], $data['hiding_started_at'], $data['hiding_deadline'], $data['seeking_started_at'], $data['hand'],
             $data['questions'], $data['curses_played'], $data['hider_position'], $data['relocating'], $data['endgame_dwell'],
             $data['pending_question'], $data['question_answer'], $data['thermometer'], $data['last_round'], $data['bonus_draws'],
+            $data['disabled_categories'], $data['spotty_category'], $data['pending_curse_choice'],
         );
 
         return new ActionOutcome($data, 'role_assignment', [$this->event('RoundStarted', ['round' => $completed])]);

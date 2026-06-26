@@ -26,11 +26,15 @@ class FullGameplayE2eTest extends TestCase
             'title' => ['hu' => 'Radar', 'en' => 'Radar'], 'prompt' => ['hu' => '?', 'en' => '?'],
             'reward_draw' => 2, 'reward_keep' => 1, 'is_active' => true,
         ]);
-        Curse::create([
-            'key' => 'c1', 'name' => ['hu' => 'Átok', 'en' => 'Curse'], 'cost' => ['hu' => 'x', 'en' => 'x'],
-            'description' => ['hu' => 'x', 'en' => 'x'], 'is_active' => true,
-        ]);
-        // Deck = curses only, so the drawn/kept card is a playable curse.
+        // Deck = curses only (no powerups/time-bonuses), so every drawn card is a playable
+        // curse. Seed enough copies: the depleting deck never recycles, and the round draws
+        // 2 per answer across two questions.
+        for ($i = 1; $i <= 8; $i++) {
+            Curse::create([
+                'key' => "c{$i}", 'name' => ['hu' => 'Átok', 'en' => 'Curse'], 'cost' => ['hu' => 'x', 'en' => 'x'],
+                'description' => ['hu' => 'x', 'en' => 'x'], 'is_active' => true,
+            ]);
+        }
         config(['game.hider_deck.time_bonuses' => [], 'game.hider_deck.powerups' => []]);
 
         // Host creates; a second player joins.

@@ -64,6 +64,12 @@ class GameStatePresenter
             'zone_locked' => $isHider ? $this->zoneLocked($session) : false,
             // The hider played 'move' and must re-confirm their new spot.
             'relocating' => $isHider ? (bool) ($session->state_data['relocating'] ?? false) : false,
+            // Question categories a curse currently disables (shared — the seeker greys them out).
+            'disabled_categories' => $this->disabledCategoriesView($session),
+            // A blocking curse is stopping the seekers from asking until they clear it.
+            'questions_blocked' => $this->questionsBlocked($session),
+            // The hider must pick categories for a 'choose' curse (e.g. The Drained Brain).
+            'curse_choice' => $isHider ? ($session->state_data['pending_curse_choice'] ?? null) : null,
             'hand' => $isHider ? $this->hand($session) : [],
             'pending_draw' => $isHider ? $this->pendingDraw($session) : null,
             'time_bonus_s' => $isHider ? $this->handTimeBonusSeconds($session) : null,
@@ -72,6 +78,17 @@ class GameStatePresenter
             'standings' => $this->standings($session),
             'last_round' => $session->state_data['last_round'] ?? null,
         ];
+    }
+
+    /** Categories currently disabled by curses — persistent (Drained Brain) + rotating (Spotty Memory). */
+    private function disabledCategoriesView(Session $session): array
+    {
+        $disabled = $session->state_data['disabled_categories'] ?? [];
+        if (! empty($session->state_data['spotty_category'])) {
+            $disabled[] = $session->state_data['spotty_category'];
+        }
+
+        return array_values(array_unique($disabled));
     }
 
     /** Players ranked by total banked hiding time (longest survivor leads). */
@@ -333,6 +350,7 @@ class GameStatePresenter
                 'cost' => $model?->cost,
                 'description' => $model?->description,
                 'requires_proof' => (bool) ($c['requires_proof'] ?? false),
+                'blocks_asking' => (bool) ($c['blocks_asking'] ?? false),
                 'dice' => $c['dice'] ?? null,
                 'last_roll' => $rolls ? end($rolls) : null,
                 'expires_at' => $expiresAt,
@@ -340,6 +358,13 @@ class GameStatePresenter
                 'proof_url' => $c['proof_url'] ?? null,
             ];
         })->all();
+    }
+
+    /** True if an active curse is currently blocking the seekers from asking questions. */
+    private function questionsBlocked(Session $session): bool
+    {
+        return collect($this->activeCurses($session))
+            ->contains(fn ($c) => $c['status'] === 'active' && ! empty($c['blocks_asking']));
     }
 
     /**
