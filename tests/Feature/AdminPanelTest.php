@@ -80,16 +80,18 @@ class AdminPanelTest extends TestCase
         $this->seed(); // questions + curses + sample session
         $this->actingAs(User::factory()->create());
 
-        foreach (['questions', 'cards', 'feedback'] as $slug) {
+        foreach (['questions', 'cards', 'feedback', 'deck'] as $slug) {
             $this->get("/admin/{$slug}")->assertSuccessful();
         }
 
-        // Edit/triage pages render their forms.
+        // Edit/triage pages render their forms (a curse, a powerup, and a time-bonus card).
         $question = Question::query()->first();
         $this->get("/admin/questions/{$question->getKey()}/edit")->assertSuccessful();
 
-        $curse = Card::query()->first();
-        $this->get("/admin/cards/{$curse->getKey()}/edit")->assertSuccessful();
+        foreach (['curse', 'powerup', 'time_bonus'] as $type) {
+            $card = Card::where('type', $type)->firstOrFail();
+            $this->get("/admin/cards/{$card->getKey()}/edit")->assertSuccessful();
+        }
 
         $feedback = Feedback::create([
             'type' => 'bug', 'message' => 'something broke', 'status' => 'open',
