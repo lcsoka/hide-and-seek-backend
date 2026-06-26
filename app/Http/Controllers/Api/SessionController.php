@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Enums\GameSize;
+use App\Events\GameEventBroadcast;
 use App\Game\GameEngine;
 use App\Game\GameStatePresenter;
 use App\Game\SessionFactory;
@@ -43,6 +44,13 @@ class SessionController extends Controller
     {
         $session = Session::where('join_code', strtoupper($code))->firstOrFail();
         $player = $this->factory->join($session, $request->user(), $request->input('display_name'));
+
+        // Tell everyone already in the session (esp. the host's lobby) about the new player,
+        // so the roster updates live instead of needing a refresh.
+        GameEventBroadcast::dispatch($session->id, 'PlayerJoined', [
+            'player_id' => $player->id,
+            'display_name' => $player->display_name,
+        ]);
 
         return response()->json([
             'player' => new PlayerResource($player),

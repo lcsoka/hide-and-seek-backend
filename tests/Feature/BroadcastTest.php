@@ -32,6 +32,20 @@ class BroadcastTest extends TestCase
         Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'SeekingStarted');
     }
 
+    public function test_joining_broadcasts_player_joined_so_the_lobby_updates_live(): void
+    {
+        Event::fake([GameEventBroadcast::class]);
+
+        $host = User::factory()->create();
+        Sanctum::actingAs($host);
+        $code = $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'small'])->json('join_code');
+
+        Sanctum::actingAs(User::factory()->create());
+        $playerId = $this->postJson("/api/sessions/{$code}/join", ['display_name' => 'Bo'])->json('player.id');
+
+        Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'PlayerJoined' && ($e->payload['player_id'] ?? null) === $playerId);
+    }
+
     public function test_event_targets_the_session_presence_channel(): void
     {
         $event = new GameEventBroadcast('abc', 'SeekingStarted', ['round' => 0]);

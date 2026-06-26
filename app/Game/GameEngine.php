@@ -4,6 +4,7 @@ namespace App\Game;
 
 use App\Enums\SessionStatus;
 use App\Events\GameEventBroadcast;
+use App\Game\Contracts\GameMode;
 use App\Game\Support\Action;
 use App\Game\Support\ActionOutcome;
 use App\Jobs\FireGameTimer;
@@ -70,6 +71,12 @@ class GameEngine
         if ($outcome !== null) {
             $this->apply($session, $outcome, 'location:observed', $player->id, []);
         }
+    }
+
+    /** The game-mode handler for a session (e.g. to inspect available actions). */
+    public function modeFor(Session $session): GameMode
+    {
+        return $this->modes->make($session->game_mode->value);
     }
 
     /** Resolve the acting player for an authenticated user, or 403. */
