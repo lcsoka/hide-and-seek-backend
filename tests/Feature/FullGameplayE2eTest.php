@@ -99,6 +99,75 @@ class FullGameplayE2eTest extends TestCase
         $this->action($sid, 'advance_round')->assertOk()->assertJsonPath('state', 'finished')->assertJsonPath('status', 'finished');
     }
 
+    public function test_second_round_resets_question_numbers_and_recomputes_zone_for_the_new_hider(): void
+    {
+        $radar = Question::create([
+            'key' => 'radar', 'category' => 'radar', 'title' => ['en' => 'Radar'], 'prompt' => ['en' => '?'],
+            'reward_draw' => 2, 'reward_keep' => 1, 'is_active' => true,
+        ]);
+        for ($i = 1; $i <= 8; $i++) {
+            Card::create(['key' => "c{$i}", 'name' => ['en' => 'Curse'], 'cost' => ['en' => 'x'], 'description' => ['en' => 'x'], 'is_active' => true]);
+        }
+        config(['game.hider_deck.time_bonuses' => [], 'game.hider_deck.powerups' => []]);
+
+        $host = User::factory()->create();
+        Sanctum::actingAs($host);
+        $create = $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 2], 'display_name' => 'Al'])->assertCreated();
+        $sid = $create->json('id');
+        $hostPid = $create->json('players.0.id');
+        $seeker = User::factory()->create();
+        Sanctum::actingAs($seeker);
+        $seekerPid = $this->postJson("/api/sessions/{$create->json('join_code')}/join", ['display_name' => 'Bo'])->json('player.id');
+
+        // --- ROUND 1: the HOST hides at spot A ---
+        Sanctum::actingAs($host);
+        $this->postJson("/api/sessions/{$sid}/start");
+        $this->action($sid, 'assign_hider', ['player_id' => $hostPid])->assertJsonPath('state', 'hiding');
+        Player::whereKey($hostPid)->update(['last_lat' => 47.4979, 'last_lng' => 19.0402]);
+        Player::whereKey($seekerPid)->update(['last_lat' => 47.55, 'last_lng' => 19.10]);
+        $this->action($sid, 'choose_station', ['lat' => 47.4979, 'lng' => 19.0402]);
+        // The hider's zone is centred on spot A.
+        $this->assertEqualsWithDelta(47.4979, $this->getJson("/api/sessions/{$sid}/state")->json('hiding_zone.center.lat'), 1e-6);
+        $this->action($sid, 'confirm_hidden')->assertJsonPath('state', 'seeking');
+
+        Sanctum::actingAs($seeker);
+        $this->action($sid, 'ask_question', ['question_id' => $radar->id, 'radius_m' => 5000]);
+        Sanctum::actingAs($host);
+        $this->action($sid, 'answer_question');
+        $this->assertSame(1, $this->getJson("/api/sessions/{$sid}/state")->json('questions.0.seq'), 'round 1 first question is #1');
+        $draw = $this->getJson("/api/sessions/{$sid}/state")->json('pending_draw');
+        $this->action($sid, 'keep_cards', ['uids' => [$draw['cards'][0]['uid']]]);
+        Sanctum::actingAs($seeker);
+        Player::whereKey($seekerPid)->update(['last_lat' => 47.4979, 'last_lng' => 19.0402]);
+        $this->action($sid, 'declare_endgame')->assertJsonPath('state', 'endgame');
+        $this->action($sid, 'confirm_found')->assertJsonPath('state', 'round_end');
+
+        // --- ADVANCE to round 2 (rounds=2, so not finished) ---
+        Sanctum::actingAs($host);
+        $this->action($sid, 'advance_round')->assertOk()->assertJsonPath('state', 'role_assignment');
+
+        // --- ROUND 2: the OTHER player (Bo) hides at a DIFFERENT spot B ---
+        $this->action($sid, 'assign_hider', ['player_id' => $seekerPid])->assertJsonPath('state', 'hiding');
+        Sanctum::actingAs($seeker); // Bo is now the hider
+        Player::whereKey($seekerPid)->update(['last_lat' => 47.5100, 'last_lng' => 19.0700]);
+        $this->action($sid, 'choose_station', ['lat' => 47.5100, 'lng' => 19.0700]);
+        // The zone is recomputed for the NEW hider's spot B (not the old spot A).
+        $zone = $this->getJson("/api/sessions/{$sid}/state")->json('hiding_zone.center');
+        $this->assertEqualsWithDelta(47.5100, $zone['lat'], 1e-6, 'round 2 zone is for the new hider');
+        $this->assertEqualsWithDelta(19.0700, $zone['lng'], 1e-6);
+        $this->action($sid, 'confirm_hidden')->assertJsonPath('state', 'seeking');
+
+        // The host is now the seeker; their first question is numbered #1 again (seq reset).
+        Sanctum::actingAs($host);
+        Player::whereKey($hostPid)->update(['last_lat' => 47.40, 'last_lng' => 19.00]);
+        $this->action($sid, 'ask_question', ['question_id' => $radar->id, 'radius_m' => 5000]);
+        Sanctum::actingAs($seeker); // Bo (hider) answers
+        $this->action($sid, 'answer_question');
+        $questions = $this->getJson("/api/sessions/{$sid}/state")->json('questions');
+        $this->assertCount(1, $questions, 'round 2 starts with no carried-over questions');
+        $this->assertSame(1, $questions[0]['seq'], 'question numbering resets each round');
+    }
+
     private function action(string $sid, string $type, array $payload = [])
     {
         return $this->postJson("/api/sessions/{$sid}/actions", ['type' => $type, 'payload' => $payload]);

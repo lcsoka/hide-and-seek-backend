@@ -1267,9 +1267,9 @@ class HideAndSeekMode implements GameMode
         // Clear all round-scoped state so the next round starts clean (scores persist).
         unset(
             $data['hider_id'], $data['hiding_started_at'], $data['hiding_deadline'], $data['seeking_started_at'], $data['hand'],
-            $data['questions'], $data['curses_played'], $data['hider_position'], $data['relocating'], $data['endgame_dwell'],
+            $data['questions'], $data['question_seq'], $data['curses_played'], $data['hider_position'], $data['relocating'], $data['endgame_dwell'],
             $data['pending_question'], $data['question_answer'], $data['thermometer'], $data['last_round'], $data['bonus_draws'],
-            $data['disabled_categories'], $data['spotty_category'], $data['pending_curse_choice'], $data['hand_limit'],
+            $data['disabled_categories'], $data['spotty_category'], $data['pending_curse_choice'], $data['hand_limit'], $data['hiding_zone'],
         );
 
         return new ActionOutcome($data, 'role_assignment', [$this->event('RoundStarted', ['round' => $completed])]);
