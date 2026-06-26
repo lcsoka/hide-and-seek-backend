@@ -35,12 +35,26 @@ class Card extends Model
 
     protected $casts = [
         'effect' => 'array',
-        'minutes' => 'integer',
+        'minutes' => 'array', // time-bonus: {small, medium, large} minutes by play size
         'count' => 'integer',
         'is_custom' => 'boolean',
         'is_active' => 'boolean',
         'sort' => 'integer',
     ];
+
+    /**
+     * Minutes a time-bonus card grants for the given play size. Tolerates a per-size map
+     * ({small,medium,large}) or a bare integer (legacy / single value), falling back to
+     * medium then any value.
+     */
+    public static function minutesForSize(mixed $minutes, string $size): int
+    {
+        if (! is_array($minutes)) {
+            return (int) $minutes;
+        }
+
+        return (int) ($minutes[$size] ?? $minutes['medium'] ?? (array_values($minutes)[0] ?? 0));
+    }
 
     /**
      * Normalize admin-form data: clear fields irrelevant to the card's type and prune the
@@ -53,8 +67,15 @@ class Card extends Model
     {
         $type = $data['type'] ?? 'curse';
         $data['power'] = $type === 'powerup' ? ($data['power'] ?? null) : null;
-        $data['minutes'] = $type === 'time_bonus' ? ($data['minutes'] ?? null) : null;
         $data['effect'] = $type === 'curse' ? self::cleanEffect($data['effect'] ?? null) : null;
+
+        // Time-bonus minutes are a {small, medium, large} int map; everything else is null.
+        if ($type === 'time_bonus') {
+            $m = (array) ($data['minutes'] ?? []);
+            $data['minutes'] = ['small' => (int) ($m['small'] ?? 0), 'medium' => (int) ($m['medium'] ?? 0), 'large' => (int) ($m['large'] ?? 0)];
+        } else {
+            $data['minutes'] = null;
+        }
 
         return $data;
     }

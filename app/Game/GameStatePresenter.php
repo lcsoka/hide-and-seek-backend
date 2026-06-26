@@ -248,7 +248,13 @@ class GameStatePresenter
      */
     private function hand(Session $session): array
     {
-        return $this->resolveCards($session->state_data['hand'] ?? []);
+        return $this->resolveCards($session->state_data['hand'] ?? [], $this->gameSize($session));
+    }
+
+    /** The session's play size (small/medium/large), used to resolve per-size time bonuses. */
+    private function gameSize(Session $session): string
+    {
+        return (string) ($session->config['game_size'] ?? 'medium');
     }
 
     /** Cards the hider just drew and must choose from (hider-only). */
@@ -261,15 +267,17 @@ class GameStatePresenter
 
         return [
             'keep' => (int) ($draw['keep'] ?? 1),
-            'cards' => $this->resolveCards($draw['cards'] ?? []),
+            'cards' => $this->resolveCards($draw['cards'] ?? [], $this->gameSize($session)),
         ];
     }
 
     /** Banked time-bonus seconds from time-bonus cards in the hand (hider-only). */
     private function handTimeBonusSeconds(Session $session): int
     {
+        $size = $this->gameSize($session);
+
         return array_sum(array_map(
-            fn ($c) => ($c['type'] ?? 'curse') === 'time_bonus' ? (int) ($c['minutes'] ?? 0) * 60 : 0,
+            fn ($c) => ($c['type'] ?? 'curse') === 'time_bonus' ? Card::minutesForSize($c['minutes'] ?? 0, $size) * 60 : 0,
             $session->state_data['hand'] ?? [],
         ));
     }
@@ -281,16 +289,17 @@ class GameStatePresenter
      * @param  array<int, array<string, mixed>>  $cards
      * @return array<int, array<string, mixed>>
      */
-    private function resolveCards(array $cards): array
+    private function resolveCards(array $cards, string $size): array
     {
         $curseIds = array_values(array_filter(array_map(fn ($c) => $c['curse_id'] ?? null, $cards)));
         $models = Card::whereIn('id', array_unique($curseIds))->get()->keyBy('id');
 
-        return array_map(function ($card) use ($models) {
+        return array_map(function ($card) use ($models, $size) {
             $type = $card['type'] ?? 'curse';
 
             if ($type === 'time_bonus') {
-                $minutes = (int) ($card['minutes'] ?? 0);
+                // Resolve the per-size value so the hider sees the minutes for THIS game.
+                $minutes = Card::minutesForSize($card['minutes'] ?? 0, $size);
 
                 return [
                     'uid' => $card['uid'] ?? null, 'type' => 'time_bonus', 'minutes' => $minutes,

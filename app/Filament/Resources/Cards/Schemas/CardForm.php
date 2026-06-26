@@ -48,10 +48,16 @@ class CardForm
                             'draw_1_expand_1' => 'Draw 1, expand hand',
                         ]),
 
-                    // Time-bonus-only.
-                    TextInput::make('minutes')->numeric()->minValue(1)->suffix('min')
-                        ->visible(fn (Get $get) => $get('type') === 'time_bonus')
-                        ->required(fn (Get $get) => $get('type') === 'time_bonus'),
+                ]),
+
+            // Time-bonus-only: minutes added depend on the play size.
+            Section::make('Time bonus (minutes by play size)')
+                ->visible(fn (Get $get) => $get('type') === 'time_bonus')
+                ->columns(3)
+                ->schema([
+                    TextInput::make('minutes.small')->label('Small')->numeric()->minValue(0)->suffix('min')->required(),
+                    TextInput::make('minutes.medium')->label('Medium')->numeric()->minValue(0)->suffix('min')->required(),
+                    TextInput::make('minutes.large')->label('Large')->numeric()->minValue(0)->suffix('min')->required(),
                 ]),
 
             Section::make('Magyar (HU)')

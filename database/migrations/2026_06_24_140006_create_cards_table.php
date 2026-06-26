@@ -18,7 +18,7 @@ return new class extends Migration
             $table->text('description');                      // translatable effect
             $table->json('effect')->nullable();               // structured consequence config
             $table->string('power')->nullable();              // powerups: veto/randomize/…
-            $table->unsignedInteger('minutes')->nullable();   // time-bonuses: minutes added
+            $table->json('minutes')->nullable();              // time-bonuses: {small,medium,large} minutes by play size
             $table->unsignedInteger('count')->default(1);     // copies of this card in the deck
             $table->boolean('is_custom')->default(false);     // false = seeded official
             $table->boolean('is_active')->default(true);

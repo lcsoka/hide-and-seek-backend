@@ -52,7 +52,9 @@ class CardsTable
             return (string) $record->power;
         }
         if ($record->type === 'time_bonus') {
-            return "+{$record->minutes} min";
+            $m = $record->minutes ?? [];
+
+            return is_array($m) ? "+{$m['small']}/{$m['medium']}/{$m['large']} min (S/M/L)" : "+{$m} min";
         }
 
         $e = $record->effect ?? [];

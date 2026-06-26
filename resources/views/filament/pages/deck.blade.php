@@ -46,7 +46,7 @@
                             @if ($card->type === 'powerup')
                                 <span class="text-gray-400">· {{ $card->power }}</span>
                             @elseif ($card->type === 'time_bonus')
-                                <span class="text-gray-400">· +{{ $card->minutes }} min</span>
+                                <span class="text-gray-400">· +{{ implode('/', $card->minutes ?? []) }} min (S/M/L)</span>
                             @endif
                         </span>
                         <span class="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-semibold text-gray-600 dark:bg-white/10 dark:text-gray-300">×{{ $card->count }}</span>

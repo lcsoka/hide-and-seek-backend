@@ -1080,7 +1080,7 @@ class HideAndSeekMode implements GameMode
         foreach (Card::query()->where('is_active', true)->orderBy('sort')->get() as $card) {
             $descriptor = match ($card->type) {
                 'powerup' => ['type' => 'powerup', 'power' => $card->power],
-                'time_bonus' => ['type' => 'time_bonus', 'minutes' => (int) $card->minutes],
+                'time_bonus' => ['type' => 'time_bonus', 'minutes' => $card->minutes],
                 default => ['type' => 'curse', 'curse_id' => $card->id],
             };
             for ($i = 0, $n = max(1, (int) $card->count); $i < $n; $i++) {
@@ -1144,7 +1144,7 @@ class HideAndSeekMode implements GameMode
     {
         $hiderId = $data['hider_id'] ?? null;
         $seconds = max(0, now()->timestamp - (int) ($data['hiding_started_at'] ?? now()->timestamp));
-        $bonus = $this->bankedTimeBonusSeconds($data); // kept time-bonus cards add to the hider's time
+        $bonus = $this->bankedTimeBonusSeconds($data, (string) ($session->config['game_size'] ?? 'medium')); // kept time-bonus cards add to the hider's time
         if ($hiderId !== null) {
             $data['scores'][$hiderId] = ($data['scores'][$hiderId] ?? 0) + $seconds + $bonus;
         }
@@ -1172,17 +1172,17 @@ class HideAndSeekMode implements GameMode
             'surrendered' => $surrendered,
             'seconds' => $seconds,
             'hider_position' => $data['hider_position'] ?? null, // the committed spot, now revealed
-            'time_bonus_s' => $this->bankedTimeBonusSeconds($data),
+            'time_bonus_s' => $this->bankedTimeBonusSeconds($data, (string) ($session->config['game_size'] ?? 'medium')),
             'questions_count' => count($data['questions'] ?? []),
             'curses_played' => count($data['curses_played'] ?? []),
         ];
     }
 
     /** Seconds added by the time-bonus cards the hider kept in hand. */
-    private function bankedTimeBonusSeconds(array $data): int
+    private function bankedTimeBonusSeconds(array $data, string $size): int
     {
         return array_sum(array_map(
-            fn ($c) => ($c['type'] ?? 'curse') === 'time_bonus' ? max(0, (int) ($c['minutes'] ?? 0)) * 60 : 0,
+            fn ($c) => ($c['type'] ?? 'curse') === 'time_bonus' ? max(0, Card::minutesForSize($c['minutes'] ?? 0, $size)) * 60 : 0,
             $data['hand'] ?? [],
         ));
     }

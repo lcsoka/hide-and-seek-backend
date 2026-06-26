@@ -134,17 +134,35 @@ class EveryCardGameplayTest extends TestCase
         }
     }
 
-    public function test_every_time_bonus_tier_banks_its_minutes(): void
+    public function test_every_time_bonus_tier_banks_its_minutes_for_the_play_size(): void
     {
         $this->seed(CardSeeder::class);
 
+        // startSeeking() uses a small game, so the small-size value is what banks.
         foreach (Card::where('type', 'time_bonus')->orderBy('sort')->get() as $card) {
             $ctx = $this->seek();
             $this->giveHiderCard($ctx['sessionId'], ['uid' => 't', 'type' => 'time_bonus', 'minutes' => $card->minutes]);
 
             Sanctum::actingAs($ctx['host']);
             $banked = $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('time_bonus_s');
-            $this->assertSame($card->minutes * 60, $banked, "+{$card->minutes} min should bank {$card->minutes}×60 s");
+            $expected = $card->minutes['small'] * 60;
+            $this->assertSame($expected, $banked, "card {$card->key} should bank its small-size value");
+        }
+    }
+
+    public function test_time_bonus_value_depends_on_the_play_size(): void
+    {
+        $ctx = $this->seek(); // small game
+        $this->giveHiderCard($ctx['sessionId'], ['uid' => 't', 'type' => 'time_bonus', 'minutes' => ['small' => 2, 'medium' => 5, 'large' => 10]]);
+        $banked = fn () => $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('time_bonus_s');
+        Sanctum::actingAs($ctx['host']);
+
+        $this->assertSame(120, $banked(), 'small → 2 min');
+
+        foreach (['medium' => 300, 'large' => 600] as $size => $seconds) {
+            $session = Session::find($ctx['sessionId']);
+            $session->update(['config' => array_merge($session->config, ['game_size' => $size])]);
+            $this->assertSame($seconds, $banked(), "{$size} → {$seconds}s");
         }
     }
 

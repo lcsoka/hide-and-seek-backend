@@ -45,11 +45,12 @@ class CardSeeder extends Seeder
             ]);
         }
 
-        foreach ($this->timeBonuses() as $minutes => $count) {
-            Card::updateOrCreate(['key' => "time_bonus.{$minutes}"], [
+        foreach ($this->timeBonuses() as [$small, $medium, $large, $count]) {
+            $minutes = ['small' => $small, 'medium' => $medium, 'large' => $large];
+            Card::updateOrCreate(['key' => "time_bonus.{$small}_{$medium}_{$large}"], [
                 'type' => 'time_bonus',
-                'name' => ['en' => "+{$minutes} min", 'hu' => "+{$minutes} perc"],
-                'description' => ['en' => "Adds {$minutes} minutes to the hider's time.", 'hu' => "{$minutes} percet ad a bújó idejéhez."],
+                'name' => ['en' => "Time bonus ({$small}/{$medium}/{$large} min)", 'hu' => "Időbónusz ({$small}/{$medium}/{$large} perc)"],
+                'description' => ['en' => "Adds minutes to the hider's run time, by play size (small/medium/large).", 'hu' => 'Percet ad a bújó futamidejéhez játékméret szerint (kicsi/közepes/nagy).'],
                 'minutes' => $minutes,
                 'count' => $count,
                 'is_custom' => false,
@@ -65,10 +66,19 @@ class CardSeeder extends Seeder
         return ['randomize' => 4, 'veto' => 4, 'duplicate' => 2, 'move' => 1, 'discard_1_draw_2' => 4, 'discard_2_draw_3' => 4, 'draw_1_expand_1' => 2];
     }
 
-    /** Minutes => copies in the deck (the official 25-card time-bonus set). */
+    /**
+     * Time-bonus cards as [small, medium, large, count] — minutes scale with the play
+     * size. PLACEHOLDER per-size values (small ≈ ½ medium, large ≈ 2× medium); set the
+     * exact official numbers per card in the admin. 13 cards / 25 copies (keeps the 70).
+     *
+     * @return array<int, array{0:int,1:int,2:int,3:int}>
+     */
     private function timeBonuses(): array
     {
-        return [2 => 2, 3 => 2, 4 => 2, 5 => 2, 6 => 3, 8 => 2, 9 => 2, 10 => 2, 12 => 2, 15 => 2, 18 => 1, 20 => 1, 30 => 2];
+        // [medium, count] expanded to [small, medium, large, count].
+        $tiers = [[2, 2], [3, 2], [4, 2], [5, 2], [6, 3], [8, 2], [9, 2], [10, 2], [12, 2], [15, 2], [18, 1], [20, 1], [30, 2]];
+
+        return array_map(fn ($t) => [max(1, (int) round($t[0] / 2)), $t[0], $t[0] * 2, $t[1]], $tiers);
     }
 
     /**
