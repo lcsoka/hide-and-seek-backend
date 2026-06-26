@@ -47,6 +47,14 @@ class QuestionSeeder extends Seeder
         'Movie Theater' => 'movie_theater',
     ];
 
+    /** Administrative-division matching subject => OSM admin_level (Hungary ladder). */
+    private array $adminLevels = [
+        '1st Administrative Division' => 6, // megye / county
+        '2nd Administrative Division' => 7, // járás / district
+        '3rd Administrative Division' => 8, // település / town
+        '4th Administrative Division' => 9, // kerület / borough
+    ];
+
     /** Tentacle (plural) subject => OSM feature key. */
     private array $tentacleFeatureKeys = [
         'Museums' => 'museum', 'Libraries' => 'library', 'Movie Theaters' => 'movie_theater',
@@ -60,7 +68,7 @@ class QuestionSeeder extends Seeder
             $this->seed(QuestionCategory::Matching, "matching.{$this->slug($s)}", 3, 1,
                 "Matching — {$s}", "Egyezés — {$this->hu($s)}",
                 "Is your nearest {$s} the same as mine?", "A legközelebbi {$this->hu($s)} ugyanaz, mint az enyém?",
-                $this->featureParams($s));
+                $this->matchingParams($s));
         }
 
         $measuring = ['Commercial Airport', 'High-Speed Train Line', 'Rail Station', 'International Border', '1st Administrative Division Border', '2nd Administrative Division Border', 'Sea Level', 'Body of Water', 'Coastline', 'Mountain', 'Park', 'Amusement Park', 'Zoo', 'Aquarium', 'Golf Course', 'Museum', 'Movie Theater', 'Hospital', 'Library', 'Foreign Consulate'];
@@ -111,6 +119,14 @@ class QuestionSeeder extends Seeder
     private function featureParams(string $subject): ?array
     {
         return isset($this->featureKeys[$subject]) ? ['feature' => $this->featureKeys[$subject]] : null;
+    }
+
+    /** Matching subject params: a point feature, or an admin level for "same division?" questions. */
+    private function matchingParams(string $subject): ?array
+    {
+        return isset($this->adminLevels[$subject])
+            ? ['admin_level' => $this->adminLevels[$subject]]
+            : $this->featureParams($subject);
     }
 
     private function tentacleParams(string $subject, string $radius): array

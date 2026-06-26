@@ -214,6 +214,7 @@ class GameStatePresenter
                     'lng' => $payload['ask_lng'] ?? $payload['start_lng'] ?? null,
                     'radius_m' => $payload['radius_m'] ?? null,
                     'feature' => $payload['feature'] ?? null,
+                    'admin_level' => $payload['admin_level'] ?? null,
                     'start_lat' => $payload['start_lat'] ?? null,
                     'start_lng' => $payload['start_lng'] ?? null,
                 ],

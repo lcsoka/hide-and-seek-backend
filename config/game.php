@@ -57,6 +57,9 @@ return [
         'features' => [
             'airport' => 'aeroway=aerodrome',
             'rail_station' => 'railway=station',
+            'tram_stop' => 'railway=tram_stop',
+            'subway_station' => 'station=subway',
+            'bus_stop' => 'highway=bus_stop',
             'museum' => 'tourism=museum',
             'park' => 'leisure=park',
             'hospital' => 'amenity=hospital',
@@ -96,6 +99,9 @@ return [
     'hiding_zone' => [
         'default_rule' => 'nearest',
         'station_feature' => 'rail_station',
+        // The zone is carved so the chosen stop is the NEAREST of these stop types — i.e.
+        // no other transit stop falls inside it. (Rail alone is too sparse to carve.)
+        'neighbor_features' => ['rail_station', 'tram_stop', 'subway_station', 'bus_stop'],
     ],
 
     /*

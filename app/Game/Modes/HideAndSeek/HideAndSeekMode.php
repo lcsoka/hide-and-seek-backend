@@ -389,14 +389,18 @@ class HideAndSeekMode implements GameMode
 
         $zone = ['center' => ['lat' => $lat, 'lng' => $lng], 'radius_m' => $radius, 'rule' => $rule];
 
-        // For the 'nearest' rule, include neighbouring stations so the client can
-        // draw the carved (clipped-Voronoi) zone.
+        // For the 'nearest' rule, include neighbouring transit stops (all types, not just
+        // sparse rail) so the client can draw the carved zone — the area where the chosen
+        // stop stays the nearest. Only stops within 2× the radius can clip the zone.
         if ($rule === 'nearest') {
-            $feature = config('game.hiding_zone.station_feature', 'rail_station');
-            $zone['neighbors'] = array_map(
-                fn ($f) => ['id' => $f->id, 'lat' => $f->lat, 'lng' => $f->lng],
-                $this->map->within($feature, $lat, $lng, $radius * 2),
-            );
+            $features = (array) config('game.hiding_zone.neighbor_features', [config('game.hiding_zone.station_feature', 'rail_station')]);
+            $neighbors = [];
+            foreach ($features as $feature) {
+                foreach ($this->map->within($feature, $lat, $lng, $radius * 2) as $f) {
+                    $neighbors[$f->id] = ['id' => $f->id, 'lat' => $f->lat, 'lng' => $f->lng];
+                }
+            }
+            $zone['neighbors'] = array_values($neighbors);
         }
 
         $data['hiding_zone'] = $zone;
@@ -595,6 +599,7 @@ class HideAndSeekMode implements GameMode
         if ($question !== null) {
             $payload['feature'] = $payload['feature'] ?? ($question->parameters['feature'] ?? null);
             $payload['radius_m'] = $payload['radius_m'] ?? ($question->parameters['radius_m'] ?? null);
+            $payload['admin_level'] = $payload['admin_level'] ?? ($question->parameters['admin_level'] ?? null);
         }
 
         $window = $question?->answer_time_s ?? (int) ($session->config['question_answer_time_s'] ?? 600);
@@ -693,10 +698,23 @@ class HideAndSeekMode implements GameMode
 
     private function answerQuestion(Session $session, Action $action, array $data): ActionOutcome
     {
+        $payload = $action->payload;
         // Photo questions are answered with an uploaded image, not a verdict.
-        $manual = isset($action->payload['photo_url'])
-            ? ['answer' => 'photo', 'photo_url' => $action->payload['photo_url']]
-            : ['answer' => $action->payload['answer'] ?? null];
+        if (isset($payload['photo_url'])) {
+            $manual = ['answer' => 'photo', 'photo_url' => $payload['photo_url']];
+        } else {
+            $manual = ['answer' => $payload['answer'] ?? null];
+            // Tentacles/matching answered by hand: the hider also names the specific place
+            // they're nearest to, so the seekers get the real region (a Voronoi cell), not
+            // just "in range". Carry the chosen feature through onto the answer.
+            if (isset($payload['feature_name'])) {
+                $manual['feature_name'] = (string) $payload['feature_name'];
+            }
+            if (isset($payload['feature_lat'], $payload['feature_lng'])) {
+                $manual['feature_lat'] = (float) $payload['feature_lat'];
+                $manual['feature_lng'] = (float) $payload['feature_lng'];
+            }
+        }
 
         return $this->resolveQuestion($session, $data, $manual, auto: false);
     }
