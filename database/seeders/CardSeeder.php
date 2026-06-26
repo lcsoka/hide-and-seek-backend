@@ -35,8 +35,8 @@ class CardSeeder extends Seeder
         foreach ($this->powerups() as $power => $count) {
             Card::updateOrCreate(['key' => "powerup.{$power}"], [
                 'type' => 'powerup',
-                'name' => ['en' => __('cards.'.$power.'.name', [], 'en'), 'hu' => __('cards.'.$power.'.name', [], 'hu')],
-                'description' => ['en' => __('cards.'.$power.'.description', [], 'en'), 'hu' => __('cards.'.$power.'.description', [], 'hu')],
+                'name' => ['en' => __("cards.powerups.{$power}.name", [], 'en'), 'hu' => __("cards.powerups.{$power}.name", [], 'hu')],
+                'description' => ['en' => __("cards.powerups.{$power}.description", [], 'en'), 'hu' => __("cards.powerups.{$power}.description", [], 'hu')],
                 'power' => $power,
                 'count' => $count,
                 'is_custom' => false,
