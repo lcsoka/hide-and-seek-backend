@@ -71,6 +71,7 @@ class GameStatePresenter
             // The hider must pick categories for a 'choose' curse (e.g. The Drained Brain).
             'curse_choice' => $isHider ? ($session->state_data['pending_curse_choice'] ?? null) : null,
             'hand' => $isHider ? $this->hand($session) : [],
+            'hand_limit' => $isHider ? (int) ($session->state_data['hand_limit'] ?? config('game.hand_limit', 6)) : null,
             'pending_draw' => $isHider ? $this->pendingDraw($session) : null,
             'time_bonus_s' => $isHider ? $this->handTimeBonusSeconds($session) : null,
             'timers' => $this->timers($session),

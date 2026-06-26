@@ -103,6 +103,7 @@ class HideAndSeekMode implements GameMode
                     ($session->state_data['pending_curse_choice'] ?? null) !== null ? ['choose_disabled_categories'] : [],
                     ($session->state_data['relocating'] ?? false) ? ['confirm_hidden'] : [],
                     $this->amendableIndex($session) !== null ? ['amend_answer'] : [],
+                    ($session->state_data['hand'] ?? []) !== [] ? ['discard_card'] : [],
                 ),
                 default => [],
             },
@@ -168,6 +169,7 @@ class HideAndSeekMode implements GameMode
             'play_curse' => $this->playCurse($player, $action, $data),
             'play_powerup' => $this->playPowerup($action, $data),
             'keep_cards' => $this->keepCards($action, $data),
+            'discard_card' => $this->discardCard($action, $data),
             'choose_disabled_categories' => $this->chooseDisabledCategories($action, $data),
             'amend_answer' => $this->amendAnswer($session, $action, $data),
             'complete_curse' => $this->completeCurse($player, $action, $data),
@@ -802,6 +804,8 @@ class HideAndSeekMode implements GameMode
             $keepN++;
             $data['bonus_draws']--;
         }
+        // The hand can't grow past its limit, so cap what may be kept at the headroom.
+        $keepN = min($keepN, $this->handHeadroom($data));
         if ($drawN > 0) {
             $drawn = $this->drawFromDeck($data, $drawN);
             if ($auto) {
@@ -1024,11 +1028,16 @@ class HideAndSeekMode implements GameMode
             // Discard the whole hand (gone, not returned to the deck) and draw fresh.
             $data['hand'] = $this->drawFromDeck($data, count($data['hand'] ?? []));
         } else {
-            // Draw powerups: reveal the new cards through the keep-draw modal.
+            // 'draw_1_expand_1' permanently raises the hand limit by 1 (do it before the
+            // draw so the new card fits within the larger limit).
+            if ($power === 'draw_1_expand_1') {
+                $data['hand_limit'] = $this->handLimit($data) + 1;
+            }
+            // Draw powerups: reveal the new cards through the keep-draw modal (capped at the headroom).
             $draw = ['discard_1_draw_2' => 2, 'discard_2_draw_3' => 3, 'draw_1_expand_1' => 1][$power] ?? 0;
             if ($draw > 0) {
                 $cards = $this->drawFromDeck($data, $draw);
-                $data['pending_draw'] = ['cards' => $cards, 'keep' => count($cards)];
+                $data['pending_draw'] = ['cards' => $cards, 'keep' => min(count($cards), $this->handHeadroom($data))];
             }
             // 'move' lets the hider relocate: drop the committed spot (questions fall back
             // to live GPS meanwhile) and require them to re-confirm their new spot.
@@ -1051,12 +1060,40 @@ class HideAndSeekMode implements GameMode
 
         $keepUids = (array) ($action->payload['uids'] ?? []);
         $kept = array_values(array_filter($draw['cards'] ?? [], fn ($c) => in_array($c['uid'] ?? null, $keepUids, true)));
-        $kept = array_slice($kept, 0, (int) ($draw['keep'] ?? 0));
+        // Never exceed the hand limit, even if the draw's `keep` is stale.
+        $kept = array_slice($kept, 0, min((int) ($draw['keep'] ?? 0), $this->handHeadroom($data)));
 
         $data['hand'] = array_merge($data['hand'] ?? [], $kept);
         $data['pending_draw'] = null;
 
         return new ActionOutcome($data, null, [$this->event('CardsKept', ['count' => count($kept)])]);
+    }
+
+    /** The hider's current max hand size (config default, raised by 'draw_1_expand_1'). */
+    private function handLimit(array $data): int
+    {
+        return (int) ($data['hand_limit'] ?? config('game.hand_limit', 6));
+    }
+
+    /** How many more cards the hider may hold before hitting their limit. */
+    private function handHeadroom(array $data): int
+    {
+        return max(0, $this->handLimit($data) - count($data['hand'] ?? []));
+    }
+
+    /** The hider drops a card from their hand to make room (manage the hand limit). */
+    private function discardCard(Action $action, array $data): ActionOutcome
+    {
+        $uid = $action->payload['card_uid'] ?? null;
+        foreach ($data['hand'] ?? [] as $i => $card) {
+            if (($card['uid'] ?? null) === $uid) {
+                array_splice($data['hand'], $i, 1);
+
+                return new ActionOutcome($data, null, [$this->event('CardDiscarded', ['uid' => $uid])]);
+            }
+        }
+
+        return new ActionOutcome($data);
     }
 
     /** Remove and return the first hand card matching the uid (and type, if given). */
@@ -1203,7 +1240,7 @@ class HideAndSeekMode implements GameMode
             $data['hider_id'], $data['hiding_started_at'], $data['hiding_deadline'], $data['seeking_started_at'], $data['hand'],
             $data['questions'], $data['curses_played'], $data['hider_position'], $data['relocating'], $data['endgame_dwell'],
             $data['pending_question'], $data['question_answer'], $data['thermometer'], $data['last_round'], $data['bonus_draws'],
-            $data['disabled_categories'], $data['spotty_category'], $data['pending_curse_choice'],
+            $data['disabled_categories'], $data['spotty_category'], $data['pending_curse_choice'], $data['hand_limit'],
         );
 
         return new ActionOutcome($data, 'role_assignment', [$this->event('RoundStarted', ['round' => $completed])]);

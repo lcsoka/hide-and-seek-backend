@@ -104,6 +104,9 @@ return [
      | (from the curses table) with time-bonus and powerup cards defined here.
      | Composition mirrors the official deck: 25 time-bonus, 21 powerup, 24 curse cards.
      */
+    // Max cards the hider may hold. The 'draw_1_expand_1' powerup raises it by 1.
+    'hand_limit' => 6,
+
     'hider_deck' => [
         // Minutes added to the hider's run time (official 5-tier set); `count` = copies.
         'time_bonuses' => [

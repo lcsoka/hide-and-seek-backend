@@ -84,6 +84,42 @@ class CardSystemTest extends TestCase
         $this->assertEqualsCanonicalizing(['radar', 'matching', 'photo'], $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('disabled_categories'));
     }
 
+    public function test_hand_limit_caps_keeping_and_expand_and_discard_manage_it(): void
+    {
+        $this->seed(CardSeeder::class); // a non-empty deck so the expand's draw yields a card
+        $ctx = $this->startSeeking();
+        $this->place($ctx, [47.50, 19.04], [47.55, 19.10]);
+        $sid = $ctx['sessionId'];
+
+        // Fill the hand to the default limit of 6.
+        for ($i = 1; $i <= 6; $i++) {
+            $this->giveHiderCard($sid, ['uid' => "f{$i}", 'type' => 'time_bonus', 'minutes' => ['small' => 1, 'medium' => 1, 'large' => 1]]);
+        }
+        Sanctum::actingAs($ctx['host']);
+        $this->assertSame(6, $this->getJson("/api/sessions/{$sid}/state")->json('hand_limit'));
+
+        // A full hand: answering still draws, but nothing can be kept (headroom 0).
+        $q = Question::create(['key' => 'radar.hl', 'category' => 'radar', 'title' => ['en' => 'R'], 'prompt' => ['en' => '?'], 'reward_draw' => 2, 'reward_keep' => 1]);
+        Sanctum::actingAs($ctx['seeker']);
+        $this->postJson("/api/sessions/{$sid}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'radius_m' => 5000]])->assertOk();
+        Sanctum::actingAs($ctx['host']);
+        $this->postJson("/api/sessions/{$sid}/actions", ['type' => 'answer_question', 'payload' => []])->assertOk();
+        $this->assertSame(0, $this->getJson("/api/sessions/{$sid}/state")->json('pending_draw.keep'));
+        $this->postJson("/api/sessions/{$sid}/actions", ['type' => 'keep_cards', 'payload' => ['uids' => []]])->assertOk();
+        $this->assertCount(6, $this->getJson("/api/sessions/{$sid}/state")->json('hand'));
+
+        // Discard frees a slot.
+        $this->postJson("/api/sessions/{$sid}/actions", ['type' => 'discard_card', 'payload' => ['card_uid' => 'f1']])->assertOk();
+        $this->assertCount(5, $this->getJson("/api/sessions/{$sid}/state")->json('hand'));
+
+        // 'draw_1_expand_1' raises the limit to 7 and its drawn card now fits.
+        $this->giveHiderCard($sid, ['uid' => 'ex', 'type' => 'powerup', 'power' => 'draw_1_expand_1']);
+        $this->postJson("/api/sessions/{$sid}/actions", ['type' => 'play_powerup', 'payload' => ['card_uid' => 'ex']])->assertOk();
+        $st = $this->getJson("/api/sessions/{$sid}/state");
+        $this->assertSame(7, $st->json('hand_limit'));
+        $this->assertSame(1, $st->json('pending_draw.keep'));
+    }
+
     public function test_a_card_drawn_in_an_earlier_round_does_not_return_to_the_deck(): void
     {
         // A tiny, all-veto deck (2 copies) so the count is exact.
