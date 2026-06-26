@@ -147,8 +147,24 @@ class HideAndSeekMode implements GameMode
                 : ValidationResult::fail('choose_station requires the station lat and lng.'),
             'confirm_hidden' => $this->validateWithinHidingZone($session, $player),
             'choose_disabled_categories' => $this->validateChooseDisabled($session, $action),
+            'play_curse' => $this->validatePlayCurse($session, $action),
             default => ValidationResult::pass(),
         };
+    }
+
+    /** Curses whose effect requires a hider photo (e.g. a Street View screenshot) need one attached. */
+    private function validatePlayCurse(Session $session, Action $action): ValidationResult
+    {
+        $uid = $action->payload['card_uid'] ?? null;
+        $handCard = collect($session->state_data['hand'] ?? [])->firstWhere('uid', $uid);
+        $card = isset($handCard['curse_id']) ? Card::find($handCard['curse_id']) : null;
+        if ($card === null || empty($card->effect['hider_photo'])) {
+            return ValidationResult::pass();
+        }
+
+        return ! empty($action->payload['photo_url'])
+            ? ValidationResult::pass()
+            : ValidationResult::fail('This curse needs a photo to send to the seekers.');
     }
 
     public function applyAction(Session $session, Player $player, Action $action): ActionOutcome
@@ -867,6 +883,9 @@ class HideAndSeekMode implements GameMode
             'expires_at' => $duration !== null ? $now + $duration : null,
             'status' => 'active',
             'proof_url' => null,
+            // The hider's own photo handed to the seekers (e.g. the Unguided Tourist's
+            // Street View screenshot) — captured at play time when effect.hider_photo is set.
+            'hint_photo_url' => ! empty($effect['hider_photo']) ? ($action->payload['photo_url'] ?? null) : null,
             'completed_at' => null,
         ];
 

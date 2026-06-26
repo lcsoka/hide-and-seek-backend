@@ -37,6 +37,7 @@ Route::middleware(EnsureDebugAccess::class)->prefix('sessions/{session}/debug')-
     Route::post('/act-as', [DebugController::class, 'actAs']);
     Route::post('/location', [DebugController::class, 'location']);
     Route::post('/seed-players', [DebugController::class, 'seedPlayers']);
+    Route::post('/token', [DebugController::class, 'mintToken']);
     Route::post('/state', [DebugController::class, 'forceState']);
     Route::post('/timer/{key}/expire', [DebugController::class, 'expireTimer']);
 });

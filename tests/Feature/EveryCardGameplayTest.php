@@ -53,11 +53,20 @@ class EveryCardGameplayTest extends TestCase
         foreach (Card::where('type', 'curse')->orderBy('sort')->get() as $curse) {
             $ctx = $this->seek();
             $this->giveHiderCard($ctx['sessionId'], ['uid' => 'c', 'type' => 'curse', 'curse_id' => $curse->id]);
-            $this->play($ctx, 'play_curse', ['card_uid' => 'c']);
-
             $effect = $curse->effect ?? [];
+            $playPayload = ['card_uid' => 'c'];
+            if (! empty($effect['hider_photo'])) {
+                $playPayload['photo_url'] = 'https://example.com/streetview.jpg';
+            }
+            $this->play($ctx, 'play_curse', $playPayload);
+
             $sd = $this->stateData($ctx);
             $key = $curse->key;
+
+            if (! empty($effect['hider_photo'])) {
+                $played = end($sd['curses_played']);
+                $this->assertSame('https://example.com/streetview.jpg', $played['hint_photo_url'] ?? null, "{$key} should hand the hider's photo to the seekers");
+            }
 
             $disable = $effect['disable_categories'] ?? null;
             if ($disable && ($disable['mode'] ?? 'random') === 'choose') {

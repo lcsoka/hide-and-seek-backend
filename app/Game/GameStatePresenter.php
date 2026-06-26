@@ -324,6 +324,8 @@ class GameStatePresenter
             return [
                 'uid' => $card['uid'] ?? null, 'type' => 'curse', 'curse_id' => $card['curse_id'] ?? null,
                 'name' => $model?->name, 'cost' => $model?->cost, 'description' => $model?->description,
+                // The hider must attach a photo (e.g. a Street View shot) when casting this curse.
+                'needs_photo' => (bool) ($model?->effect['hider_photo'] ?? false),
             ];
         }, $cards);
     }
@@ -366,6 +368,7 @@ class GameStatePresenter
                 'expires_at' => $expiresAt,
                 'status' => $status,
                 'proof_url' => $c['proof_url'] ?? null,
+                'hint_photo_url' => $c['hint_photo_url'] ?? null,
             ];
         })->all();
     }

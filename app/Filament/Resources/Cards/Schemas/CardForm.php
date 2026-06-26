@@ -82,6 +82,8 @@ class CardForm
                 ->schema([
                     Toggle::make('effect.requires_proof')->label('Requires a photo to clear'),
                     Toggle::make('effect.blocks_asking')->label('Blocks asking until cleared'),
+                    Toggle::make('effect.hider_photo')->label('Hider sends a photo when casting')
+                        ->helperText('e.g. a Street View screenshot the seekers must find.'),
                     TextInput::make('effect.duration_s')->label('Auto-expire after')->numeric()->minValue(0)->suffix('seconds')
                         ->helperText('Leave empty for no time limit.'),
 

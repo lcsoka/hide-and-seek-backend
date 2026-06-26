@@ -91,6 +91,9 @@ class Card extends Model
         if (! empty($effect['blocks_asking'])) {
             $out['blocks_asking'] = true;
         }
+        if (! empty($effect['hider_photo'])) {
+            $out['hider_photo'] = true;
+        }
         if (! empty($effect['duration_s'])) {
             $out['duration_s'] = (int) $effect['duration_s'];
         }

@@ -98,6 +98,9 @@ class CardSeeder extends Seeder
             'the_ransom_note' => ['requires_proof' => true, 'blocks_asking' => true],
             'the_labyrinth' => ['requires_proof' => true, 'blocks_asking' => true],
             'the_mediocre_travel_agent' => ['requires_proof' => true], // a side-quest, not a hard block
+            // The hider sends a Street View screenshot; seekers must find it in real life
+            // before they can ask again, clearing it with a photo of where they end up.
+            'the_unguided_tourist' => ['hider_photo' => true, 'requires_proof' => true, 'blocks_asking' => true],
             // "Solve before asking" with no photo — cleared by marking it done (honor system).
             'the_hidden_hangman' => ['blocks_asking' => true],
             // Timed effects (representative midpoints of the official ranges).

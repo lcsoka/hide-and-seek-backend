@@ -8,6 +8,7 @@ use App\Game\Support\Action;
 use App\Http\Controllers\Controller;
 use App\Models\ActionLog;
 use App\Models\Session;
+use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -41,6 +42,28 @@ class DebugController extends Controller
         $session = $this->engine->submit($session, $player, new Action($data['type'], $data['payload'] ?? []));
 
         return response()->json($this->godView($session));
+    }
+
+    /**
+     * Mint a bearer token for any player in the session, so a dev can open that player's
+     * real (filtered) view in another window/iframe — the spectate-existing-game flow.
+     * Bots created without a user get a throwaway guest user first.
+     */
+    public function mintToken(Request $request, Session $session): JsonResponse
+    {
+        $data = $request->validate(['player_id' => ['required', 'uuid']]);
+        $player = $session->players()->findOrFail($data['player_id']);
+
+        $user = $player->user;
+        if ($user === null) {
+            $user = User::create(['name' => $player->display_name]);
+            $player->update(['user_id' => $user->id]);
+        }
+
+        return response()->json([
+            'player_id' => $player->id,
+            'token' => $user->createToken('spectate')->plainTextToken,
+        ]);
     }
 
     public function location(Request $request, Session $session): JsonResponse

@@ -87,6 +87,21 @@ class DebugApiTest extends TestCase
             ->assertOk()->assertJsonPath('state', 'seeking');
     }
 
+    public function test_mint_token_lets_a_dev_spectate_a_players_view(): void
+    {
+        $session = $this->makeSession();
+        $bot = $session->players()->create(['display_name' => 'Bot 1']); // no user yet
+
+        $res = $this->debug()->postJson("/api/sessions/{$session->id}/debug/token", ['player_id' => $bot->id])
+            ->assertOk()
+            ->assertJsonStructure(['player_id', 'token']);
+
+        // The bot got a user, and the minted token authenticates as that player.
+        $this->assertNotNull($bot->fresh()->user_id);
+        $this->withToken($res->json('token'))
+            ->getJson("/api/sessions/{$session->id}/state")->assertOk();
+    }
+
     public function test_act_as_any_player(): void
     {
         $session = $this->makeSession();
