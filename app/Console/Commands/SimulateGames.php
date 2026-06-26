@@ -30,9 +30,9 @@ use Illuminate\Validation\ValidationException;
  */
 class SimulateGames extends Command
 {
-    protected $signature = 'game:simulate {--games=10} {--rounds=2} {--seekers=2} {--seed=} {--size=small}';
+    protected $signature = 'game:simulate {--games=10} {--rounds=2} {--seekers=2} {--seed=} {--size=small} {--watch} {--delay=3}';
 
-    protected $description = 'Play automated test games and report gameplay anomalies.';
+    protected $description = 'Play automated test games and report gameplay anomalies (use --watch to spectate one live).';
 
     /** @var array<int, string> */
     private array $anomalies = [];
@@ -40,6 +40,11 @@ class SimulateGames extends Command
     private GameEngine $engine;
 
     private SessionFactory $factory;
+
+    /** Watch mode: persist + broadcast a single game, paced so you can spectate it live. */
+    private bool $watch = false;
+
+    private int $delay = 3;
 
     public function handle(GameEngine $engine, SessionFactory $factory): int
     {
@@ -62,10 +67,26 @@ class SimulateGames extends Command
         $this->callSilent('db:seed', ['--class' => CardSeeder::class]);
         $this->callSilent('db:seed', ['--class' => QuestionSeeder::class]);
 
-        $games = (int) $this->option('games');
+        $this->watch = (bool) $this->option('watch');
+        $this->delay = max(0, (int) $this->option('delay'));
+        // Watch mode persists + broadcasts a single game so you can spectate it; the soak
+        // mode rolls every game back so it never pollutes the database.
+        $games = $this->watch ? 1 : (int) $this->option('games');
         $completed = 0;
 
         for ($g = 1; $g <= $games; $g++) {
+            if ($this->watch) {
+                try {
+                    if ($this->playGame($g)) {
+                        $completed++;
+                    }
+                } catch (\Throwable $e) {
+                    $this->anomalies[] = "game {$g}: UNCAUGHT ".get_class($e).' — '.$e->getMessage();
+                }
+
+                continue;
+            }
+
             DB::beginTransaction();
             try {
                 if ($this->playGame($g)) {
@@ -104,6 +125,10 @@ class SimulateGames extends Command
         $session = $this->factory->create($host, config('game.default_mode'), 'budapest', $size, ['rounds' => (int) $this->option('rounds')]);
         for ($i = 0; $i < $seekerCount; $i++) {
             $this->factory->join($session, User::factory()->create(), "Seeker {$i}");
+        }
+
+        if ($this->watch) {
+            $this->announceWatch($session);
         }
 
         $guard = 0;
@@ -301,8 +326,27 @@ class SimulateGames extends Command
 
     // --- low-level -------------------------------------------------------
 
+    /** Print the spectate link + give the user a head start to open it before play begins. */
+    private function announceWatch(Session $session): void
+    {
+        $web = rtrim((string) config('app.web_url', 'http://localhost:4321'), '/');
+        $this->newLine();
+        $this->info('▶ Watch this game live (host + seekers playing automatically):');
+        $this->line("  <options=bold>{$web}/dev/duo?watch={$session->join_code}</>");
+        $this->line("  (or open {$web}/dev/duo and \"Watch existing\" with code {$session->join_code})");
+        $this->comment('  Needs `php artisan reverb:start` + `queue:work` running for live updates.');
+        $this->line("  Starting in 10s — open the link now…  (pace: {$this->delay}s/step)");
+        $this->newLine();
+        sleep(10);
+    }
+
     private function submit(Session $session, Player $player, string $type, array $payload = []): Session
     {
+        if ($this->watch) {
+            $this->line("  ▸ {$player->display_name}: {$type}");
+            sleep($this->delay);
+        }
+
         try {
             return $this->engine->submit($session->refresh(), $player->refresh(), new Action($type, $payload));
         } catch (ValidationException) {
