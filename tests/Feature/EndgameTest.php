@@ -73,6 +73,27 @@ class EndgameTest extends TestCase
         $state->assertJsonPath('standings.0.player_id', $ctx['hiderId']);
     }
 
+    public function test_kept_time_bonus_cards_add_to_the_hider_score(): void
+    {
+        $ctx = $this->startSeeking();
+        $this->patchState($ctx['sessionId'], [
+            'hider_position' => ['lat' => 47.50, 'lng' => 19.04],
+            'hiding_started_at' => now()->subSeconds(120)->timestamp,
+            'hand' => [['uid' => 'tb', 'type' => 'time_bonus', 'minutes' => 10]], // +600s
+        ]);
+        Player::whereKey($ctx['seekerId'])->update(['last_lat' => 47.50, 'last_lng' => 19.04]);
+
+        Sanctum::actingAs($ctx['seeker']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'declare_endgame'])->assertOk();
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'confirm_found'])->assertOk();
+
+        $state = $this->getJson("/api/sessions/{$ctx['sessionId']}/state");
+        // 120s survived + 600s banked bonus.
+        $state->assertJsonPath('standings.0.player_id', $ctx['hiderId']);
+        $this->assertGreaterThanOrEqual(720, $state->json('standings.0.total_hiding_time_s'));
+        $state->assertJsonPath('last_round.time_bonus_s', 600);
+    }
+
     public function test_endgame_auto_starts_after_a_seeker_dwells_in_the_zone(): void
     {
         $ctx = $this->startSeeking();

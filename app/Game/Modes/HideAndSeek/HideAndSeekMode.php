@@ -731,6 +731,12 @@ class HideAndSeekMode implements GameMode
         $question = isset($pending['question_id']) ? Question::find($pending['question_id']) : null;
         $drawN = max(0, (int) ($question?->reward_draw ?? 1));
         $keepN = max(0, (int) ($question?->reward_keep ?? 1));
+        // The Overflowing Chalice grants one extra draw on each of the next three answers.
+        if (($data['bonus_draws'] ?? 0) > 0) {
+            $drawN++;
+            $keepN++;
+            $data['bonus_draws']--;
+        }
         if ($drawN > 0) {
             $drawn = $this->drawCards($drawN);
             if ($auto) {
@@ -773,11 +779,12 @@ class HideAndSeekMode implements GameMode
         $curseId = $card['curse_id'] ?? null;
 
         // Resolve the curse's lifecycle (a time limit and/or required photo proof).
-        $params = $curseId !== null ? (Curse::find($curseId)?->parameters ?? []) : [];
+        $curse = $curseId !== null ? Curse::find($curseId) : null;
+        $params = $curse?->parameters ?? [];
         $duration = isset($params['duration_s']) ? (int) $params['duration_s'] : null;
         $now = now()->timestamp;
 
-        $data['curses_played'][] = [
+        $instance = [
             'uid' => (string) Str::uuid(),
             'curse_id' => $curseId,
             'by' => $player->id,
@@ -791,6 +798,16 @@ class HideAndSeekMode implements GameMode
             'proof_url' => null,
             'completed_at' => null,
         ];
+
+        // The Overflowing Chalice is a hider self-buff with no seeker task: grant +1 card
+        // draw on the next three answers, and mark it done so it doesn't linger as active.
+        if ($curse?->key === 'the_overflowing_chalice') {
+            $data['bonus_draws'] = ($data['bonus_draws'] ?? 0) + 3;
+            $instance['status'] = 'completed';
+            $instance['completed_at'] = $now;
+        }
+
+        $data['curses_played'][] = $instance;
 
         return new ActionOutcome($data, null, [$this->event('CursePlayed', ['curse_id' => $curseId])]);
     }
@@ -1029,8 +1046,9 @@ class HideAndSeekMode implements GameMode
     {
         $hiderId = $data['hider_id'] ?? null;
         $seconds = max(0, now()->timestamp - (int) ($data['hiding_started_at'] ?? now()->timestamp));
+        $bonus = $this->bankedTimeBonusSeconds($data); // kept time-bonus cards add to the hider's time
         if ($hiderId !== null) {
-            $data['scores'][$hiderId] = ($data['scores'][$hiderId] ?? 0) + $seconds;
+            $data['scores'][$hiderId] = ($data['scores'][$hiderId] ?? 0) + $seconds + $bonus;
         }
         $data['last_round_seconds'] = $seconds;
         $data['last_round'] = $this->roundSummary($session, $data, $finderId, $surrendered, $seconds);
@@ -1056,9 +1074,19 @@ class HideAndSeekMode implements GameMode
             'surrendered' => $surrendered,
             'seconds' => $seconds,
             'hider_position' => $data['hider_position'] ?? null, // the committed spot, now revealed
+            'time_bonus_s' => $this->bankedTimeBonusSeconds($data),
             'questions_count' => count($data['questions'] ?? []),
             'curses_played' => count($data['curses_played'] ?? []),
         ];
+    }
+
+    /** Seconds added by the time-bonus cards the hider kept in hand. */
+    private function bankedTimeBonusSeconds(array $data): int
+    {
+        return array_sum(array_map(
+            fn ($c) => ($c['type'] ?? 'curse') === 'time_bonus' ? max(0, (int) ($c['minutes'] ?? 0)) * 60 : 0,
+            $data['hand'] ?? [],
+        ));
     }
 
     private function advanceRound(Session $session, array $data): ActionOutcome
@@ -1076,7 +1104,7 @@ class HideAndSeekMode implements GameMode
         unset(
             $data['hider_id'], $data['hiding_started_at'], $data['hiding_deadline'], $data['seeking_started_at'], $data['hand'],
             $data['questions'], $data['curses_played'], $data['hider_position'], $data['relocating'], $data['endgame_dwell'],
-            $data['pending_question'], $data['question_answer'], $data['thermometer'], $data['last_round'],
+            $data['pending_question'], $data['question_answer'], $data['thermometer'], $data['last_round'], $data['bonus_draws'],
         );
 
         return new ActionOutcome($data, 'role_assignment', [$this->event('RoundStarted', ['round' => $completed])]);

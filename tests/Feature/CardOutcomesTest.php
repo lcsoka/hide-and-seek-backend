@@ -88,6 +88,27 @@ class CardOutcomesTest extends TestCase
         Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'QuestionVetoed');
     }
 
+    public function test_overflowing_chalice_grants_an_extra_draw_on_the_next_answer(): void
+    {
+        $this->seed(CurseSeeder::class);
+        $chalice = Curse::where('key', 'the_overflowing_chalice')->firstOrFail();
+        $ctx = $this->startSeeking();
+        $this->place($ctx, [47.50, 19.04], [47.55, 19.10]);
+
+        $this->play($ctx, ['uid' => 'ch', 'type' => 'curse', 'curse_id' => $chalice->id], 'play_curse');
+        // Self-buff: it doesn't linger as an active seeker curse.
+        $this->assertEmpty(array_filter($this->state($ctx)['curses'], fn ($c) => ($c['status'] ?? '') === 'active'));
+
+        // A radar question rewards 1 draw normally; with the chalice it draws 2.
+        $q = Question::create(['key' => 'radar.c', 'category' => 'radar', 'title' => ['en' => 'R'], 'prompt' => ['en' => '?'], 'reward_draw' => 1, 'reward_keep' => 1]);
+        Sanctum::actingAs($ctx['seeker']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'radius_m' => 5000]])->assertOk();
+        Sanctum::actingAs($ctx['host']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question', 'payload' => ['answer' => 'yes']])->assertOk();
+
+        $this->assertCount(2, $this->state($ctx)['pending_draw']['cards']);
+    }
+
     public function test_powerup_duplicate_copies_a_chosen_card(): void
     {
         $ctx = $this->startSeeking();
