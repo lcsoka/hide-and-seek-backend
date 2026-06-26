@@ -1,0 +1,24 @@
+@import '../../../../vendor/filament/filament/resources/css/theme.css';
+
+@source '../../../../app/Filament/**/*';
+@source '../../../../resources/views/filament/**/*';
+
+/*
+ | Custom admin styles
+ |--------------------------------------------------------------------------
+ | Add project-specific admin CSS below. It is compiled by Vite — run
+ | `npm run build` (production) or `npm run dev` (live HMR) in ./backend.
+ | The panel loads this theme via `->viteTheme(...)` in AdminPanelProvider.
+ | Tailwind utility classes used in Filament Blade/PHP are scanned via the
+ | `@source` directives above, so they work here too.
+ */
+
+/* Example: a subtle hover on the deck-composition cards (custom Deck page). */
+.fi-section .grid > .rounded-xl {
+    transition:
+        border-color 0.15s ease,
+        transform 0.15s ease;
+}
+.fi-section .grid > .rounded-xl:hover {
+    transform: translateY(-1px);
+}
