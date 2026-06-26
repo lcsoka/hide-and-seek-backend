@@ -387,21 +387,11 @@ class HideAndSeekMode implements GameMode
         $radius = (float) ($session->config['hiding_zone_radius_m'] ?? 400);
         $rule = $session->config['hiding_zone_rule'] ?? 'circle';
 
+        // Keep this action fast + side-effect-free: just record the zone (centre/radius/rule).
+        // The client carves it for display by fetching nearby transit stops itself via the
+        // cached /geo/overpass proxy — so we don't make (and cache) several Overpass calls on
+        // the request path, which previously contended on the SQLite cache and could fail.
         $zone = ['center' => ['lat' => $lat, 'lng' => $lng], 'radius_m' => $radius, 'rule' => $rule];
-
-        // For the 'nearest' rule, include neighbouring transit stops (all types, not just
-        // sparse rail) so the client can draw the carved zone — the area where the chosen
-        // stop stays the nearest. Only stops within 2× the radius can clip the zone.
-        if ($rule === 'nearest') {
-            $features = (array) config('game.hiding_zone.neighbor_features', [config('game.hiding_zone.station_feature', 'rail_station')]);
-            $neighbors = [];
-            foreach ($features as $feature) {
-                foreach ($this->map->within($feature, $lat, $lng, $radius * 2) as $f) {
-                    $neighbors[$f->id] = ['id' => $f->id, 'lat' => $f->lat, 'lng' => $f->lng];
-                }
-            }
-            $zone['neighbors'] = array_values($neighbors);
-        }
 
         $data['hiding_zone'] = $zone;
 

@@ -99,9 +99,9 @@ return [
     'hiding_zone' => [
         'default_rule' => 'nearest',
         'station_feature' => 'rail_station',
-        // The zone is carved so the chosen stop is the NEAREST of these stop types — i.e.
-        // no other transit stop falls inside it. (Rail alone is too sparse to carve.)
-        'neighbor_features' => ['rail_station', 'tram_stop', 'subway_station', 'bus_stop'],
+        // The carved zone (chosen stop is the nearest of all nearby transit stops) is drawn
+        // CLIENT-side from stops it fetches via the cached /geo/overpass proxy — keeping the
+        // choose-station action fast and off Overpass.
     ],
 
     /*
