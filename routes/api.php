@@ -5,6 +5,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CatalogController;
 use App\Http\Controllers\Api\DebugController;
 use App\Http\Controllers\Api\FeedbackController;
+use App\Http\Controllers\Api\GeoController;
 use App\Http\Controllers\Api\LocationController;
 use App\Http\Controllers\Api\MediaController;
 use App\Http\Controllers\Api\SessionController;
@@ -16,6 +17,8 @@ Route::post('/auth/guest', [AuthController::class, 'guest']);
 Route::post('/feedback', [FeedbackController::class, 'store']);
 Route::get('/questions', [CatalogController::class, 'questions']);
 Route::get('/curses', [CatalogController::class, 'curses']);
+// Cached server-side Overpass proxy — the web app's only path to OSM data.
+Route::post('/geo/overpass', [GeoController::class, 'overpass'])->middleware('throttle:240,1');
 
 // Authenticated (guest or, later, registered token).
 Route::middleware('auth:sanctum')->group(function () {
