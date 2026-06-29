@@ -76,6 +76,9 @@ return [
             'amusement_park' => 'tourism=theme_park',
             'golf_course' => 'leisure=golf_course',
             'movie_theater' => 'amenity=cinema',
+            // Lakes, ponds, reservoirs and river surfaces (the Danube etc. are mapped as
+            // natural=water polygons); `out center` gives each one's centroid to measure to.
+            'body_of_water' => 'natural=water',
         ],
     ],
 

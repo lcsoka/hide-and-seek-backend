@@ -44,7 +44,7 @@ class QuestionSeeder extends Seeder
         'Commercial Airport' => 'airport', 'Rail Station' => 'rail_station', 'Museum' => 'museum',
         'Park' => 'park', 'Hospital' => 'hospital', 'Library' => 'library', 'Zoo' => 'zoo',
         'Aquarium' => 'aquarium', 'Amusement Park' => 'amusement_park', 'Golf Course' => 'golf_course',
-        'Movie Theater' => 'movie_theater',
+        'Movie Theater' => 'movie_theater', 'Body of Water' => 'body_of_water',
     ];
 
     /** Administrative-division matching subject => OSM admin_level (Hungary ladder). */

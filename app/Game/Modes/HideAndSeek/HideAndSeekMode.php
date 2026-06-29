@@ -103,7 +103,7 @@ class HideAndSeekMode implements GameMode
                     $pending ? ['answer_question', 'play_curse', 'play_powerup'] : ['play_curse', 'play_powerup'],
                     ($session->state_data['pending_draw'] ?? null) !== null ? ['keep_cards'] : [],
                     ($session->state_data['pending_curse_choice'] ?? null) !== null ? ['choose_disabled_categories'] : [],
-                    ($session->state_data['relocating'] ?? false) ? ['confirm_hidden'] : [],
+                    ($session->state_data['relocating'] ?? false) ? ['choose_station', 'confirm_hidden'] : [],
                     $this->amendableIndex($session) !== null ? ['amend_answer'] : [],
                     ($session->state_data['hand'] ?? []) !== [] ? ['discard_card'] : [],
                 ),
@@ -1068,11 +1068,12 @@ class HideAndSeekMode implements GameMode
                 $cards = $this->drawFromDeck($data, $draw);
                 $data['pending_draw'] = ['cards' => $cards, 'keep' => min(count($cards), $this->handHeadroom($data))];
             }
-            // 'move' lets the hider relocate: drop the committed spot (questions fall back
-            // to live GPS meanwhile) and require them to re-confirm their new spot.
+            // 'move' lets the hider relocate: drop the committed spot AND the old hiding zone
+            // (questions fall back to live GPS meanwhile) so the hider picks a fresh station and
+            // the zone is recalculated around it before they re-confirm.
             if ($power === 'move') {
                 $data['relocating'] = true;
-                unset($data['hider_position']);
+                unset($data['hider_position'], $data['hiding_zone']);
             }
         }
 
