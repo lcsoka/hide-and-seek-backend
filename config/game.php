@@ -79,6 +79,8 @@ return [
             // Lakes, ponds, reservoirs and river surfaces (the Danube etc. are mapped as
             // natural=water polygons); `out center` gives each one's centroid to measure to.
             'body_of_water' => 'natural=water',
+            'mountain' => 'natural=peak',        // named summits (Buda hills, Mecsek, Bükk…)
+            'consulate' => 'office=diplomatic',  // embassies + consulates (mostly Budapest)
         ],
     ],
 
