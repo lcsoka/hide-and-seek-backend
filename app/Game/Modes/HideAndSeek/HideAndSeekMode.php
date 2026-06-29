@@ -204,8 +204,8 @@ class HideAndSeekMode implements GameMode
             'ask_question' => $this->askQuestion($session, $player, $action, $data),
             'start_thermometer' => $this->startThermometer($player, $action, $data),
             'stop_thermometer' => $this->stopThermometer($session, $player, $data),
-            'board_transit' => $this->boardTransit($player, $data),
-            'alight_transit' => $this->alightTransit($player, $data),
+            'board_transit' => $this->boardTransit($player, $action, $data),
+            'alight_transit' => $this->alightTransit($player, $action, $data),
             'answer_question' => $this->answerQuestion($session, $action, $data),
             'play_curse' => $this->playCurse($player, $action, $data),
             'play_powerup' => $this->playPowerup($action, $data),
@@ -606,22 +606,27 @@ class HideAndSeekMode implements GameMode
     }
 
     /**
-     * A seeker boards public transport — opens a journey leg from their current position.
-     * Blocked while a thermometer is running (it must be walked); see validateBoardTransit.
+     * A seeker boards public transport — opens a journey leg. The optional payload records the
+     * chosen stop + line (stop_name/stop_lat/stop_lng/line/mode); otherwise the seeker's GPS is
+     * used. Blocked while a thermometer is running (it must be walked); see validateBoardTransit.
      */
-    private function boardTransit(Player $player, array $data): ActionOutcome
+    private function boardTransit(Player $player, Action $action, array $data): ActionOutcome
     {
+        $p = $action->payload;
         $data['on_transit'][$player->id] = [
-            'lat' => (float) $player->last_lat,
-            'lng' => (float) $player->last_lng,
+            'lat' => isset($p['stop_lat']) ? (float) $p['stop_lat'] : (float) $player->last_lat,
+            'lng' => isset($p['stop_lng']) ? (float) $p['stop_lng'] : (float) $player->last_lng,
             'at' => now()->timestamp,
+            'stop' => $p['stop_name'] ?? null,
+            'line' => $p['line'] ?? null,
+            'mode' => $p['mode'] ?? null,
         ];
 
-        return new ActionOutcome($data, null, [$this->event('TransitBoarded', ['by' => $player->id])]);
+        return new ActionOutcome($data, null, [$this->event('TransitBoarded', ['by' => $player->id, 'line' => $p['line'] ?? null])]);
     }
 
-    /** The seeker alights — closes the open leg and appends it to the journey log. */
-    private function alightTransit(Player $player, array $data): ActionOutcome
+    /** The seeker alights — closes the open leg (keeping its line + stops) and logs it. */
+    private function alightTransit(Player $player, Action $action, array $data): ActionOutcome
     {
         $board = $data['on_transit'][$player->id] ?? null;
         unset($data['on_transit'][$player->id]);
@@ -629,7 +634,11 @@ class HideAndSeekMode implements GameMode
         if ($board !== null) {
             $data['transit_log'][] = [
                 'player_id' => $player->id,
+                'line' => $board['line'] ?? null,
+                'mode' => $board['mode'] ?? null,
+                'board_stop' => $board['stop'] ?? null,
                 'board_lat' => $board['lat'], 'board_lng' => $board['lng'], 'board_at' => $board['at'],
+                'alight_stop' => $action->payload['stop_name'] ?? null,
                 'alight_lat' => $player->last_lat !== null ? (float) $player->last_lat : null,
                 'alight_lng' => $player->last_lng !== null ? (float) $player->last_lng : null,
                 'alight_at' => now()->timestamp,

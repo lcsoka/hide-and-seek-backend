@@ -108,6 +108,10 @@ class GameStatePresenter
             return [
                 'player_id' => $leg['player_id'] ?? null,
                 'display_name' => $names[$leg['player_id'] ?? ''] ?? null,
+                'line' => $leg['line'] ?? null,
+                'mode' => $leg['mode'] ?? null,
+                'board_stop' => $leg['board_stop'] ?? null,
+                'alight_stop' => $leg['alight_stop'] ?? null,
                 'board' => ['lat' => $leg['board_lat'] ?? null, 'lng' => $leg['board_lng'] ?? null, 'at' => $leg['board_at'] ?? null],
                 'alight' => ['lat' => $leg['alight_lat'] ?? null, 'lng' => $leg['alight_lng'] ?? null, 'at' => $leg['alight_at'] ?? null],
                 'distance_m' => $distance !== null ? (int) round($distance) : null,
@@ -115,9 +119,13 @@ class GameStatePresenter
             ];
         }, $session->state_data['transit_log'] ?? []);
 
+        $mine = $onTransit[$player->id] ?? null;
+
         return [
-            'on_transit' => isset($onTransit[$player->id]),
-            'boarded_at' => $onTransit[$player->id]['at'] ?? null,
+            'on_transit' => $mine !== null,
+            'boarded_at' => $mine['at'] ?? null,
+            'line' => $mine['line'] ?? null, // the line THIS seeker is currently riding
+            'mode' => $mine['mode'] ?? null,
             'riding' => array_values(array_filter(array_map(fn ($id) => $names[$id] ?? null, array_keys($onTransit)))),
             'log' => array_values($log),
         ];
