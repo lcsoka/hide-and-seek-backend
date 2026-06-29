@@ -126,6 +126,8 @@ class GameStatePresenter
             'boarded_at' => $mine['at'] ?? null,
             'line' => $mine['line'] ?? null, // the line THIS seeker is currently riding
             'mode' => $mine['mode'] ?? null,
+            // Where they boarded — lets the client re-draw the ridden line's route after a reload.
+            'board' => $mine !== null ? ['lat' => $mine['lat'] ?? null, 'lng' => $mine['lng'] ?? null] : null,
             'riding' => array_values(array_filter(array_map(fn ($id) => $names[$id] ?? null, array_keys($onTransit)))),
             'log' => array_values($log),
         ];
