@@ -10,6 +10,13 @@ use App\Game\Questions\ThermometerEvaluator;
 return [
     'default_mode' => 'hide_and_seek',
 
+    // Emails allowed into the Filament admin panel (comma-separated in FILAMENT_ADMIN_EMAILS).
+    // Empty = nobody (locked down by default); guests never have an email.
+    'admin_emails' => array_values(array_filter(array_map(
+        fn ($e) => strtolower(trim($e)),
+        explode(',', (string) env('FILAMENT_ADMIN_EMAILS', '')),
+    ))),
+
     /*
      | Developer/debug API gate (see App\Http\Middleware\EnsureDebugAccess). Must be
      | OFF in production. When on, callers must also present the developer token.

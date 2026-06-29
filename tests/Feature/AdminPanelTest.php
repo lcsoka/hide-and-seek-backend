@@ -20,6 +20,15 @@ class AdminPanelTest extends TestCase
 {
     use RefreshDatabase;
 
+    /** A user allowed into the admin panel (email added to the allowlist). */
+    private function adminUser(): User
+    {
+        $user = User::factory()->create();
+        config(['game.admin_emails' => [strtolower((string) $user->email)]]);
+
+        return $user;
+    }
+
     private function seedSession(): Session
     {
         $session = Session::create([
@@ -49,7 +58,7 @@ class AdminPanelTest extends TestCase
     public function test_resource_index_pages_load(): void
     {
         $this->seedSession();
-        $this->actingAs(User::factory()->create());
+        $this->actingAs($this->adminUser());
 
         foreach (['sessions', 'players', 'teams', 'action-logs'] as $slug) {
             $this->get("/admin/{$slug}")->assertSuccessful();
@@ -59,7 +68,7 @@ class AdminPanelTest extends TestCase
     public function test_session_edit_page_with_relation_managers_loads(): void
     {
         $session = $this->seedSession();
-        $this->actingAs(User::factory()->create());
+        $this->actingAs($this->adminUser());
 
         // The edit page renders the form (enum selects, JSON editors) and the
         // players/teams/action-logs relation managers.
@@ -78,7 +87,7 @@ class AdminPanelTest extends TestCase
     public function test_content_and_feedback_admin_pages_load(): void
     {
         $this->seed(); // questions + curses + sample session
-        $this->actingAs(User::factory()->create());
+        $this->actingAs($this->adminUser());
 
         foreach (['questions', 'cards', 'feedback', 'deck'] as $slug) {
             $this->get("/admin/{$slug}")->assertSuccessful();
@@ -99,10 +108,22 @@ class AdminPanelTest extends TestCase
         $this->get("/admin/feedback/{$feedback->getKey()}/edit")->assertSuccessful();
     }
 
+    public function test_non_allowlisted_users_cannot_reach_the_panel(): void
+    {
+        config(['game.admin_emails' => ['admin@example.com']]);
+
+        // A guest (no email) and a logged-in non-admin are both denied.
+        $this->actingAs(User::factory()->create(['email' => null]));
+        $this->get('/admin')->assertForbidden();
+
+        $this->actingAs(User::factory()->create(['email' => 'someone@else.test']));
+        $this->get('/admin')->assertForbidden();
+    }
+
     public function test_dashboard_renders_the_stats_widgets(): void
     {
         $this->seedSession();
-        $this->actingAs(User::factory()->create());
+        $this->actingAs($this->adminUser());
 
         // The dashboard page builds without error (widgets register).
         $this->get('/admin')->assertSuccessful();

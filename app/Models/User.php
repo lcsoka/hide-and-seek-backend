@@ -21,13 +21,12 @@ class User extends Authenticatable implements FilamentUser
     use HasApiTokens, HasFactory, Notifiable;
 
     /**
-     * Who may reach the Filament admin panel.
-     *
-     * TODO: restrict to admins (role / allowlist) before any non-local deploy.
+     * Who may reach the Filament admin panel: only users whose email is in the
+     * FILAMENT_ADMIN_EMAILS allowlist. Guests have no email, so they're excluded.
      */
     public function canAccessPanel(Panel $panel): bool
     {
-        return true;
+        return $this->email !== null && in_array(strtolower($this->email), config('game.admin_emails', []), true);
     }
 
     /**
