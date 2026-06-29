@@ -55,6 +55,8 @@ class GameStatePresenter
             'pending_question' => $this->pendingQuestion($session, $isHider, $mode),
             // A thermometer the seeker has started but not yet stopped (shared so all see it).
             'thermometer' => $session->state_data['thermometer'] ?? null,
+            // Seekers' public-transport status + journey log (seeker-only).
+            'transit' => $this->transit($session, $player),
             // The answered-question history — geometry is the seeker's own positions and
             // the answer is just the constraint, so it never reveals the hider's location.
             'questions' => $this->questions($session),
@@ -78,6 +80,46 @@ class GameStatePresenter
             // Running scoreboard, and the just-ended round's reveal/recap (round_end + finished).
             'standings' => $this->standings($session),
             'last_round' => $session->state_data['last_round'] ?? null,
+        ];
+    }
+
+    /**
+     * Seekers' public-transport view: whether THIS player is currently riding, who else on
+     * the team is, and the team's completed legs (board → alight, with distance + duration) —
+     * their journey log. Seeker-only; the hider doesn't see the seekers' movements here.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function transit(Session $session, ?Player $player): ?array
+    {
+        if ($player === null || $player->role !== 'seeker') {
+            return null;
+        }
+
+        $onTransit = $session->state_data['on_transit'] ?? [];
+        $names = $session->players->pluck('display_name', 'id');
+
+        $log = array_map(function (array $leg) use ($names) {
+            $hasEnd = ($leg['alight_lat'] ?? null) !== null && ($leg['alight_lng'] ?? null) !== null;
+            $distance = $hasEnd
+                ? Geo::distanceMeters($leg['board_lat'], $leg['board_lng'], $leg['alight_lat'], $leg['alight_lng'])
+                : null;
+
+            return [
+                'player_id' => $leg['player_id'] ?? null,
+                'display_name' => $names[$leg['player_id'] ?? ''] ?? null,
+                'board' => ['lat' => $leg['board_lat'] ?? null, 'lng' => $leg['board_lng'] ?? null, 'at' => $leg['board_at'] ?? null],
+                'alight' => ['lat' => $leg['alight_lat'] ?? null, 'lng' => $leg['alight_lng'] ?? null, 'at' => $leg['alight_at'] ?? null],
+                'distance_m' => $distance !== null ? (int) round($distance) : null,
+                'duration_s' => isset($leg['alight_at'], $leg['board_at']) ? max(0, (int) $leg['alight_at'] - (int) $leg['board_at']) : null,
+            ];
+        }, $session->state_data['transit_log'] ?? []);
+
+        return [
+            'on_transit' => isset($onTransit[$player->id]),
+            'boarded_at' => $onTransit[$player->id]['at'] ?? null,
+            'riding' => array_values(array_filter(array_map(fn ($id) => $names[$id] ?? null, array_keys($onTransit)))),
+            'log' => array_values($log),
         ];
     }
 

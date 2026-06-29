@@ -93,7 +93,7 @@ class HideAndSeekMode implements GameMode
                 // can clear an active curse that demands photo proof, and — once they've
                 // physically closed in — catch the hider.
                 'seeker' => array_merge(
-                    $this->seekerActions($session, $pending),
+                    $this->seekerActions($session, $player, $pending),
                     $this->seekerCanCatch($session, $player) ? ['confirm_found'] : [],
                 ),
                 // The hider is locked to their spot once seeking begins. They answer pending
@@ -140,7 +140,13 @@ class HideAndSeekMode implements GameMode
                 ? ValidationResult::pass()
                 : ValidationResult::fail('There is no recent answer to change.'),
             'ask_question' => $this->validateAsk($session, $this->questionCategoryOf($action)),
-            'start_thermometer' => $this->validateAsk($session, QuestionCategory::Thermometer->value),
+            'start_thermometer' => isset(($session->state_data['on_transit'] ?? [])[$player->id])
+                ? ValidationResult::fail('Get off transit before starting a thermometer — it must be walked.')
+                : $this->validateAsk($session, QuestionCategory::Thermometer->value),
+            'board_transit' => $this->validateBoardTransit($session, $player),
+            'alight_transit' => isset(($session->state_data['on_transit'] ?? [])[$player->id])
+                ? ValidationResult::pass()
+                : ValidationResult::fail('You are not on transit.'),
             'answer_question' => ($session->state_data['pending_question'] ?? null) !== null
                 ? ValidationResult::pass()
                 : ValidationResult::fail('There is no question to answer.'),
@@ -169,6 +175,21 @@ class HideAndSeekMode implements GameMode
             : ValidationResult::fail('This curse needs a photo to send to the seekers.');
     }
 
+    /** A seeker may board public transport only while walking (no thermometer running) and not already aboard. */
+    private function validateBoardTransit(Session $session, Player $player): ValidationResult
+    {
+        if (($session->state_data['thermometer'] ?? null) !== null) {
+            return ValidationResult::fail('You cannot board transit during a thermometer — it must be walked.');
+        }
+        if (isset(($session->state_data['on_transit'] ?? [])[$player->id])) {
+            return ValidationResult::fail('You are already on transit.');
+        }
+
+        return ($player->last_lat === null || $player->last_lng === null)
+            ? ValidationResult::fail('Report your location before boarding.')
+            : ValidationResult::pass();
+    }
+
     public function applyAction(Session $session, Player $player, Action $action): ActionOutcome
     {
         $data = $session->state_data ?? [];
@@ -183,6 +204,8 @@ class HideAndSeekMode implements GameMode
             'ask_question' => $this->askQuestion($session, $player, $action, $data),
             'start_thermometer' => $this->startThermometer($player, $action, $data),
             'stop_thermometer' => $this->stopThermometer($session, $player, $data),
+            'board_transit' => $this->boardTransit($player, $data),
+            'alight_transit' => $this->alightTransit($player, $data),
             'answer_question' => $this->answerQuestion($session, $action, $data),
             'play_curse' => $this->playCurse($player, $action, $data),
             'play_powerup' => $this->playPowerup($action, $data),
@@ -497,11 +520,11 @@ class HideAndSeekMode implements GameMode
     }
 
     /** The seeker's available actions, accounting for a running thermometer + active curses. */
-    private function seekerActions(Session $session, bool $pending): array
+    private function seekerActions(Session $session, Player $player, bool $pending): array
     {
         $data = $session->state_data ?? [];
 
-        // Mid-thermometer: the seeker is travelling and can only stop it.
+        // Mid-thermometer: the seeker is travelling on foot and can only stop it.
         if (($data['thermometer'] ?? null) !== null) {
             return ['stop_thermometer', 'declare_endgame'];
         }
@@ -512,8 +535,14 @@ class HideAndSeekMode implements GameMode
         $canComplete = (bool) array_filter($active, fn ($c) => (! empty($c['requires_proof']) || ! empty($c['blocks_asking'])) && empty($c['dice']));
         $canRoll = (bool) array_filter($active, fn ($c) => ! empty($c['dice']));
 
+        // Public-transport board/alight (the journey log). The thermometer must be WALKED:
+        // a seeker can't start one while on transit, and boarding isn't offered mid-thermometer.
+        $onTransit = isset(($data['on_transit'] ?? [])[$player->id]);
+        $asks = $onTransit ? ['ask_question'] : ['ask_question', 'start_thermometer'];
+
         return array_merge(
-            $pending || $blocked ? ['declare_endgame'] : ['ask_question', 'start_thermometer', 'declare_endgame'],
+            $pending || $blocked ? ['declare_endgame'] : array_merge($asks, ['declare_endgame']),
+            [$onTransit ? 'alight_transit' : 'board_transit'],
             $canComplete ? ['complete_curse'] : [],
             $canRoll ? ['roll_dice'] : [],
         );
@@ -574,6 +603,40 @@ class HideAndSeekMode implements GameMode
             [$this->event('QuestionAsked', ['seq' => $seq, 'question_id' => $running['question_id'], 'category' => 'thermometer', 'asked_by' => $running['asked_by'], 'deadline' => $data['pending_question']['deadline']])],
             [['op' => 'set', 'key' => 'question_answer', 'delay' => $window]],
         );
+    }
+
+    /**
+     * A seeker boards public transport — opens a journey leg from their current position.
+     * Blocked while a thermometer is running (it must be walked); see validateBoardTransit.
+     */
+    private function boardTransit(Player $player, array $data): ActionOutcome
+    {
+        $data['on_transit'][$player->id] = [
+            'lat' => (float) $player->last_lat,
+            'lng' => (float) $player->last_lng,
+            'at' => now()->timestamp,
+        ];
+
+        return new ActionOutcome($data, null, [$this->event('TransitBoarded', ['by' => $player->id])]);
+    }
+
+    /** The seeker alights — closes the open leg and appends it to the journey log. */
+    private function alightTransit(Player $player, array $data): ActionOutcome
+    {
+        $board = $data['on_transit'][$player->id] ?? null;
+        unset($data['on_transit'][$player->id]);
+
+        if ($board !== null) {
+            $data['transit_log'][] = [
+                'player_id' => $player->id,
+                'board_lat' => $board['lat'], 'board_lng' => $board['lng'], 'board_at' => $board['at'],
+                'alight_lat' => $player->last_lat !== null ? (float) $player->last_lat : null,
+                'alight_lng' => $player->last_lng !== null ? (float) $player->last_lng : null,
+                'alight_at' => now()->timestamp,
+            ];
+        }
+
+        return new ActionOutcome($data, null, [$this->event('TransitAlighted', ['by' => $player->id])]);
     }
 
     private function askQuestion(Session $session, Player $asker, Action $action, array $data): ActionOutcome
@@ -1271,6 +1334,7 @@ class HideAndSeekMode implements GameMode
             $data['questions'], $data['question_seq'], $data['curses_played'], $data['hider_position'], $data['relocating'], $data['endgame_dwell'],
             $data['pending_question'], $data['question_answer'], $data['thermometer'], $data['last_round'], $data['bonus_draws'],
             $data['disabled_categories'], $data['spotty_category'], $data['pending_curse_choice'], $data['hand_limit'], $data['hiding_zone'],
+            $data['on_transit'], $data['transit_log'],
         );
 
         return new ActionOutcome($data, 'role_assignment', [$this->event('RoundStarted', ['round' => $completed])]);
