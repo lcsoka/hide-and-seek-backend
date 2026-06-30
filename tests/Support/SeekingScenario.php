@@ -88,4 +88,13 @@ trait SeekingScenario
         $data['hand'] = array_merge($data['hand'] ?? [], [$card]);
         $session->update(['state_data' => $data]);
     }
+
+    /** The catch handshake: the seeker claims they found the hider, then the hider confirms. */
+    protected function catchHider(array $ctx): void
+    {
+        Sanctum::actingAs($ctx['seeker']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'claim_found'])->assertOk();
+        Sanctum::actingAs($ctx['host']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'confirm_caught'])->assertOk();
+    }
 }

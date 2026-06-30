@@ -94,7 +94,9 @@ class HideAndSeekMode implements GameMode
                 // physically closed in — catch the hider.
                 'seeker' => array_merge(
                     $this->seekerActions($session, $player, $pending),
-                    $this->seekerCanCatch($session, $player) ? ['confirm_found'] : [],
+                    // Catching is a handshake: a seeker who has closed in CLAIMS the catch; it
+                    // only ends the round once the hider confirms (so neither side ends it alone).
+                    $this->seekerCanCatch($session, $player) && ($session->state_data['found_claim'] ?? null) === null ? ['claim_found'] : [],
                 ),
                 // The hider is locked to their spot once seeking begins. They answer pending
                 // questions and play cards — unless a 'move' powerup put them in relocating
@@ -105,13 +107,17 @@ class HideAndSeekMode implements GameMode
                     ($session->state_data['pending_curse_choice'] ?? null) !== null ? ['choose_disabled_categories'] : [],
                     ($session->state_data['relocating'] ?? false) ? ['choose_station', 'confirm_hidden'] : [],
                     $this->amendableIndex($session) !== null ? ['amend_answer'] : [],
+                    ($session->state_data['found_claim'] ?? null) !== null ? ['confirm_caught', 'dispute_found'] : [],
                     ($session->state_data['hand'] ?? []) !== [] ? ['discard_card'] : [],
                 ),
                 default => [],
             },
             'endgame' => match ($player->role) {
-                'seeker' => $this->seekerCanCatch($session, $player) ? ['confirm_found'] : [],
-                'hider' => ['surrender'],
+                'seeker' => $this->seekerCanCatch($session, $player) && ($session->state_data['found_claim'] ?? null) === null ? ['claim_found'] : [],
+                'hider' => array_merge(
+                    ['surrender'],
+                    ($session->state_data['found_claim'] ?? null) !== null ? ['confirm_caught', 'dispute_found'] : [],
+                ),
                 default => [],
             },
             'round_end' => $player->is_host ? ['advance_round'] : [],
@@ -133,9 +139,12 @@ class HideAndSeekMode implements GameMode
             'assign_hider' => (! isset($action->payload['player_id']) || $session->players()->whereKey($action->payload['player_id'])->exists())
                 ? ValidationResult::pass()
                 : ValidationResult::fail('player_id must be a player in this session.'),
-            'confirm_found' => $this->seekerCanCatch($session, $player)
+            'claim_found' => $this->seekerCanCatch($session, $player)
                 ? ValidationResult::pass()
                 : ValidationResult::fail('You are not close enough to the hider to catch them.'),
+            'confirm_caught', 'dispute_found' => ($session->state_data['found_claim'] ?? null) !== null
+                ? ValidationResult::pass()
+                : ValidationResult::fail('No catch has been claimed.'),
             'amend_answer' => ($this->amendableIndex($session) !== null && ($action->payload['answer'] ?? null) !== null)
                 ? ValidationResult::pass()
                 : ValidationResult::fail('There is no recent answer to change.'),
@@ -216,7 +225,9 @@ class HideAndSeekMode implements GameMode
             'complete_curse' => $this->completeCurse($player, $action, $data),
             'roll_dice' => $this->rollDice($action, $data),
             'declare_endgame' => new ActionOutcome($data, 'endgame', [$this->event('EndgameTriggered', ['by' => $player->id])]),
-            'confirm_found' => $this->endRound($session, $data, $player->id, surrendered: false),
+            'claim_found' => $this->claimFound($player, $data),
+            'confirm_caught' => $this->endRound($session, $this->withoutFoundClaim($data), $data['found_claim']['by'] ?? null, surrendered: false),
+            'dispute_found' => new ActionOutcome($this->withoutFoundClaim($data), null, [$this->event('FoundDisputed', ['by' => $player->id])]),
             'surrender' => $this->endRound($session, $data, null, surrendered: true),
             'advance_round' => $this->advanceRound($session, $data),
             'end_game' => new ActionOutcome(
@@ -337,6 +348,22 @@ class HideAndSeekMode implements GameMode
         $data['seeking_started_at'] = now()->timestamp;
 
         return new ActionOutcome($data, 'seeking', [$this->event('SeekingStarted', ['round' => $data['round'] ?? 0])]);
+    }
+
+    /** A seeker who has closed in claims the catch; the round ends only once the hider confirms. */
+    private function claimFound(Player $seeker, array $data): ActionOutcome
+    {
+        $data['found_claim'] = ['by' => $seeker->id, 'at' => now()->timestamp];
+
+        return new ActionOutcome($data, null, [$this->event('FoundClaimed', ['by' => $seeker->id])]);
+    }
+
+    /** Drop a pending catch claim (the hider confirmed or disputed it). */
+    private function withoutFoundClaim(array $data): array
+    {
+        unset($data['found_claim']);
+
+        return $data;
     }
 
     /** The hider may re-hide (move to a new station) only while no seeker is inside their zone. */
@@ -1347,7 +1374,7 @@ class HideAndSeekMode implements GameMode
             $data['questions'], $data['question_seq'], $data['curses_played'], $data['hider_position'], $data['relocating'], $data['endgame_dwell'],
             $data['pending_question'], $data['question_answer'], $data['thermometer'], $data['last_round'], $data['bonus_draws'],
             $data['disabled_categories'], $data['spotty_category'], $data['pending_curse_choice'], $data['hand_limit'], $data['hiding_zone'],
-            $data['on_transit'], $data['transit_log'],
+            $data['on_transit'], $data['transit_log'], $data['found_claim'],
         );
 
         return new ActionOutcome($data, 'role_assignment', [$this->event('RoundStarted', ['round' => $completed])]);

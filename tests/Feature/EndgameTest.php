@@ -38,16 +38,35 @@ class EndgameTest extends TestCase
         Sanctum::actingAs($ctx['seeker']);
         $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'declare_endgame'])->assertOk();
 
-        // Standing on the live drift B, the seeker is NOT close enough to catch.
+        // Standing on the live drift B, the seeker is NOT close enough to claim the catch.
         Player::whereKey($ctx['seekerId'])->update(['last_lat' => 47.80, 'last_lng' => 19.60]);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'confirm_found'])->assertStatus(422);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'claim_found'])->assertStatus(422);
 
-        // Standing on the committed spot A, they can catch.
+        // Standing on the committed spot A, they can claim — and the round ends once the hider confirms.
         Player::whereKey($ctx['seekerId'])->update(['last_lat' => 47.50, 'last_lng' => 19.04]);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'confirm_found'])->assertOk();
+        $this->catchHider($ctx);
         $session = Session::find($ctx['sessionId']);
         $this->assertSame('round_end', $session->state);
         $this->assertSame($ctx['seekerId'], $session->state_data['last_round']['found_by']);
+    }
+
+    public function test_a_claimed_catch_does_not_end_the_round_until_the_hider_confirms(): void
+    {
+        $ctx = $this->startSeeking();
+        $this->patchState($ctx['sessionId'], ['hider_position' => ['lat' => 47.50, 'lng' => 19.04]]);
+        Player::whereKey($ctx['seekerId'])->update(['last_lat' => 47.50, 'last_lng' => 19.04]);
+
+        // The seeker claims the catch — the round stays live until the hider acts.
+        Sanctum::actingAs($ctx['seeker']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'claim_found'])->assertOk();
+        $this->assertSame('seeking', Session::find($ctx['sessionId'])->state);
+
+        // The hider disputes it — claim cleared, round continues.
+        Sanctum::actingAs($ctx['host']);
+        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'dispute_found'])->assertOk();
+        $session = Session::find($ctx['sessionId']);
+        $this->assertSame('seeking', $session->state);
+        $this->assertArrayNotHasKey('found_claim', $session->state_data);
     }
 
     public function test_round_end_exposes_the_reveal_and_standings(): void
@@ -61,7 +80,7 @@ class EndgameTest extends TestCase
 
         Sanctum::actingAs($ctx['seeker']);
         $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'declare_endgame'])->assertOk();
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'confirm_found'])->assertOk();
+        $this->catchHider($ctx);
 
         $state = $this->getJson("/api/sessions/{$ctx['sessionId']}/state");
         $state->assertJsonPath('state', 'round_end');
@@ -85,7 +104,7 @@ class EndgameTest extends TestCase
 
         Sanctum::actingAs($ctx['seeker']);
         $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'declare_endgame'])->assertOk();
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'confirm_found'])->assertOk();
+        $this->catchHider($ctx);
 
         $state = $this->getJson("/api/sessions/{$ctx['sessionId']}/state");
         // 120s survived + 600s banked bonus.

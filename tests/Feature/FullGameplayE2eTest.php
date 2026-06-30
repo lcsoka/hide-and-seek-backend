@@ -88,11 +88,13 @@ class FullGameplayE2eTest extends TestCase
         $this->action($sid, 'play_curse', ['card_uid' => $cardUid])->assertOk();
         $this->action($sid, 'answer_question')->assertOk();
 
-        // Seeker reaches the hider's spot and confirms the catch.
+        // Seeker reaches the hider's spot and claims the catch; the hider confirms it.
         Sanctum::actingAs($seeker);
         Player::whereKey($seekerPid)->update(['last_lat' => 47.4979, 'last_lng' => 19.0402]);
         $this->action($sid, 'declare_endgame')->assertJsonPath('state', 'endgame');
-        $this->action($sid, 'confirm_found')->assertOk()->assertJsonPath('state', 'round_end');
+        $this->action($sid, 'claim_found')->assertOk();
+        Sanctum::actingAs($host);
+        $this->action($sid, 'confirm_caught')->assertOk()->assertJsonPath('state', 'round_end');
 
         // Host advances → finished (single round).
         Sanctum::actingAs($host);
@@ -140,7 +142,9 @@ class FullGameplayE2eTest extends TestCase
         Sanctum::actingAs($seeker);
         Player::whereKey($seekerPid)->update(['last_lat' => 47.4979, 'last_lng' => 19.0402]);
         $this->action($sid, 'declare_endgame')->assertJsonPath('state', 'endgame');
-        $this->action($sid, 'confirm_found')->assertJsonPath('state', 'round_end');
+        $this->action($sid, 'claim_found')->assertOk();
+        Sanctum::actingAs($host);
+        $this->action($sid, 'confirm_caught')->assertJsonPath('state', 'round_end');
 
         // --- ADVANCE to round 2 (rounds=2, so not finished) ---
         Sanctum::actingAs($host);

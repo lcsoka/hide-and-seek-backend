@@ -94,7 +94,9 @@ class GameplayTest extends TestCase
 
         Sanctum::actingAs($this->seeker);
         $this->action('declare_endgame')->assertJsonPath('state', 'endgame');
-        $this->action('confirm_found')->assertOk()->assertJsonPath('state', 'round_end');
+        $this->action('claim_found')->assertOk();
+        Sanctum::actingAs($this->host);
+        $this->action('confirm_caught')->assertOk()->assertJsonPath('state', 'round_end');
     }
 
     public function test_non_host_cannot_start(): void

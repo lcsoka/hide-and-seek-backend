@@ -235,11 +235,13 @@ class SimulateGames extends Command
     {
         $hiderPoint = $session->state_data['hider_position'] ?? null;
         if ($hiderPoint !== null) {
-            // Walk a seeker onto the hider and catch them.
+            // Walk a seeker onto the hider; they claim the catch and the hider confirms it.
             $seeker = $this->aSeeker($session);
             $seeker->update(['last_lat' => $hiderPoint['lat'], 'last_lng' => $hiderPoint['lng']]);
-            if ($this->canAct($session, $this->seekerById($session, $seeker->id), 'confirm_found')) {
-                return $this->submit($session, $this->seekerById($session, $seeker->id), 'confirm_found');
+            if ($this->canAct($session, $this->seekerById($session, $seeker->id), 'claim_found')) {
+                $session = $this->submit($session, $this->seekerById($session, $seeker->id), 'claim_found');
+
+                return $this->submit($session, $this->hider($session), 'confirm_caught');
             }
         }
 

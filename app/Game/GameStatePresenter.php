@@ -57,6 +57,9 @@ class GameStatePresenter
             'thermometer' => $session->state_data['thermometer'] ?? null,
             // Seekers' public-transport status + journey log (seeker-only).
             'transit' => $this->transit($session, $player),
+            // A pending catch claim: a seeker says they found the hider; the round ends only
+            // once the hider confirms it (shown to both sides).
+            'found_claim' => $this->foundClaim($session),
             // The answered-question history — geometry is the seeker's own positions and
             // the answer is just the constraint, so it never reveals the hider's location.
             'questions' => $this->questions($session),
@@ -130,6 +133,20 @@ class GameStatePresenter
             'board' => $mine !== null ? ['lat' => $mine['lat'] ?? null, 'lng' => $mine['lng'] ?? null] : null,
             'riding' => array_values(array_filter(array_map(fn ($id) => $names[$id] ?? null, array_keys($onTransit)))),
             'log' => array_values($log),
+        ];
+    }
+
+    /** A pending "I found the hider" claim awaiting the hider's confirmation, or null. */
+    private function foundClaim(Session $session): ?array
+    {
+        $claim = $session->state_data['found_claim'] ?? null;
+        if ($claim === null) {
+            return null;
+        }
+
+        return [
+            'by' => $claim['by'] ?? null,
+            'by_name' => $session->players->firstWhere('id', $claim['by'] ?? null)?->display_name,
         ];
     }
 
