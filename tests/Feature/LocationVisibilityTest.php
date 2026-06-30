@@ -107,11 +107,30 @@ class LocationVisibilityTest extends TestCase
         $this->assertNull($seekerView[$this->hostPlayerId]['lat']);
         $this->assertEquals(47.60, $seekerView[$this->seekerPlayerId]['lat']);
 
-        // The hider sees everyone.
+        // Faithful default: the hider sees their OWN position but NOT the seekers closing in.
         Sanctum::actingAs($this->host);
         $hiderView = $this->statePlayers();
         $this->assertEquals(47.40, $hiderView[$this->hostPlayerId]['lat']);
-        $this->assertEquals(47.60, $hiderView[$this->seekerPlayerId]['lat']);
+        $this->assertNull($hiderView[$this->seekerPlayerId]['lat']);
+    }
+
+    public function test_reveal_seekers_to_hider_lets_the_hider_see_seekers(): void
+    {
+        $this->setUpSession();
+        Session::find($this->sessionId)->update(['config' => ['rounds' => 1, 'reveal_seekers_to_hider' => true]]);
+
+        Sanctum::actingAs($this->host);
+        $this->postJson("/api/sessions/{$this->sessionId}/start");
+        $this->postJson("/api/sessions/{$this->sessionId}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $this->hostPlayerId]]);
+        $this->postJson("/api/sessions/{$this->sessionId}/actions", ['type' => 'confirm_hidden']);
+        $this->report(47.40, 19.00);
+
+        Sanctum::actingAs($this->seeker);
+        $this->report(47.60, 19.20);
+
+        // With the casual toggle on, the hider sees the seekers too.
+        Sanctum::actingAs($this->host);
+        $this->assertEquals(47.60, $this->statePlayers()[$this->seekerPlayerId]['lat']);
     }
 
     public function test_assign_hider_without_player_id_picks_a_random_hider(): void

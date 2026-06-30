@@ -280,11 +280,15 @@ class HideAndSeekMode implements GameMode
 
         $hiderId = $session->state_data['hider_id'] ?? null;
 
-        // The hider sees everyone; seekers see everyone except the hider.
         if ($viewer->role === 'hider' || $viewer->id === $hiderId) {
-            return LocationFilter::only($allIds);
+            // Faithful to the real game: the hider does NOT see the seekers closing in — their
+            // tension is not knowing how near the hunt is. A casual game can opt back in.
+            return ($session->config['reveal_seekers_to_hider'] ?? false)
+                ? LocationFilter::only($allIds)
+                : LocationFilter::only([$viewer->id]);
         }
 
+        // Seekers see everyone except the hider.
         return LocationFilter::only(array_filter($allIds, fn ($id) => $id !== $hiderId));
     }
 

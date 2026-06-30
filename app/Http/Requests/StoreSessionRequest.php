@@ -26,6 +26,7 @@ class StoreSessionRequest extends FormRequest
             'config.transit_modes' => ['sometimes', 'array', 'min:1'],
             'config.transit_modes.*' => ['string', Rule::in(['metro', 'tram', 'rail', 'light_rail', 'bus', 'trolleybus'])],
             'config.hiding_zone_rule' => ['sometimes', Rule::in(['circle', 'nearest'])],
+            'config.reveal_seekers_to_hider' => ['sometimes', 'boolean'],
             'display_name' => ['nullable', 'string', 'max:50'],
         ];
     }
