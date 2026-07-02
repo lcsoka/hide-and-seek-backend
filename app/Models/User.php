@@ -9,16 +9,29 @@ use Filament\Panel;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
-#[Fillable(['name', 'email', 'password'])]
+#[Fillable(['name', 'email', 'password', 'avatar'])]
 #[Hidden(['password', 'remember_token'])]
 class User extends Authenticatable implements FilamentUser
 {
     /** @use HasFactory<UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
+
+    /** A guest is a user with no email/password — a throwaway identity that can be promoted. */
+    public function isGuest(): bool
+    {
+        return $this->email === null;
+    }
+
+    /** Every session this user has joined (across games) — the basis for their history/stats. */
+    public function players(): HasMany
+    {
+        return $this->hasMany(Player::class);
+    }
 
     /**
      * Who may reach the Filament admin panel: only users whose email is in the

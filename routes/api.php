@@ -14,14 +14,22 @@ use Illuminate\Support\Facades\Route;
 
 // Public.
 Route::post('/auth/guest', [AuthController::class, 'guest']);
+Route::post('/auth/login', [AuthController::class, 'login'])->middleware('throttle:10,1');
 Route::post('/feedback', [FeedbackController::class, 'store']);
 Route::get('/questions', [CatalogController::class, 'questions']);
 Route::get('/curses', [CatalogController::class, 'curses']);
 // Cached server-side Overpass proxy — the web app's only path to OSM data.
 Route::post('/geo/overpass', [GeoController::class, 'overpass'])->middleware('throttle:240,1');
 
-// Authenticated (guest or, later, registered token).
+// Authenticated (guest or registered token).
 Route::middleware('auth:sanctum')->group(function () {
+    // Optional accounts: register promotes the current guest in place; profile + avatar.
+    Route::post('/auth/register', [AuthController::class, 'register']);
+    Route::post('/auth/logout', [AuthController::class, 'logout']);
+    Route::get('/auth/me', [AuthController::class, 'me']);
+    Route::patch('/profile', [AuthController::class, 'updateProfile']);
+    Route::post('/profile/avatar', [AuthController::class, 'uploadAvatar'])->middleware('throttle:20,1');
+
     Route::post('/sessions', [SessionController::class, 'store']);
     Route::post('/sessions/{code}/join', [SessionController::class, 'join']);
     Route::get('/sessions/{session}', [SessionController::class, 'show']);
