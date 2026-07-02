@@ -3,64 +3,50 @@
 namespace App\Game\Geo;
 
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
-use Throwable;
 
 /**
- * Server-side Overpass executor: runs raw Overpass QL across the configured mirrors with
- * bounded timeouts, and caches successful responses (6h, keyed by the query) so repeated
- * client queries hit OpenStreetMap at most once. The web app proxies ALL of its Overpass
- * traffic through this (via GeoController) instead of calling the public API directly, so
- * there is a single shared cache and no per-client rate-limiting.
+ * Server-side Overpass executor: runs raw Overpass QL via the resilient OverpassHttp layer
+ * (retry / mirror fallback) and caches successful responses (6h, keyed by the query) so
+ * repeated client queries hit OpenStreetMap at most once. The web app proxies ALL of its
+ * Overpass traffic through this (via GeoController) instead of calling the public API
+ * directly, so there is a single shared cache and no per-client rate-limiting.
+ *
+ * On a total failure it serves the last-known-good response (kept for STALE_TTL_DAYS) so an
+ * Overpass outage degrades to slightly-stale map data rather than a broken map.
  */
 final class OverpassClient
 {
     private const TTL_HOURS = 6;
+    private const STALE_TTL_DAYS = 7;
+    private const TIMEOUT = 25;
+
+    public function __construct(private readonly OverpassHttp $http) {}
 
     /**
      * Run an Overpass QL query and return the decoded JSON (the full `{elements: …}`
-     * object, ready for osmtogeojson), or null if every mirror failed.
+     * object, ready for osmtogeojson), or null if every mirror failed and no stale copy exists.
      *
      * @return array<string, mixed>|null
      */
     public function run(string $ql): ?array
     {
-        $cacheKey = 'overpass_ql:'.sha1($ql);
+        $freshKey = 'overpass_ql:'.sha1($ql);
+        $staleKey = 'overpass_ql:stale:'.sha1($ql);
 
-        $cached = Cache::get($cacheKey);
+        $cached = Cache::get($freshKey);
         if ($cached !== null) {
             return $cached;
         }
 
-        // Only successful responses are cached; a failure returns null and retries next
-        // time rather than poisoning the cache with an empty result for hours.
-        $result = $this->fetch($ql);
+        $result = $this->http->fetch($ql, self::TIMEOUT);
         if ($result !== null) {
-            Cache::put($cacheKey, $result, now()->addHours(self::TTL_HOURS));
+            Cache::put($freshKey, $result, now()->addHours(self::TTL_HOURS));
+            Cache::put($staleKey, $result, now()->addDays(self::STALE_TTL_DAYS));
+
+            return $result;
         }
 
-        return $result;
-    }
-
-    /** @return array<string, mixed>|null */
-    private function fetch(string $ql): ?array
-    {
-        $endpoints = (array) config('game.overpass.endpoints', [config('game.overpass.endpoint')]);
-        $userAgent = (string) config('game.overpass.user_agent', 'HideAndSeek/1.0');
-
-        foreach ($endpoints as $endpoint) {
-            try {
-                $response = Http::withHeaders(['User-Agent' => $userAgent])
-                    ->asForm()->connectTimeout(5)->timeout(25)->post($endpoint, ['data' => $ql]);
-
-                if ($response->successful()) {
-                    return $response->json() ?? [];
-                }
-            } catch (Throwable) {
-                // try the next mirror
-            }
-        }
-
-        return null;
+        // Overpass unreachable — serve the last-known-good response if we have one.
+        return Cache::get($staleKey);
     }
 }

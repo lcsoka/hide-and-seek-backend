@@ -4,17 +4,21 @@ namespace App\Game\Geo;
 
 use App\Game\Support\Geo;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
-use Throwable;
 
 /**
- * Live backend over the public OpenStreetMap Overpass API. Results are cached by
- * coarse location; any failure returns empty/null so the question falls back to a
- * manual hider answer (never blocks the game). A local PostGIS backend can later
- * replace this behind the same interface.
+ * Live backend over the public OpenStreetMap Overpass API (via the resilient OverpassHttp
+ * layer). Results are cached by coarse location; on a total failure the last-known-good
+ * result is served (stale fallback), and only if there's none does the question fall back to
+ * a manual hider answer — it never blocks the game. A local PostGIS backend can later replace
+ * this behind the same interface.
  */
 final class OverpassMapDataSource implements MapDataSource
 {
+    private const TIMEOUT = 12;
+    private const STALE_TTL_DAYS = 7;
+
+    public function __construct(private readonly OverpassHttp $http) {}
+
     public function nearest(string $type, float $lat, float $lng): ?GeoFeature
     {
         $radius = (float) config('game.overpass.search_radius_m', 50000);
@@ -42,14 +46,18 @@ final class OverpassMapDataSource implements MapDataSource
         [$key, $value] = explode('=', $tag, 2);
         $radius = (int) $radiusM;
         $cacheKey = sprintf('overpass:%s:%d:%.3f:%.3f', $type, $radius, $lat, $lng);
+        $staleKey = "stale:{$cacheKey}";
 
-        // Only successful responses are cached; a failed fetch returns [] and retries
-        // next time instead of poisoning the cache with an empty result for hours.
         $elements = Cache::get($cacheKey);
         if ($elements === null) {
             $elements = $this->fetch($key, $value, $radius, $lat, $lng);
             if ($elements !== null) {
+                // Cache the success (fresh 6h + a longer-lived stale copy for outages).
                 Cache::put($cacheKey, $elements, now()->addHours(6));
+                Cache::put($staleKey, $elements, now()->addDays(self::STALE_TTL_DAYS));
+            } else {
+                // Overpass unreachable — use the last-known-good result if we have one.
+                $elements = Cache::get($staleKey);
             }
         }
         $elements ??= [];
@@ -75,8 +83,9 @@ final class OverpassMapDataSource implements MapDataSource
     }
 
     /**
-     * Query Overpass across the configured endpoints. Returns the elements on the
-     * first success, or null if every endpoint failed (so the caller won't cache it).
+     * Query Overpass (via the resilient layer). Returns the elements on success (possibly an
+     * empty array — a valid "no features here"), or null if every mirror failed so the caller
+     * can distinguish a genuine empty result from an outage and fall back to stale/manual.
      *
      * @return array<int, array<string, mixed>>|null
      */
@@ -88,24 +97,9 @@ final class OverpassMapDataSource implements MapDataSource
             ."relation[\"{$key}\"=\"{$value}\"](around:{$radius},{$lat},{$lng});"
             .');out center;';
 
-        $endpoints = (array) config('game.overpass.endpoints', [config('game.overpass.endpoint')]);
-        $userAgent = (string) config('game.overpass.user_agent', 'HideAndSeek/1.0');
+        // Bounded so a slow/throttled mirror can't exhaust PHP's request time limit.
+        $result = $this->http->fetch($ql, self::TIMEOUT);
 
-        foreach ($endpoints as $endpoint) {
-            try {
-                // Bounded so a slow/throttled mirror can never exhaust PHP's request time
-                // limit (two endpoints × 12 s < 30 s); a failure falls back to a manual answer.
-                $response = Http::withHeaders(['User-Agent' => $userAgent])
-                    ->asForm()->connectTimeout(5)->timeout(12)->post($endpoint, ['data' => $ql]);
-
-                if ($response->successful()) {
-                    return $response->json('elements') ?? [];
-                }
-            } catch (Throwable) {
-                // try the next endpoint
-            }
-        }
-
-        return null;
+        return $result === null ? null : ($result['elements'] ?? []);
     }
 }
