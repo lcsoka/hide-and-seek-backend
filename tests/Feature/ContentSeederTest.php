@@ -75,8 +75,8 @@ class ContentSeederTest extends TestCase
         $this->assertSame('museum', Question::where('key', 'matching.museum')->firstOrFail()->parameters['feature']);
         $this->assertSame('airport', Question::where('key', 'measuring.commercial_airport')->firstOrFail()->parameters['feature']);
 
-        $tentacle = Question::where('key', 'tentacles.museums_1_mile')->firstOrFail();
+        $tentacle = Question::where('key', 'tentacles.museums_2_km')->firstOrFail();
         $this->assertSame('museum', $tentacle->parameters['feature']);
-        $this->assertGreaterThan(0, $tentacle->parameters['radius_m']);
+        $this->assertSame(2000, $tentacle->parameters['radius_m']);
     }
 }

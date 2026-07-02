@@ -83,12 +83,12 @@ class QuestionSeeder extends Seeder
 
         $this->seed(QuestionCategory::Radar, 'radar', 2, 1, 'Radar', 'Radar',
             'Are you within a chosen distance of me?', 'A választott távolságon belül vagy tőlem?',
-            ['distances' => ['1/4 mile', '1/2 mile', '1 mile', '3 miles', '5 miles', '10 miles', '25 miles', '50 miles', '100 miles', 'choose']]);
+            ['distances' => ['500 m', '1 km', '2 km', '5 km', '10 km', '25 km', '50 km', 'choose']]);
 
         $this->seed(QuestionCategory::Thermometer, 'thermometer', 2, 1, 'Thermometer', 'Hőmérő',
             'After I travel at least the chosen distance, am I hotter or colder?',
             'Miután legalább a választott távolságot megteszem, melegebb vagy hidegebb vagyok?',
-            ['distances' => ['small' => ['1/2 mile', '3 miles'], 'medium' => ['1/2 mile', '3 miles', '10 miles'], 'large' => ['1/2 mile', '3 miles', '10 miles', '50 miles']]]);
+            ['distances' => ['small' => ['500 m', '3 km'], 'medium' => ['500 m', '3 km', '10 km'], 'large' => ['500 m', '3 km', '10 km', '50 km']]]);
 
         $photo = ['Building from Station', 'Widest Street', 'Tree', 'Tallest Structure', 'Selfie', 'Sky', 'Tallest Building from Station', 'Street Trace', 'Two Buildings', 'Restaurant Interior', 'Park', 'Grocery Aisle', 'Place of Worship', 'Train Platform', 'Largest Body of Water', 'Five Buildings'];
         foreach ($photo as $s) {
@@ -97,13 +97,21 @@ class QuestionSeeder extends Seeder
                 "Send a photo of: {$s}.", "Küldj egy fotót erről: {$this->hu($s)}.");
         }
 
-        $tentacles = [['Museums', '1 mile'], ['Libraries', '1 mile'], ['Movie Theaters', '1 mile'], ['Hospitals', '1 mile'], ['Metro Lines', '15 miles'], ['Zoos', '15 miles'], ['Aquariums', '15 miles'], ['Amusement Parks', '15 miles']];
-        foreach ($tentacles as [$s, $radius]) {
+        // The distance is part of the key/title/prompt, so re-seeding with metric distances would
+        // orphan the old imperial rows — drop the official tentacles first (custom ones are kept).
+        Question::where('category', QuestionCategory::Tentacles->value)->where('is_custom', false)->delete();
+
+        // Metric distances (the game is metric): dense features have a short reach, sparse a long one.
+        $tentacles = [
+            ['Museums', '2 km', 2000], ['Libraries', '2 km', 2000], ['Movie Theaters', '2 km', 2000], ['Hospitals', '2 km', 2000],
+            ['Metro Lines', '25 km', 25000], ['Zoos', '25 km', 25000], ['Aquariums', '25 km', 25000], ['Amusement Parks', '25 km', 25000],
+        ];
+        foreach ($tentacles as [$s, $radius, $meters]) {
             $this->seed(QuestionCategory::Tentacles, "tentacles.{$this->slug($s)}_{$this->slug($radius)}", 4, 2,
                 "Tentacles — {$s} ({$radius})", "Csápok — {$this->hu($s)} ({$radius})",
                 "Of all {$s} within {$radius} of a seeker, which is your nearest?",
                 "A keresőtől {$radius} távolságon belüli összes {$this->hu($s)} közül melyik a legközelebbi hozzád?",
-                $this->tentacleParams($s, $radius));
+                $this->tentacleParams($s, $radius, $meters));
         }
     }
 
@@ -130,22 +138,15 @@ class QuestionSeeder extends Seeder
             : $this->featureParams($subject);
     }
 
-    private function tentacleParams(string $subject, string $radius): array
+    private function tentacleParams(string $subject, string $radius, int $meters): array
     {
-        $params = ['radius' => $radius, 'radius_m' => $this->radiusMeters($radius)];
+        $params = ['radius' => $radius, 'radius_m' => $meters];
 
         if (isset($this->tentacleFeatureKeys[$subject])) {
             $params['feature'] = $this->tentacleFeatureKeys[$subject];
         }
 
         return $params;
-    }
-
-    private function radiusMeters(string $radius): int
-    {
-        preg_match('/[\d.]+/', $radius, $match);
-
-        return (int) round(((float) ($match[0] ?? 0)) * 1609.34);
     }
 
     private function seed(QuestionCategory $category, string $key, int $draw, int $keep, string $titleEn, string $titleHu, string $promptEn, string $promptHu, ?array $parameters = null): void
