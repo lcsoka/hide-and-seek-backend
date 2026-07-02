@@ -21,7 +21,7 @@ class GameStatePresenter
      */
     public function present(Session $session, ?Player $player = null): array
     {
-        $session->loadMissing('players', 'teams');
+        $session->loadMissing('players.user', 'teams');
         $mode = $this->modes->make($session->game_mode->value);
         $filter = $player ? $mode->locationVisibility($session, $player) : null;
         $isHider = $player && $player->role === 'hider';
@@ -43,6 +43,7 @@ class GameStatePresenter
                 return [
                     'id' => $p->id,
                     'display_name' => $p->display_name,
+                    'avatar' => $p->user?->avatar, // identity, like the name — shown on the map marker
                     'role' => $p->role,
                     'is_host' => $p->is_host,
                     'team_id' => $p->team_id,
