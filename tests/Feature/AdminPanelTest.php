@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\GameMode;
 use App\Enums\SessionStatus;
+use App\Filament\Resources\Sessions\Pages\InspectSession;
 use App\Filament\Resources\Sessions\SessionResource;
 use App\Filament\Resources\Users\Pages\ListUsers;
 use App\Filament\Widgets\GameStatsOverview;
@@ -214,6 +215,33 @@ class AdminPanelTest extends TestCase
         Livewire::test(\App\Filament\Resources\Questions\Pages\ListQuestions::class)
             ->callTableAction('toggleActive', $question);
         $this->assertFalse($question->fresh()->is_active);
+    }
+
+    public function test_state_inspector_loads_and_saves(): void
+    {
+        $session = $this->seedSession();
+        $session->update([
+            'state_data' => ['round' => 2, 'hiding_zone' => ['radius_m' => 500, 'rule' => 'nearest']],
+            'config' => ['units' => 'metric', 'reveal_seekers_to_hider' => false],
+        ]);
+        $this->actingAs($this->adminUser());
+
+        $this->get(SessionResource::getUrl('state', ['record' => $session]))
+            ->assertSuccessful()
+            ->assertSee('Game state')
+            ->assertSee('Config');
+
+        // Edit a nested state value + a config value through the tree, then persist.
+        Livewire::test(InspectSession::class, ['record' => $session->getKey()])
+            ->set('stateData.round', 5)
+            ->set('stateData.hiding_zone.radius_m', 750)
+            ->set('config.units', 'imperial')
+            ->call('save');
+
+        $session->refresh();
+        $this->assertSame(5, $session->state_data['round']);
+        $this->assertSame(750, $session->state_data['hiding_zone']['radius_m']);
+        $this->assertSame('imperial', $session->config['units']);
     }
 
     public function test_replay_builder_and_page(): void

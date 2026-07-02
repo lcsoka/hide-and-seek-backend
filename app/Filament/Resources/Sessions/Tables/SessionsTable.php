@@ -67,6 +67,11 @@ class SessionsTable
                     ->options(GameMode::class),
             ])
             ->recordActions([
+                Action::make('state')
+                    ->label('State')
+                    ->icon('heroicon-o-adjustments-horizontal')
+                    ->color('info')
+                    ->url(fn (Session $record): string => SessionResource::getUrl('state', ['record' => $record])),
                 Action::make('replay')
                     ->label('Replay')
                     ->icon('heroicon-o-play-circle')

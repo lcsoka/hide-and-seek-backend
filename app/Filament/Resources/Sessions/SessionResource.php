@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Sessions;
 
 use App\Filament\Resources\Sessions\Pages\CreateSession;
 use App\Filament\Resources\Sessions\Pages\EditSession;
+use App\Filament\Resources\Sessions\Pages\InspectSession;
 use App\Filament\Resources\Sessions\Pages\ListSessions;
 use App\Filament\Resources\Sessions\Pages\ReplaySession;
 use App\Filament\Resources\Sessions\RelationManagers\ActionLogsRelationManager;
@@ -75,6 +76,7 @@ class SessionResource extends Resource
             'index' => ListSessions::route('/'),
             'create' => CreateSession::route('/create'),
             'edit' => EditSession::route('/{record}/edit'),
+            'state' => InspectSession::route('/{record}/state'),
             'replay' => ReplaySession::route('/{record}/replay'),
         ];
     }
