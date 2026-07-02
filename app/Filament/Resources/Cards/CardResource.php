@@ -43,6 +43,19 @@ class CardResource extends Resource
         return 'Cards';
     }
 
+    /** Surface how many player-made curses exist, so an admin remembers to look them over. */
+    public static function getNavigationBadge(): ?string
+    {
+        $custom = static::getModel()::query()->where('is_custom', true)->count();
+
+        return $custom > 0 ? (string) $custom : null;
+    }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        return 'warning';
+    }
+
     public static function form(Schema $schema): Schema
     {
         return CardForm::configure($schema);

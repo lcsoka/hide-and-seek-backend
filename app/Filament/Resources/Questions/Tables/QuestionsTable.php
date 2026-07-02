@@ -3,6 +3,7 @@
 namespace App\Filament\Resources\Questions\Tables;
 
 use App\Enums\QuestionCategory;
+use App\Filament\Concerns\ModeratesContent;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -13,6 +14,8 @@ use Filament\Tables\Table;
 
 class QuestionsTable
 {
+    use ModeratesContent;
+
     public static function configure(Table $table): Table
     {
         return $table
@@ -33,9 +36,11 @@ class QuestionsTable
                     ->state(fn ($record) => "draw {$record->reward_draw} / keep {$record->reward_keep}")
                     ->badge()
                     ->color('gray'),
-                IconColumn::make('is_custom')
-                    ->label('Custom')
-                    ->boolean(),
+                TextColumn::make('author.name')
+                    ->label('Author')
+                    ->placeholder('official')
+                    ->badge()
+                    ->color(fn ($state): string => $state ? 'warning' : 'gray'),
                 IconColumn::make('is_active')
                     ->label('Active')
                     ->boolean(),
@@ -46,13 +51,16 @@ class QuestionsTable
                 SelectFilter::make('is_active')
                     ->options([1 => 'Active', 0 => 'Inactive']),
                 SelectFilter::make('is_custom')
-                    ->options([1 => 'Custom', 0 => 'Official']),
+                    ->label('Source')
+                    ->options([1 => 'Player-made', 0 => 'Official']),
             ])
             ->recordActions([
+                self::toggleActive(),
                 EditAction::make(),
             ])
             ->toolbarActions([
                 BulkActionGroup::make([
+                    ...self::bulkActivation(),
                     DeleteBulkAction::make(),
                 ]),
             ]);

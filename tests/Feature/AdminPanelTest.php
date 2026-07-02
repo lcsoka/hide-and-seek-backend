@@ -190,6 +190,29 @@ class AdminPanelTest extends TestCase
         Livewire::test(Leaderboard::class)->assertOk()->assertSee('Leaderboard');
     }
 
+    public function test_custom_content_shows_author_and_can_be_moderated(): void
+    {
+        $author = User::factory()->create(['name' => 'Maker Mia']);
+        $question = Question::create([
+            'key' => 'custom.mod-test',
+            'category' => 'photo',
+            'title' => ['en' => 'My question', 'hu' => 'Kérdésem'],
+            'prompt' => ['en' => 'Send a pic', 'hu' => 'Küldj képet'],
+            'reward_draw' => 1, 'reward_keep' => 1, 'answer_time_s' => 300,
+            'parameters' => [], 'is_custom' => true, 'is_active' => true, 'sort' => 999,
+            'user_id' => $author->id,
+        ]);
+        $this->actingAs($this->adminUser());
+
+        $this->get('/admin/questions')->assertSuccessful()->assertSee('Maker Mia');
+        $this->assertSame('1', \App\Filament\Resources\Questions\QuestionResource::getNavigationBadge());
+
+        // Deactivate the player-made question from the table.
+        Livewire::test(\App\Filament\Resources\Questions\Pages\ListQuestions::class)
+            ->callTableAction('toggleActive', $question);
+        $this->assertFalse($question->fresh()->is_active);
+    }
+
     public function test_admin_can_toggle_and_revoke(): void
     {
         $this->actingAs($this->adminUser());

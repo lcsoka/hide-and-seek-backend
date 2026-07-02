@@ -2,6 +2,7 @@
 
 namespace App\Filament\Resources\Cards\Tables;
 
+use App\Filament\Concerns\ModeratesContent;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
@@ -12,6 +13,8 @@ use Filament\Tables\Table;
 
 class CardsTable
 {
+    use ModeratesContent;
+
     public static function configure(Table $table): Table
     {
         return $table
@@ -30,6 +33,11 @@ class CardsTable
                     ->label('Mechanic')
                     ->state(fn ($record) => self::summary($record))
                     ->wrap(),
+                TextColumn::make('author.name')
+                    ->label('Author')
+                    ->placeholder('official')
+                    ->badge()
+                    ->color(fn ($state): string => $state ? 'warning' : 'gray'),
                 TextColumn::make('count')->label('×')->alignCenter()->sortable(),
                 IconColumn::make('is_active')->boolean(),
             ])
@@ -40,9 +48,18 @@ class CardsTable
                     'time_bonus' => 'Time bonus',
                 ]),
                 SelectFilter::make('is_active')->options([1 => 'Active', 0 => 'Inactive']),
+                SelectFilter::make('is_custom')->label('Source')->options([1 => 'Player-made', 0 => 'Official']),
             ])
-            ->recordActions([EditAction::make()])
-            ->toolbarActions([BulkActionGroup::make([DeleteBulkAction::make()])]);
+            ->recordActions([
+                self::toggleActive(),
+                EditAction::make(),
+            ])
+            ->toolbarActions([
+                BulkActionGroup::make([
+                    ...self::bulkActivation(),
+                    DeleteBulkAction::make(),
+                ]),
+            ]);
     }
 
     /** A one-line human summary of the card's mechanic. */

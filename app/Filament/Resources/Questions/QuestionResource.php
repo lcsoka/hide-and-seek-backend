@@ -41,6 +41,19 @@ class QuestionResource extends Resource
         return __('resources.questions.plural');
     }
 
+    /** Surface how many player-made questions exist, so an admin remembers to look them over. */
+    public static function getNavigationBadge(): ?string
+    {
+        $custom = static::getModel()::query()->where('is_custom', true)->count();
+
+        return $custom > 0 ? (string) $custom : null;
+    }
+
+    public static function getNavigationBadgeColor(): ?string
+    {
+        return 'warning';
+    }
+
     public static function form(Schema $schema): Schema
     {
         return QuestionForm::configure($schema);
