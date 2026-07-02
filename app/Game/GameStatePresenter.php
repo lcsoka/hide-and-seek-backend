@@ -25,6 +25,9 @@ class GameStatePresenter
         $mode = $this->modes->make($session->game_mode->value);
         $filter = $player ? $mode->locationVisibility($session, $player) : null;
         $isHider = $player && $player->role === 'hider';
+        // Resolve active curses once — both `curses` and `questions_blocked` need them, and
+        // each call runs a Card::whereIn (this is built on every /state).
+        $activeCurses = $this->activeCurses($session);
 
         return [
             'session_id' => $session->id,
@@ -63,7 +66,7 @@ class GameStatePresenter
             // The answered-question history — geometry is the seeker's own positions and
             // the answer is just the constraint, so it never reveals the hider's location.
             'questions' => $this->questions($session),
-            'curses' => $this->activeCurses($session),
+            'curses' => $activeCurses,
             // Only the hider sees their own hiding zone, hand, draw, and banked time.
             'hiding_zone' => $isHider ? ($session->state_data['hiding_zone'] ?? null) : null,
             'zone_locked' => $isHider ? $this->zoneLocked($session) : false,
@@ -72,7 +75,7 @@ class GameStatePresenter
             // Question categories a curse currently disables (shared — the seeker greys them out).
             'disabled_categories' => $this->disabledCategoriesView($session),
             // A blocking curse is stopping the seekers from asking until they clear it.
-            'questions_blocked' => $this->questionsBlocked($session),
+            'questions_blocked' => $this->questionsBlocked($activeCurses),
             // The hider must pick categories for a 'choose' curse (e.g. The Drained Brain).
             'curse_choice' => $isHider ? ($session->state_data['pending_curse_choice'] ?? null) : null,
             'hand' => $isHider ? $this->hand($session) : [],
@@ -443,10 +446,14 @@ class GameStatePresenter
         })->all();
     }
 
-    /** True if an active curse is currently blocking the seekers from asking questions. */
-    private function questionsBlocked(Session $session): bool
+    /**
+     * True if an active curse is currently blocking the seekers from asking questions.
+     *
+     * @param  array<int, array<string, mixed>>  $activeCurses  Pre-resolved (see present()).
+     */
+    private function questionsBlocked(array $activeCurses): bool
     {
-        return collect($this->activeCurses($session))
+        return collect($activeCurses)
             ->contains(fn ($c) => $c['status'] === 'active' && ! empty($c['blocks_asking']));
     }
 
