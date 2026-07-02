@@ -7,6 +7,27 @@
 <a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
 </p>
 
+## Hide & Seek — local development
+
+Serving the app (via Herd or `php artisan serve`) is **not enough** on its own: the game needs the
+queue worker (question truth jobs), the Reverb WebSocket server (live events), and the **scheduler**
+(which runs `game:prune-abandoned` every 15 minutes to clean up idle games + guest cruft). Run them
+together with:
+
+```bash
+composer services   # queue:listen + reverb:start + schedule:work  (alongside Herd)
+# or
+composer dev        # the above + php artisan serve + vite + logs, all-in-one
+```
+
+If none of those is running, abandoned games and guest users/tokens accumulate forever. To clean up
+manually at any time:
+
+```bash
+php artisan game:prune-abandoned              # threshold-based (safe for prod)
+php artisan game:prune-abandoned --idle=0 --purge   # dev: wipe every idle game + orphan guest now
+```
+
 ## About Laravel
 
 Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:

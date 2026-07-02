@@ -129,5 +129,6 @@ return [
         'lobby_idle_minutes' => 120,   // never-started session sitting in the lobby
         'active_idle_minutes' => 360,  // in-progress session with no player activity
         'retention_days' => 30,        // delete finished/abandoned sessions after this
+        'guest_retention_days' => 7,   // delete guest users (no email) with no live session after this
     ],
 ];
