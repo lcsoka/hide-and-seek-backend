@@ -7,6 +7,7 @@ use App\Http\Requests\GuestAuthRequest;
 use App\Http\Requests\LoginRequest;
 use App\Http\Requests\RegisterRequest;
 use App\Http\Requests\UpdateProfileRequest;
+use App\Models\GameResult;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -80,6 +81,31 @@ class AuthController extends Controller
     public function me(Request $request): JsonResponse
     {
         return response()->json($this->profile($request->user()));
+    }
+
+    /** The user's aggregate stats + recent games (durable across session pruning). */
+    public function stats(Request $request): JsonResponse
+    {
+        $userId = $request->user()->id;
+        $agg = GameResult::where('user_id', $userId)
+            ->selectRaw('COUNT(*) games, COALESCE(SUM(won), 0) wins, COALESCE(SUM(hide_time_s), 0) total_hide, COALESCE(MAX(hide_time_s), 0) best_hide')
+            ->first();
+
+        $recent = GameResult::where('user_id', $userId)->orderByDesc('played_at')->limit(10)
+            ->get(['hide_time_s', 'won', 'players_count', 'played_at']);
+
+        return response()->json([
+            'games_played' => (int) $agg->games,
+            'wins' => (int) $agg->wins,
+            'total_hide_time_s' => (int) $agg->total_hide,
+            'best_hide_time_s' => (int) $agg->best_hide,
+            'recent' => $recent->map(fn (GameResult $r) => [
+                'hide_time_s' => $r->hide_time_s,
+                'won' => $r->won,
+                'players' => $r->players_count,
+                'at' => $r->played_at?->timestamp,
+            ])->all(),
+        ]);
     }
 
     public function updateProfile(UpdateProfileRequest $request): JsonResponse

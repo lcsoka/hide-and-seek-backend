@@ -8,6 +8,7 @@ use App\Game\Contracts\GameMode;
 use App\Game\Support\Action;
 use App\Game\Support\ActionOutcome;
 use App\Jobs\FireGameTimer;
+use App\Models\GameResult;
 use App\Models\Player;
 use App\Models\Session;
 use App\Models\User;
@@ -94,12 +95,47 @@ class GameEngine
      *
      * @param  array<string, mixed>  $logPayload
      */
+    /**
+     * On finish, write a durable result row for every player who has a registered/guest user, so
+     * their history + stats outlive the session (which gets pruned). The winner is whoever banked
+     * the most hiding time (the standings leader). Idempotent per session.
+     */
+    private function recordResults(Session $session): void
+    {
+        if (GameResult::where('session_id', $session->id)->exists()) {
+            return;
+        }
+
+        $scores = $session->state_data['scores'] ?? [];
+        $topScore = ! empty($scores) ? max($scores) : 0;
+        $session->loadMissing('players');
+        $playersCount = $session->players->count();
+
+        foreach ($session->players as $player) {
+            if ($player->user_id === null) {
+                continue;
+            }
+            $score = (int) ($scores[$player->id] ?? 0);
+            GameResult::create([
+                'user_id' => $player->user_id,
+                'session_id' => $session->id,
+                'display_name' => $player->display_name,
+                'hide_time_s' => $score,
+                'won' => $topScore > 0 && $score === $topScore,
+                'players_count' => $playersCount,
+                'played_at' => now(),
+            ]);
+        }
+    }
+
     private function apply(Session $session, ActionOutcome $outcome, string $logType, ?string $playerId, array $logPayload): Session
     {
         $session->state_data = $outcome->stateData;
+        $justFinished = false;
         if ($outcome->nextState !== null) {
             $session->state = $outcome->nextState;
             if ($outcome->nextState === 'finished') {
+                $justFinished = $session->status !== SessionStatus::Finished;
                 $session->status = SessionStatus::Finished;
                 $session->ended_at = now();
             } elseif ($outcome->nextState !== 'lobby' && $session->status === SessionStatus::Open) {
@@ -107,6 +143,10 @@ class GameEngine
             }
         }
         $session->save();
+
+        if ($justFinished) {
+            $this->recordResults($session);
+        }
 
         $session->actionLogs()->create([
             'player_id' => $playerId,
