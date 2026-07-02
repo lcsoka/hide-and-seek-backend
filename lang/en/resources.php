@@ -2,6 +2,7 @@
 
 return [
     'users' => ['singular' => 'User', 'plural' => 'Users'],
+    'game_results' => ['singular' => 'Result', 'plural' => 'Results'],
     'sessions' => ['singular' => 'Game', 'plural' => 'Games'],
     'players' => ['singular' => 'Player', 'plural' => 'Players'],
     'teams' => ['singular' => 'Team', 'plural' => 'Teams'],

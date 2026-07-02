@@ -11,7 +11,7 @@ use Filament\Widgets\TableWidget;
 /** The newest sessions, with a click-through to the resource. */
 class RecentSessions extends TableWidget
 {
-    protected static ?int $sort = 3;
+    protected static ?int $sort = 5;
 
     protected int|string|array $columnSpan = 'full';
 

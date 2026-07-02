@@ -6,8 +6,10 @@ use App\Enums\GameMode;
 use App\Enums\SessionStatus;
 use App\Filament\Resources\Users\Pages\ListUsers;
 use App\Filament\Widgets\GameStatsOverview;
+use App\Filament\Widgets\Leaderboard;
 use App\Filament\Widgets\RecentSessions;
 use App\Filament\Widgets\SessionsChart;
+use App\Filament\Widgets\UserStatsOverview;
 use App\Models\Card;
 use App\Models\Feedback;
 use App\Models\GameResult;
@@ -170,6 +172,22 @@ class AdminPanelTest extends TestCase
         $guest = User::factory()->create(['email' => null]);
         $guest->forceFill(['is_admin' => true])->save();
         $this->actingAs($guest->fresh())->get('/admin')->assertForbidden();
+    }
+
+    public function test_stats_resource_and_widgets_load(): void
+    {
+        $player = User::factory()->create();
+        GameResult::create([
+            'user_id' => $player->id, 'display_name' => 'Rita',
+            'hide_time_s' => 305, 'won' => true, 'players_count' => 4, 'played_at' => now(),
+        ]);
+        $this->seedSession();
+        $this->actingAs($this->adminUser());
+
+        $this->get('/admin/game-results')->assertSuccessful()->assertSee('Rita');
+
+        Livewire::test(UserStatsOverview::class)->assertOk()->assertSee('Registered users');
+        Livewire::test(Leaderboard::class)->assertOk()->assertSee('Leaderboard');
     }
 
     public function test_admin_can_toggle_and_revoke(): void

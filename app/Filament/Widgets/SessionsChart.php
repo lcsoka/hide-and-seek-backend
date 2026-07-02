@@ -11,7 +11,7 @@ class SessionsChart extends ChartWidget
 {
     protected ?string $heading = 'Sessions created (last 14 days)';
 
-    protected static ?int $sort = 2;
+    protected static ?int $sort = 3;
 
     protected function getData(): array
     {

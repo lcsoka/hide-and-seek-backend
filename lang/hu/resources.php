@@ -2,6 +2,7 @@
 
 return [
     'users' => ['singular' => 'Felhasználó', 'plural' => 'Felhasználók'],
+    'game_results' => ['singular' => 'Eredmény', 'plural' => 'Eredmények'],
     'sessions' => ['singular' => 'Játék', 'plural' => 'Játékok'],
     'players' => ['singular' => 'Játékos', 'plural' => 'Játékosok'],
     'teams' => ['singular' => 'Csapat', 'plural' => 'Csapatok'],
