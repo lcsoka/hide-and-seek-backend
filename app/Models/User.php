@@ -33,11 +33,41 @@ class User extends Authenticatable implements FilamentUser
         return $this->hasMany(Player::class);
     }
 
+    /** Durable per-game outcomes (survive session pruning) — the source for stats + leaderboards. */
+    public function gameResults(): HasMany
+    {
+        return $this->hasMany(GameResult::class);
+    }
+
+    /** Custom curses this user authored (user-generated content). */
+    public function authoredCards(): HasMany
+    {
+        return $this->hasMany(Card::class);
+    }
+
+    /** Custom questions this user authored (user-generated content). */
+    public function authoredQuestions(): HasMany
+    {
+        return $this->hasMany(Question::class);
+    }
+
     /**
-     * Who may reach the Filament admin panel: only users whose email is in the
-     * FILAMENT_ADMIN_EMAILS allowlist. Guests have no email, so they're excluded.
+     * Who may reach the Filament admin panel: a registered user (has an email) who is either in
+     * the FILAMENT_ADMIN_EMAILS allowlist (the can't-lock-yourself-out fallback) or has been
+     * granted `is_admin` from the panel. Guests (no email) are always excluded.
      */
     public function canAccessPanel(Panel $panel): bool
+    {
+        if ($this->email === null) {
+            return false;
+        }
+
+        return $this->is_admin === true
+            || in_array(strtolower($this->email), config('game.admin_emails', []), true);
+    }
+
+    /** True for users pinned as admin via the env allowlist (read-only, can't be revoked in-panel). */
+    public function isAllowlistedAdmin(): bool
     {
         return $this->email !== null && in_array(strtolower($this->email), config('game.admin_emails', []), true);
     }
@@ -52,6 +82,7 @@ class User extends Authenticatable implements FilamentUser
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'is_admin' => 'boolean',
         ];
     }
 }

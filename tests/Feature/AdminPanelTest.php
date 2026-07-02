@@ -4,11 +4,13 @@ namespace Tests\Feature;
 
 use App\Enums\GameMode;
 use App\Enums\SessionStatus;
+use App\Filament\Resources\Users\Pages\ListUsers;
 use App\Filament\Widgets\GameStatsOverview;
 use App\Filament\Widgets\RecentSessions;
 use App\Filament\Widgets\SessionsChart;
 use App\Models\Card;
 use App\Models\Feedback;
+use App\Models\GameResult;
 use App\Models\Question;
 use App\Models\Session;
 use App\Models\User;
@@ -136,5 +138,52 @@ class AdminPanelTest extends TestCase
             ->assertSee('Open feedback');
         Livewire::test(SessionsChart::class)->assertOk();
         Livewire::test(RecentSessions::class)->assertOk()->assertSee('TEST01');
+    }
+
+    public function test_users_resource_list_and_view_pages_load(): void
+    {
+        $player = User::factory()->create(['name' => 'Registered Rita']);
+        GameResult::create([
+            'user_id' => $player->id, 'display_name' => 'Rita',
+            'hide_time_s' => 125, 'won' => true, 'players_count' => 3, 'played_at' => now(),
+        ]);
+        $this->actingAs($this->adminUser());
+
+        $this->get('/admin/users')->assertSuccessful()->assertSee('Registered Rita');
+        // The view page renders the infolist + the four relation managers (history/sessions/UGC).
+        $this->get('/admin/users/'.$player->getKey())->assertSuccessful();
+    }
+
+    public function test_is_admin_flag_grants_panel_access(): void
+    {
+        config(['game.admin_emails' => ['nobody@example.com']]);
+
+        // Registered but not admin and not allowlisted → denied.
+        $plain = User::factory()->create();
+        $this->actingAs($plain)->get('/admin')->assertForbidden();
+
+        // Granting is_admin lets them in, even though they aren't in the env allowlist.
+        $plain->forceFill(['is_admin' => true])->save();
+        $this->actingAs($plain->fresh())->get('/admin')->assertSuccessful();
+
+        // A guest (no email) can never reach the panel, even if the flag is set.
+        $guest = User::factory()->create(['email' => null]);
+        $guest->forceFill(['is_admin' => true])->save();
+        $this->actingAs($guest->fresh())->get('/admin')->assertForbidden();
+    }
+
+    public function test_admin_can_toggle_and_revoke(): void
+    {
+        $this->actingAs($this->adminUser());
+        $target = User::factory()->create();
+        $target->createToken('t');
+        $this->assertDatabaseCount('personal_access_tokens', 1);
+
+        Livewire::test(ListUsers::class)
+            ->callTableAction('toggleAdmin', $target)
+            ->callTableAction('revokeTokens', $target);
+
+        $this->assertTrue($target->fresh()->is_admin);
+        $this->assertDatabaseCount('personal_access_tokens', 0);
     }
 }

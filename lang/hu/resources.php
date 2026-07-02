@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'users' => ['singular' => 'Felhasználó', 'plural' => 'Felhasználók'],
     'sessions' => ['singular' => 'Játék', 'plural' => 'Játékok'],
     'players' => ['singular' => 'Játékos', 'plural' => 'Játékosok'],
     'teams' => ['singular' => 'Csapat', 'plural' => 'Csapatok'],

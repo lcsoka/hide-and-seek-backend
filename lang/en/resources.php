@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'users' => ['singular' => 'User', 'plural' => 'Users'],
     'sessions' => ['singular' => 'Game', 'plural' => 'Games'],
     'players' => ['singular' => 'Player', 'plural' => 'Players'],
     'teams' => ['singular' => 'Team', 'plural' => 'Teams'],
