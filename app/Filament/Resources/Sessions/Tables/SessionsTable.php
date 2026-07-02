@@ -13,6 +13,7 @@ use Filament\Actions\ViewAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
 
 class SessionsTable
 {
@@ -20,6 +21,8 @@ class SessionsTable
     {
         return $table
             ->defaultSort('created_at', 'desc')
+            // Eager-load the host player so the "Host" column isn't an N+1 across the list.
+            ->modifyQueryUsing(fn (Builder $query) => $query->with('host'))
             ->columns([
                 TextColumn::make('join_code')
                     ->label('Join code')

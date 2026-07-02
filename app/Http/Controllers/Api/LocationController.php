@@ -30,9 +30,9 @@ class LocationController extends Controller
 
         // Broadcast SEEKER movement so others (incl. the hider) see it live. The hider's
         // own position is concealed from seekers, so it is never broadcast. Throttled to
-        // ~once per 2s per player to keep the event volume sane.
-        if ($player->role === 'seeker' && ! Cache::get("moved:{$player->id}")) {
-            Cache::put("moved:{$player->id}", true, now()->addSeconds(2));
+        // ~once per 2s per player via an atomic Cache::add (returns true only if the key was
+        // absent) so two near-simultaneous pings can't both fire the event.
+        if ($player->role === 'seeker' && Cache::add("moved:{$player->id}", true, now()->addSeconds(2))) {
             GameEventBroadcast::dispatch($session->id, 'PlayerMoved', ['player_id' => $player->id, 'lat' => $lat, 'lng' => $lng]);
         }
 
