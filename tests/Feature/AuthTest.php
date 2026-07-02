@@ -5,8 +5,11 @@ namespace Tests\Feature;
 use App\Models\Player;
 use App\Models\Session;
 use App\Models\User;
+use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -70,6 +73,45 @@ class AuthTest extends TestCase
             ->assertOk()->assertJsonPath('email', 'bob@example.com')->assertJsonStructure(['token']);
 
         $this->postJson('/api/auth/login', ['email' => 'bob@example.com', 'password' => 'wrong'])->assertStatus(422);
+    }
+
+    public function test_forgot_password_emails_a_reset_link(): void
+    {
+        Notification::fake();
+        $user = User::factory()->create();
+
+        $this->postJson('/api/auth/forgot-password', ['email' => $user->email])->assertOk();
+
+        Notification::assertSentTo($user, ResetPassword::class);
+    }
+
+    public function test_forgot_password_does_not_reveal_an_unknown_email(): void
+    {
+        Notification::fake();
+
+        $this->postJson('/api/auth/forgot-password', ['email' => 'nobody@example.com'])->assertOk();
+
+        Notification::assertNothingSent();
+    }
+
+    public function test_reset_password_with_a_valid_token_changes_the_password(): void
+    {
+        $user = User::factory()->create(['password' => 'oldpassword']);
+        $token = Password::createToken($user);
+
+        $this->postJson('/api/auth/reset-password', ['token' => $token, 'email' => $user->email, 'password' => 'newpassword123'])
+            ->assertOk();
+
+        $this->postJson('/api/auth/login', ['email' => $user->email, 'password' => 'newpassword123'])->assertOk();
+        $this->postJson('/api/auth/login', ['email' => $user->email, 'password' => 'oldpassword'])->assertStatus(422);
+    }
+
+    public function test_reset_password_rejects_an_invalid_token(): void
+    {
+        $user = User::factory()->create();
+
+        $this->postJson('/api/auth/reset-password', ['token' => 'bogus-token', 'email' => $user->email, 'password' => 'newpassword123'])
+            ->assertStatus(422);
     }
 
     public function test_update_profile_and_avatar(): void

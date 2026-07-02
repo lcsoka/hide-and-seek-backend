@@ -12,6 +12,7 @@ use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -68,6 +69,47 @@ class AuthController extends Controller
         return response()->json([
             'token' => $user->createToken('web')->plainTextToken,
         ] + $this->profile($user));
+    }
+
+    /**
+     * Email a password-reset link (to the SPA's /reset-password page). Always responds 200 so we
+     * don't reveal whether an email is registered.
+     */
+    public function forgotPassword(Request $request): JsonResponse
+    {
+        $request->validate(['email' => ['required', 'email']]);
+
+        Password::sendResetLink(['email' => Str::lower($request->string('email'))]);
+
+        return response()->json(['message' => __('passwords.sent')]);
+    }
+
+    /** Reset the password using the emailed token, then revoke all of the user's tokens. */
+    public function resetPassword(Request $request): JsonResponse
+    {
+        $request->validate([
+            'token' => ['required', 'string'],
+            'email' => ['required', 'email'],
+            'password' => ['required', 'string', 'min:8', 'max:255'],
+        ]);
+
+        $status = Password::reset(
+            [
+                'email' => Str::lower($request->string('email')),
+                'password' => $request->input('password'),
+                'token' => $request->input('token'),
+            ],
+            function (User $user, string $password) {
+                $user->forceFill(['password' => $password])->save(); // 'hashed' cast hashes it
+                $user->tokens()->delete(); // sign the user out everywhere after a reset
+            },
+        );
+
+        if ($status !== Password::PASSWORD_RESET) {
+            throw ValidationException::withMessages(['email' => [__($status)]]);
+        }
+
+        return response()->json(['message' => __($status)]);
     }
 
     /** Revoke the token used for this request. */
