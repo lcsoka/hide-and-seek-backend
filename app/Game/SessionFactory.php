@@ -38,7 +38,8 @@ class SessionFactory
             'join_code' => $this->uniqueJoinCode(),
             'game_mode' => $modeKey,
             'state' => $mode->initialState(),
-            'state_data' => $mode->initialStateData(),
+            // Remember the host's user so their own custom curses join this game's deck.
+            'state_data' => array_merge($mode->initialStateData(), ['host_user_id' => $host->id]),
             'config' => $config,
             'status' => 'open',
         ]);

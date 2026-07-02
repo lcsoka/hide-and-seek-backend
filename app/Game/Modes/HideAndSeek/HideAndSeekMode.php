@@ -1243,11 +1243,17 @@ class HideAndSeekMode implements GameMode
         return null;
     }
 
-    /** Build the hider draw pool: curse cards + time-bonus + powerup cards. */
-    private function deckPool(): array
+    /**
+     * Build the hider draw pool: official cards (curses + time-bonus + powerups) plus the host's
+     * own custom curses, so a user's saved curses appear only in the games they host.
+     */
+    private function deckPool(?int $hostUserId = null): array
     {
         $pool = [];
-        foreach (Card::query()->where('is_active', true)->orderBy('sort')->get() as $card) {
+        $cards = Card::query()->where('is_active', true)
+            ->where(fn ($q) => $q->whereNull('user_id')->orWhere('user_id', $hostUserId))
+            ->orderBy('sort')->get();
+        foreach ($cards as $card) {
             $descriptor = match ($card->type) {
                 'powerup' => ['type' => 'powerup', 'power' => $card->power],
                 'time_bonus' => ['type' => 'time_bonus', 'minutes' => $card->minutes],
@@ -1270,7 +1276,7 @@ class HideAndSeekMode implements GameMode
     private function drawFromDeck(array &$data, int $n): array
     {
         if (! isset($data['deck'])) {
-            $deck = $this->deckPool();
+            $deck = $this->deckPool(isset($data['host_user_id']) ? (int) $data['host_user_id'] : null);
             shuffle($deck);
             $data['deck'] = $deck;
         }

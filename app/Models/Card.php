@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Spatie\Translatable\HasTranslations;
 
 /**
@@ -31,7 +32,14 @@ class Card extends Model
         'is_custom',
         'is_active',
         'sort',
+        'user_id',
     ];
+
+    /** The author of a custom card (null = official content). */
+    public function author(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
 
     protected $casts = [
         'effect' => 'array',

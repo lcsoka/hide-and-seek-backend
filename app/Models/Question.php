@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\QuestionCategory;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Spatie\Translatable\HasTranslations;
 
 class Question extends Model
@@ -26,7 +27,14 @@ class Question extends Model
         'is_custom',
         'is_active',
         'sort',
+        'user_id',
     ];
+
+    /** The author of a custom question (null = official content). */
+    public function author(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
 
     protected $casts = [
         'category' => QuestionCategory::class,

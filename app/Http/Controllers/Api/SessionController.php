@@ -14,6 +14,7 @@ use App\Http\Requests\StoreSessionRequest;
 use App\Http\Resources\PlayerResource;
 use App\Http\Resources\SessionResource;
 use App\Models\GameEvent;
+use App\Models\Question;
 use App\Models\Session;
 use Illuminate\Http\JsonResponse;
 
@@ -80,6 +81,30 @@ class SessionController extends Controller
         $player = $this->engine->playerFor($session, request()->user());
 
         return response()->json($this->presenter->present($session, $player));
+    }
+
+    /**
+     * The askable questions for THIS game: the official catalogue plus the host's own custom
+     * questions (so a user's saved questions appear only in the games they host).
+     */
+    public function questions(Session $session): JsonResponse
+    {
+        $hostUserId = $session->state_data['host_user_id'] ?? null;
+
+        $questions = Question::query()->where('is_active', true)
+            ->where(fn ($q) => $q->whereNull('user_id')->orWhere('user_id', $hostUserId))
+            ->orderBy('sort')->get()->map(fn (Question $q) => [
+                'id' => $q->id,
+                'key' => $q->key,
+                'category' => $q->category->value,
+                'title' => $q->title,
+                'prompt' => $q->prompt,
+                'parameters' => $q->parameters,
+                'reward_draw' => $q->reward_draw,
+                'reward_keep' => $q->reward_keep,
+            ]);
+
+        return response()->json($questions);
     }
 
     /**

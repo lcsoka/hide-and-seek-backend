@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\ActionController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CatalogController;
+use App\Http\Controllers\Api\ContentController;
 use App\Http\Controllers\Api\DebugController;
 use App\Http\Controllers\Api\FeedbackController;
 use App\Http\Controllers\Api\GeoController;
@@ -31,10 +32,21 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::patch('/profile', [AuthController::class, 'updateProfile']);
     Route::post('/profile/avatar', [AuthController::class, 'uploadAvatar'])->middleware('throttle:20,1');
 
+    // User-generated content (a registered user's own custom curses + questions).
+    Route::get('/my/content', [ContentController::class, 'index']);
+    Route::post('/my/curses', [ContentController::class, 'storeCurse']);
+    Route::patch('/my/curses/{card}', [ContentController::class, 'updateCurse']);
+    Route::delete('/my/curses/{card}', [ContentController::class, 'destroyCurse']);
+    Route::post('/my/questions', [ContentController::class, 'storeQuestion']);
+    Route::patch('/my/questions/{question}', [ContentController::class, 'updateQuestion']);
+    Route::delete('/my/questions/{question}', [ContentController::class, 'destroyQuestion']);
+
     Route::post('/sessions', [SessionController::class, 'store']);
     Route::post('/sessions/{code}/join', [SessionController::class, 'join']);
     Route::get('/sessions/{session}', [SessionController::class, 'show']);
     Route::get('/sessions/{session}/state', [SessionController::class, 'state']);
+    // The askable questions for this game (official + the host's custom).
+    Route::get('/sessions/{session}/questions', [SessionController::class, 'questions']);
     // Missed-event catch-up after a reconnect (?since=<last seq the client saw>).
     Route::get('/sessions/{session}/events', [SessionController::class, 'events']);
     Route::post('/sessions/{session}/start', [SessionController::class, 'start']);
