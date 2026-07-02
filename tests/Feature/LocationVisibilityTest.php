@@ -7,6 +7,7 @@ use App\Models\Session;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
 use Laravel\Sanctum\Sanctum;
 use Tests\TestCase;
 
@@ -58,6 +59,25 @@ class LocationVisibilityTest extends TestCase
         $this->report(47.5, 19.05)->assertNoContent();
 
         $this->assertEquals(47.5, Player::find($this->seekerPlayerId)->last_lat);
+    }
+
+    public function test_positions_are_recorded_for_replay_but_throttled(): void
+    {
+        $this->setUpSession();
+        Sanctum::actingAs($this->seeker);
+
+        $this->report(47.50, 19.05)->assertNoContent();
+        $this->report(47.51, 19.06)->assertNoContent(); // within the ~5s window → not persisted
+        $this->assertDatabaseCount('player_positions', 1);
+
+        Cache::forget("pos:{$this->seekerPlayerId}"); // simulate the throttle window elapsing
+        $this->report(47.52, 19.07)->assertNoContent();
+
+        $this->assertDatabaseCount('player_positions', 2);
+        $this->assertDatabaseHas('player_positions', [
+            'player_id' => $this->seekerPlayerId,
+            'session_id' => $this->sessionId,
+        ]);
     }
 
     public function test_location_requires_being_a_participant(): void

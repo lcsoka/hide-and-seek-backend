@@ -6,6 +6,7 @@ use App\Events\GameEventBroadcast;
 use App\Game\GameEngine;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\LocationRequest;
+use App\Models\PlayerPosition;
 use App\Models\Session;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Cache;
@@ -21,6 +22,19 @@ class LocationController extends Controller
         $lng = (float) $request->input('lng');
 
         $player->update(['last_lat' => $lat, 'last_lng' => $lng, 'last_location_at' => now()]);
+
+        // Persist a throttled position sample (~every 5s per player) so finished games can be
+        // replayed with real movement. Every role is recorded — including the hider; the track is
+        // admin-only (the replay), never exposed to live players via /state.
+        if (Cache::add("pos:{$player->id}", true, now()->addSeconds(5))) {
+            PlayerPosition::create([
+                'session_id' => $session->id,
+                'player_id' => $player->id,
+                'lat' => $lat,
+                'lng' => $lng,
+                'recorded_at' => now(),
+            ]);
+        }
 
         // Location pings count as activity (keeps the session off the abandonment list).
         $session->update(['last_activity_at' => now()]);
