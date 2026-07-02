@@ -42,7 +42,10 @@ class SessionController extends Controller
 
     public function join(JoinSessionRequest $request, string $code): JsonResponse
     {
-        $session = Session::where('join_code', strtoupper($code))->firstOrFail();
+        // A bad/unknown code returns a clean 404 instead of leaking the raw route-binding
+        // "No query results for model [App\Models\Session]" exception to the client.
+        $session = Session::where('join_code', strtoupper(trim($code)))->first();
+        abort_if($session === null, 404, 'Game not found — check the code.');
         $player = $this->factory->join($session, $request->user(), $request->input('display_name'));
 
         // Tell everyone already in the session (esp. the host's lobby) about the new player,

@@ -82,7 +82,18 @@ class SessionApiTest extends TestCase
     {
         $this->signInGuest();
 
-        $this->postJson('/api/sessions/ZZZZZZ/join', ['display_name' => 'Bob'])->assertNotFound();
+        $res = $this->postJson('/api/sessions/ZZZZZZ/join', ['display_name' => 'Bob'])->assertNotFound();
+        // A clean, human message — never the raw route-binding exception.
+        $this->assertStringNotContainsString('No query results', (string) $res->json('message'));
+    }
+
+    public function test_join_requires_a_display_name(): void
+    {
+        $this->signInGuest();
+        $code = $this->postJson('/api/sessions', ['city' => 'szeged', 'game_size' => 'small'])->json('join_code');
+
+        $this->postJson("/api/sessions/{$code}/join", [])
+            ->assertStatus(422)->assertJsonValidationErrors(['display_name']);
     }
 
     public function test_show_and_state_endpoints(): void
