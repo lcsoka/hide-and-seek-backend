@@ -33,7 +33,8 @@ class LocationController extends Controller
         // ~once per 2s per player via an atomic Cache::add (returns true only if the key was
         // absent) so two near-simultaneous pings can't both fire the event.
         if ($player->role === 'seeker' && Cache::add("moved:{$player->id}", true, now()->addSeconds(2))) {
-            GameEventBroadcast::dispatch($session->id, 'PlayerMoved', ['player_id' => $player->id, 'lat' => $lat, 'lng' => $lng]);
+            // record() skips persistence for PlayerMoved (ephemeral); positions re-sync via /state.
+            GameEventBroadcast::record($session->id, 'PlayerMoved', ['player_id' => $player->id, 'lat' => $lat, 'lng' => $lng]);
         }
 
         return response()->noContent();

@@ -115,7 +115,7 @@ class GameEngine
         ]);
 
         foreach ($outcome->events as $event) {
-            GameEventBroadcast::dispatch(
+            GameEventBroadcast::record(
                 $session->id,
                 $event['type'],
                 $event['payload'] ?? [],

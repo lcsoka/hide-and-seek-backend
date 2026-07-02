@@ -26,6 +26,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/sessions/{code}/join', [SessionController::class, 'join']);
     Route::get('/sessions/{session}', [SessionController::class, 'show']);
     Route::get('/sessions/{session}/state', [SessionController::class, 'state']);
+    // Missed-event catch-up after a reconnect (?since=<last seq the client saw>).
+    Route::get('/sessions/{session}/events', [SessionController::class, 'events']);
     Route::post('/sessions/{session}/start', [SessionController::class, 'start']);
     Route::post('/sessions/{session}/actions', [ActionController::class, 'store']);
     Route::post('/sessions/{session}/location', [LocationController::class, 'store'])

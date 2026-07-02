@@ -41,7 +41,7 @@ class PruneAbandonedSessions extends Command
                     'type' => 'abandoned',
                     'payload' => ['idle_since' => $idleSince->toISOString()],
                 ]);
-                GameEventBroadcast::dispatch($session->id, 'GameAbandoned', ['session_id' => $session->id]);
+                GameEventBroadcast::record($session->id, 'GameAbandoned', ['session_id' => $session->id]);
                 $abandoned++;
             }
         }

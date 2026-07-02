@@ -13,6 +13,7 @@ use App\Http\Requests\JoinSessionRequest;
 use App\Http\Requests\StoreSessionRequest;
 use App\Http\Resources\PlayerResource;
 use App\Http\Resources\SessionResource;
+use App\Models\GameEvent;
 use App\Models\Session;
 use Illuminate\Http\JsonResponse;
 
@@ -50,7 +51,7 @@ class SessionController extends Controller
 
         // Tell everyone already in the session (esp. the host's lobby) about the new player,
         // so the roster updates live instead of needing a refresh.
-        GameEventBroadcast::dispatch($session->id, 'PlayerJoined', [
+        GameEventBroadcast::record($session->id, 'PlayerJoined', [
             'player_id' => $player->id,
             'display_name' => $player->display_name,
         ]);
@@ -79,5 +80,41 @@ class SessionController extends Controller
         $player = $this->engine->playerFor($session, request()->user());
 
         return response()->json($this->presenter->present($session, $player));
+    }
+
+    /**
+     * Missed-event catch-up: the durable log of broadcast events after the client's cursor
+     * (`?since=<seq>`), scoped to what this player is allowed to see. A reconnecting client
+     * replays these (then re-hydrates /state) so nothing that happened while it was
+     * backgrounded is lost. Newest events are capped to avoid unbounded replays.
+     */
+    public function events(Session $session): JsonResponse
+    {
+        $player = $this->engine->playerFor($session, request()->user());
+        $since = (int) request()->query('since', '0');
+
+        $events = GameEvent::query()
+            ->where('session_id', $session->id)
+            ->where('id', '>', $since)
+            ->where(function ($q) use ($player) {
+                $q->where('visibility_scope', 'everyone')
+                    ->orWhere(function ($q2) use ($player) {
+                        $q2->where('visibility_scope', 'player')
+                            ->where('visibility_player_id', $player?->id);
+                    });
+            })
+            ->orderBy('id')
+            ->limit(500)
+            ->get(['id', 'type', 'payload']);
+
+        return response()->json([
+            'events' => $events->map(fn (GameEvent $e) => [
+                'seq' => $e->id,
+                'type' => $e->type,
+                'payload' => $e->payload ?? [],
+            ])->all(),
+            // The latest cursor, so a client with nothing to replay still advances its baseline.
+            'cursor' => (int) (GameEvent::where('session_id', $session->id)->max('id') ?? $since),
+        ]);
     }
 }

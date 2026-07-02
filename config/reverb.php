@@ -83,8 +83,10 @@ return [
                     'useTLS' => env('REVERB_SCHEME', 'https') === 'https',
                 ],
                 'allowed_origins' => ['*'],
-                'ping_interval' => env('REVERB_APP_PING_INTERVAL', 60),
-                'activity_timeout' => env('REVERB_APP_ACTIVITY_TIMEOUT', 30),
+                'ping_interval' => env('REVERB_APP_PING_INTERVAL', 30),
+                // Give backgrounded browser tabs (locked phones) more grace before the socket is
+                // considered dead; the client catches up missed events on reconnect regardless.
+                'activity_timeout' => env('REVERB_APP_ACTIVITY_TIMEOUT', 60),
                 'max_connections' => env('REVERB_APP_MAX_CONNECTIONS'),
                 'max_message_size' => env('REVERB_APP_MAX_MESSAGE_SIZE', 10_000),
                 'accept_client_events_from' => env('REVERB_APP_ACCEPT_CLIENT_EVENTS_FROM', 'members'),
