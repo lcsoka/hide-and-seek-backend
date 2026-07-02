@@ -34,10 +34,18 @@ class SessionsTable
                     ->weight('bold'),
                 TextColumn::make('city')
                     ->label('City')
-                    ->state(fn (Session $record): ?string => is_array($record->config) ? ($record->config['city'] ?? null) : null)
-                    ->formatStateUsing(fn (?string $state): string => $state ? ucfirst($state) : '—')
+                    ->state(function (Session $record): ?string {
+                        // config['city'] is usually a {key,name,lat,lng} object, but tolerate a bare slug too.
+                        $city = is_array($record->config) ? ($record->config['city'] ?? null) : null;
+                        if (is_array($city)) {
+                            return $city['name'] ?? $city['key'] ?? null;
+                        }
+
+                        return is_string($city) ? ucfirst($city) : null;
+                    })
                     ->badge()
-                    ->color('gray'),
+                    ->color('gray')
+                    ->placeholder('—'),
                 TextColumn::make('status')
                     ->badge(),
                 TextColumn::make('state')
@@ -67,11 +75,6 @@ class SessionsTable
                     ->options(GameMode::class),
             ])
             ->recordActions([
-                Action::make('state')
-                    ->label('State')
-                    ->icon('heroicon-o-adjustments-horizontal')
-                    ->color('info')
-                    ->url(fn (Session $record): string => SessionResource::getUrl('state', ['record' => $record])),
                 Action::make('replay')
                     ->label('Replay')
                     ->icon('heroicon-o-play-circle')

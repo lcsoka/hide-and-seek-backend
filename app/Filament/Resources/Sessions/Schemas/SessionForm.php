@@ -4,8 +4,8 @@ namespace App\Filament\Resources\Sessions\Schemas;
 
 use App\Enums\GameMode;
 use App\Enums\SessionStatus;
+use App\Filament\Forms\Components\JsonTree;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
@@ -50,28 +50,19 @@ class SessionForm
                             ->helperText('The hosting player (set once players exist).'),
                     ]),
 
-                Section::make('Mode data (JSON)')
-                    ->description('Resolved GameModeConfig and the mode-owned state blob. Edited as raw JSON.')
+                Section::make('Config')
+                    ->description('Resolved GameModeConfig for this session.')
                     ->collapsible()
                     ->schema([
-                        self::jsonField('config', 'Resolved GameModeConfig for this session.'),
-                        self::jsonField('state_data', 'Mode-owned state (decks, scores, hider zone, curses…).'),
+                        JsonTree::make('config')->hiddenLabel(),
+                    ]),
+
+                Section::make('Game state')
+                    ->description('Mode-owned state: scores, hider zone, questions, curses, timers…')
+                    ->collapsible()
+                    ->schema([
+                        JsonTree::make('state_data')->hiddenLabel(),
                     ]),
             ]);
-    }
-
-    private static function jsonField(string $name, string $helper): Textarea
-    {
-        return Textarea::make($name)
-            ->helperText($helper)
-            ->rows(8)
-            ->columnSpanFull()
-            ->rules(['nullable', 'json'])
-            ->formatStateUsing(fn ($state) => filled($state)
-                ? json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)
-                : null)
-            ->dehydrateStateUsing(fn ($state) => filled($state)
-                ? json_decode($state, true)
-                : null);
     }
 }

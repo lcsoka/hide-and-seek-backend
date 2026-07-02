@@ -4,7 +4,7 @@ namespace Tests\Feature;
 
 use App\Enums\GameMode;
 use App\Enums\SessionStatus;
-use App\Filament\Resources\Sessions\Pages\InspectSession;
+use App\Filament\Resources\Sessions\Pages\EditSession;
 use App\Filament\Resources\Sessions\SessionResource;
 use App\Filament\Resources\Users\Pages\ListUsers;
 use App\Filament\Widgets\GameStatsOverview;
@@ -44,7 +44,8 @@ class AdminPanelTest extends TestCase
             'game_mode' => 'hide_and_seek',
             'state' => 'lobby',
             'status' => 'open',
-            'config' => ['rounds' => 3, 'endgame_radius_m' => 500],
+            // city is stored as a {key,name,lat,lng} object — the list's City column must handle that.
+            'config' => ['rounds' => 3, 'endgame_radius_m' => 500, 'city' => ['key' => 'budapest', 'name' => 'Budapest', 'lat' => 47.5, 'lng' => 19.0]],
             'state_data' => [],
         ]);
 
@@ -217,31 +218,44 @@ class AdminPanelTest extends TestCase
         $this->assertFalse($question->fresh()->is_active);
     }
 
-    public function test_state_inspector_loads_and_saves(): void
+    public function test_view_modal_renders_the_state_trees(): void
+    {
+        $session = $this->seedSession();
+        $session->update(['config' => ['units' => 'metric'], 'state_data' => ['round' => 1]]);
+        $this->actingAs($this->adminUser());
+
+        // The (read-only) View action mounts the same visual-tree form without error.
+        \Livewire\Livewire::test(\App\Filament\Resources\Sessions\Pages\ListSessions::class)
+            ->mountTableAction('view', $session->getKey())
+            ->assertOk();
+    }
+
+    public function test_edit_form_shows_json_trees_and_saves_nested_edits(): void
     {
         $session = $this->seedSession();
         $session->update([
-            'state_data' => ['round' => 2, 'hiding_zone' => ['radius_m' => 500, 'rule' => 'nearest']],
             'config' => ['units' => 'metric', 'reveal_seekers_to_hider' => false],
+            'state_data' => ['round' => 2, 'hiding_zone' => ['radius_m' => 500, 'rule' => 'nearest']],
         ]);
         $this->actingAs($this->adminUser());
 
-        $this->get(SessionResource::getUrl('state', ['record' => $session]))
+        // The edit page renders the visual config + state trees.
+        $this->get(SessionResource::getUrl('edit', ['record' => $session]))
             ->assertSuccessful()
             ->assertSee('Game state')
             ->assertSee('Config');
 
-        // Edit a nested state value + a config value through the tree, then persist.
-        Livewire::test(InspectSession::class, ['record' => $session->getKey()])
-            ->set('stateData.round', 5)
-            ->set('stateData.hiding_zone.radius_m', 750)
-            ->set('config.units', 'imperial')
+        // Edit nested values through the tree (bound to the form state), then save.
+        Livewire::test(EditSession::class, ['record' => $session->getKey()])
+            ->set('data.config.units', 'imperial')
+            ->set('data.state_data.round', 5)
+            ->set('data.state_data.hiding_zone.radius_m', 750)
             ->call('save');
 
         $session->refresh();
+        $this->assertSame('imperial', $session->config['units']);
         $this->assertSame(5, $session->state_data['round']);
         $this->assertSame(750, $session->state_data['hiding_zone']['radius_m']);
-        $this->assertSame('imperial', $session->config['units']);
     }
 
     public function test_replay_builder_and_page(): void

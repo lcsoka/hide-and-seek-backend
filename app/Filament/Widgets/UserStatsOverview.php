@@ -25,7 +25,12 @@ class UserStatsOverview extends StatsOverviewWidget
         $topCity = Session::query()
             ->get(['config']) // via models so the JSON cast applies (query-builder pluck returns raw JSON)
             ->pluck('config')
-            ->map(fn ($c) => is_array($c) ? ($c['city'] ?? null) : null)
+            ->map(function ($c) {
+                // config['city'] is usually a {key,name,lat,lng} object; tolerate a bare slug too.
+                $city = is_array($c) ? ($c['city'] ?? null) : null;
+
+                return is_array($city) ? ($city['name'] ?? $city['key'] ?? null) : (is_string($city) ? $city : null);
+            })
             ->filter()
             ->countBy()
             ->sortDesc();
