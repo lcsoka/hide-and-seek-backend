@@ -79,7 +79,44 @@ final class OverpassMapDataSource implements MapDataSource
             );
         }
 
-        return $features;
+        return $this->collapseDirectionalStops($type, $features, $lat, $lng);
+    }
+
+    /**
+     * A transit stop is mapped in OSM as one platform node per direction of travel: same name, a
+     * few tens of metres apart. For station feature types, collapse same-named entities within
+     * `station_dedup_m` into ONE — keeping the platform closest to the query point — so a single
+     * stop counts once for the "nearest station" rule and matching questions. POIs are untouched.
+     *
+     * @param  array<int, GeoFeature>  $features
+     * @return array<int, GeoFeature>
+     */
+    private function collapseDirectionalStops(string $type, array $features, float $lat, float $lng): array
+    {
+        if (! in_array($type, (array) config('game.overpass.station_types', []), true)) {
+            return $features;
+        }
+        $threshold = (float) config('game.overpass.station_dedup_m', 90);
+
+        // Nearest to the query first, so the kept representative is the closest platform.
+        usort($features, fn (GeoFeature $a, GeoFeature $b) => Geo::distanceMeters($lat, $lng, $a->lat, $a->lng) <=> Geo::distanceMeters($lat, $lng, $b->lat, $b->lng));
+
+        $kept = [];
+        foreach ($features as $feature) {
+            if ($feature->name === null) {
+                $kept[] = $feature; // nameless: can't tell twins apart, keep as-is
+                continue;
+            }
+            foreach ($kept as $existing) {
+                if ($existing->name === $feature->name
+                    && Geo::distanceMeters($feature->lat, $feature->lng, $existing->lat, $existing->lng) <= $threshold) {
+                    continue 2; // a twin platform is already kept
+                }
+            }
+            $kept[] = $feature;
+        }
+
+        return $kept;
     }
 
     /**

@@ -82,6 +82,12 @@ return [
             'mountain' => 'natural=peak',        // named summits (Buda hills, Mecsek, Bükk…)
             'consulate' => 'office=diplomatic',  // embassies + consulates (mostly Budapest)
         ],
+        // Transit-station feature keys whose OSM entities come in directional pairs (one platform
+        // node per travel direction). Same-named entities within `station_dedup_m` of each other
+        // collapse into ONE station, so the hiding-zone carve + matching questions don't treat the
+        // two platforms of a single stop as two stations. POIs (museums, parks…) are left alone.
+        'station_types' => ['rail_station', 'tram_stop', 'subway_station', 'bus_stop'],
+        'station_dedup_m' => 90,
     ],
 
     /*
