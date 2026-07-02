@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\Cache;
  */
 final class OverpassMapDataSource implements MapDataSource
 {
-    private const TIMEOUT = 12;
+    private const TIMEOUT = 10;
     private const STALE_TTL_DAYS = 7;
 
     public function __construct(private readonly OverpassHttp $http) {}
@@ -97,8 +97,10 @@ final class OverpassMapDataSource implements MapDataSource
             ."relation[\"{$key}\"=\"{$value}\"](around:{$radius},{$lat},{$lng});"
             .');out center;';
 
-        // Bounded so a slow/throttled mirror can't exhaust PHP's request time limit.
-        $result = $this->http->fetch($ql, self::TIMEOUT);
+        // One attempt per mirror (no per-endpoint retry): question truth runs in ComputeQuestionTruth
+        // which already retries with backoff at the job level, and the synchronous callers (hiding-zone
+        // confirm, inline answer fallback) must not block on retries and risk a gateway timeout.
+        $result = $this->http->fetch($ql, self::TIMEOUT, maxAttempts: 1);
 
         return $result === null ? null : ($result['elements'] ?? []);
     }

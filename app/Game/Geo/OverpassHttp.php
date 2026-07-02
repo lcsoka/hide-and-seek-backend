@@ -22,9 +22,16 @@ final class OverpassHttp
     private const ALL_DOWN_TTL = 20;          // seconds to skip the network after a full failure
     private const BACKOFF_BASE_MS = 150;
 
-    /** @return array<string, mixed>|null */
-    public function fetch(string $ql, int $timeoutSeconds): ?array
+    /**
+     * @param  int|null  $maxAttempts  per-endpoint attempts; defaults to ATTEMPTS_PER_ENDPOINT.
+     *   Pass 1 for latency-sensitive callers (e.g. work already retried at the job level, or a
+     *   synchronous request path that must not block on per-endpoint retries).
+     * @return array<string, mixed>|null
+     */
+    public function fetch(string $ql, int $timeoutSeconds, ?int $maxAttempts = null): ?array
     {
+        $attempts = max(1, $maxAttempts ?? self::ATTEMPTS_PER_ENDPOINT);
+
         // During a known full outage, fail fast (callers serve stale / a manual answer) instead
         // of making every request block on two dead mirrors.
         if (Cache::get('overpass:all_down')) {
@@ -34,7 +41,7 @@ final class OverpassHttp
         $userAgent = (string) config('game.overpass.user_agent', 'HideAndSeek/1.0');
 
         foreach ($this->orderedEndpoints() as $endpoint) {
-            for ($attempt = 1; $attempt <= self::ATTEMPTS_PER_ENDPOINT; $attempt++) {
+            for ($attempt = 1; $attempt <= $attempts; $attempt++) {
                 try {
                     $response = Http::withHeaders(['User-Agent' => $userAgent])
                         ->asForm()->connectTimeout(5)->timeout($timeoutSeconds)
@@ -59,7 +66,7 @@ final class OverpassHttp
 
                 // Transient failure (5xx / 429 / timeout): deprioritise this mirror, then back off.
                 Cache::put($this->healthKey($endpoint), true, now()->addSeconds(self::UNHEALTHY_TTL));
-                if ($attempt < self::ATTEMPTS_PER_ENDPOINT) {
+                if ($attempt < $attempts) {
                     $this->backoff($attempt);
                 }
             }
