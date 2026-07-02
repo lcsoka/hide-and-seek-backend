@@ -17,7 +17,8 @@ class LocalizationTest extends TestCase
         $this->assertSame('Tentacles', QuestionCategory::Tentacles->getLabel());
 
         app()->setLocale('hu');
-        $this->assertSame('Bújócska', GameMode::HideAndSeek->getLabel());
+        // "Hide & Seek" is the product's brand name — an untranslated proper noun in both locales.
+        $this->assertSame('Hide & Seek', GameMode::HideAndSeek->getLabel());
         $this->assertSame('Nyitott', SessionStatus::Open->getLabel());
         $this->assertSame('Csápok', QuestionCategory::Tentacles->getLabel());
     }

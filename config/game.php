@@ -59,7 +59,7 @@ return [
             'https://overpass.private.coffee/api/interpreter',
         ],
         // overpass-api.de rejects requests without a descriptive User-Agent (HTTP 406).
-        'user_agent' => env('OVERPASS_USER_AGENT', 'Bujocska/1.0 (+https://hide-and-seek.test)'),
+        'user_agent' => env('OVERPASS_USER_AGENT', 'HideAndSeek/1.0 (+https://hide-and-seek.test)'),
         'search_radius_m' => 50_000,
         'features' => [
             'airport' => 'aeroway=aerodrome',

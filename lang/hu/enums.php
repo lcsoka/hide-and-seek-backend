@@ -8,7 +8,7 @@ return [
         'abandoned' => 'Elhagyott',
     ],
     'game_mode' => [
-        'hide_and_seek' => 'Bújócska',
+        'hide_and_seek' => 'Hide & Seek',
     ],
     'game_size' => [
         'small' => 'Kicsi (város)',
