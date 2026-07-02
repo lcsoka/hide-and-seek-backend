@@ -46,7 +46,7 @@ final class OverpassClient
     private function fetch(string $ql): ?array
     {
         $endpoints = (array) config('game.overpass.endpoints', [config('game.overpass.endpoint')]);
-        $userAgent = (string) config('game.overpass.user_agent', 'JetLagHungary/1.0');
+        $userAgent = (string) config('game.overpass.user_agent', 'Bujocska/1.0');
 
         foreach ($endpoints as $endpoint) {
             try {
