@@ -4,8 +4,11 @@ namespace Tests\Feature;
 
 use App\Enums\GameMode;
 use App\Enums\SessionStatus;
+use App\Filament\Resources\Sessions\SessionResource;
 use App\Filament\Resources\Users\Pages\ListUsers;
 use App\Filament\Widgets\GameStatsOverview;
+use App\Game\ReplayBuilder;
+use App\Models\PlayerPosition;
 use App\Filament\Widgets\Leaderboard;
 use App\Filament\Widgets\RecentSessions;
 use App\Filament\Widgets\SessionsChart;
@@ -211,6 +214,41 @@ class AdminPanelTest extends TestCase
         Livewire::test(\App\Filament\Resources\Questions\Pages\ListQuestions::class)
             ->callTableAction('toggleActive', $question);
         $this->assertFalse($question->fresh()->is_active);
+    }
+
+    public function test_replay_builder_and_page(): void
+    {
+        $session = $this->seedSession();
+        $hider = $session->players()->where('role', 'hider')->first();
+
+        PlayerPosition::create(['session_id' => $session->id, 'player_id' => $hider->id, 'lat' => 47.50, 'lng' => 19.05, 'recorded_at' => now()->subSeconds(10)]);
+        PlayerPosition::create(['session_id' => $session->id, 'player_id' => $hider->id, 'lat' => 47.51, 'lng' => 19.06, 'recorded_at' => now()->subSeconds(4)]);
+
+        $session->update(['state_data' => [
+            'round' => 1,
+            'hiding_zone' => ['center' => [47.5, 19.05], 'radius_m' => 500, 'rule' => 'nearest'],
+            'questions' => [[
+                'seq' => 1, 'category' => 'radar', 'asked_by' => $hider->id,
+                'asked_at' => now()->subSeconds(8)->timestamp, 'resolved_at' => now()->subSeconds(7)->timestamp,
+                'answer' => ['answer' => 'yes'],
+                'payload' => ['ask_lat' => 47.50, 'ask_lng' => 19.05, 'radius_m' => 1000],
+            ]],
+        ]]);
+
+        $bundle = app(ReplayBuilder::class)->build($session->fresh());
+        $this->assertLessThanOrEqual($bundle['t1'], $bundle['t0']);
+        $this->assertNotEmpty($bundle['players']);
+        $this->assertNotEmpty($bundle['players'][1]['track'] ?? $bundle['players'][0]['track']); // the hider has a track
+        $this->assertNotEmpty($bundle['questions']);
+        $this->assertNotNull($bundle['zone']);
+
+        $this->actingAs($this->adminUser());
+        $this->get(SessionResource::getUrl('replay', ['record' => $session]))
+            ->assertSuccessful()
+            ->assertSee('replayApp(', false)      // the Alpine timeline player is wired up
+            ->assertSee('x-ref="map"', false)     // the Leaflet map container renders
+            ->assertSee($session->join_code)      // page title / header
+            ->assertSee('Bo');                    // the hider appears in the embedded bundle + legend
     }
 
     public function test_admin_can_toggle_and_revoke(): void

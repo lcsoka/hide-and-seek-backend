@@ -1,0 +1,145 @@
+<?php
+
+namespace App\Game;
+
+use App\Models\ActionLog;
+use App\Models\PlayerPosition;
+use App\Models\Session;
+use Illuminate\Support\Collection;
+
+/**
+ * Assembles everything needed to replay a finished game on a map + timeline: per-player position
+ * tracks (from player_positions), the merged event stream (actions + questions + curses), the
+ * question snapshots (ask position, radius/feature, answer) and the hiding zone.
+ */
+class ReplayBuilder
+{
+    public function __construct(private readonly GameStatePresenter $presenter) {}
+
+    public function build(Session $session): array
+    {
+        $session->loadMissing('players.user');
+        $history = $this->presenter->history($session);
+        $names = $session->players->pluck('display_name', 'id');
+
+        $tracks = PlayerPosition::query()
+            ->where('session_id', $session->id)
+            ->orderBy('recorded_at')
+            ->get(['player_id', 'lat', 'lng', 'recorded_at'])
+            ->groupBy('player_id')
+            ->map(fn (Collection $g) => $g->map(fn (PlayerPosition $p) => [$p->recorded_at->timestamp, (float) $p->lat, (float) $p->lng])->all());
+
+        $players = $session->players->map(fn ($p) => [
+            'id' => $p->id,
+            'name' => $p->display_name,
+            'role' => $p->role,
+            'color' => $p->role === 'hider' ? '#e11d48' : $this->colorFor($p->id),
+            'avatar' => $p->user?->avatar,
+            'track' => $tracks[$p->id] ?? [],
+            'last' => $p->last_lat !== null ? [(float) $p->last_lat, (float) $p->last_lng] : null,
+        ])->values()->all();
+
+        $questions = collect($history['questions'])
+            ->map(function (array $q): array {
+                $ask = $q['ask'] ?? [];
+                $answer = $q['answer'] ?? null;
+
+                return [
+                    'seq' => $q['seq'] ?? null,
+                    'at' => $q['asked_at'] ?? null,
+                    'by' => $q['asked_by'] ?? null,
+                    'category' => $q['category'] ?? null,
+                    'answer' => is_array($answer) ? ($answer['answer'] ?? null) : $answer,
+                    'ask' => isset($ask['lat'], $ask['lng'])
+                        ? ['lat' => (float) $ask['lat'], 'lng' => (float) $ask['lng'], 'radius_m' => $ask['radius_m'] ?? null, 'feature' => $ask['feature'] ?? null]
+                        : null,
+                    'end' => isset($q['end']['lat'], $q['end']['lng'])
+                        ? ['lat' => (float) $q['end']['lat'], 'lng' => (float) $q['end']['lng']]
+                        : null,
+                ];
+            })
+            ->filter(fn ($q) => $q['at'] !== null)
+            ->values()->all();
+
+        $curses = collect($history['curses'])
+            ->map(fn (array $c) => ['at' => $c['at'] ?? null, 'by' => $c['by'] ?? null, 'name' => $c['name'] ?? 'Curse'])
+            ->filter(fn ($c) => $c['at'] !== null)
+            ->values()->all();
+
+        $events = $this->buildEvents($session, $names, $questions, $curses);
+
+        // Time bounds span every timestamped thing (events + track samples).
+        $times = collect($events)->pluck('at');
+        foreach ($tracks as $track) {
+            foreach ($track as $sample) {
+                $times->push($sample[0]);
+            }
+        }
+        $t0 = $times->min() ?? $session->created_at?->timestamp ?? 0;
+        $t1 = $times->max() ?? $t0 + 1;
+        if ($t1 <= $t0) {
+            $t1 = $t0 + 1;
+        }
+
+        $zone = $session->state_data['hiding_zone'] ?? null;
+
+        return [
+            'code' => $session->join_code,
+            'city' => $session->config['city'] ?? null,
+            't0' => $t0,
+            't1' => $t1,
+            'players' => $players,
+            'questions' => $questions,
+            'curses' => $curses,
+            'events' => $events,
+            'zone' => ($zone && isset($zone['center'][0], $zone['center'][1]))
+                ? ['lat' => (float) $zone['center'][0], 'lng' => (float) $zone['center'][1], 'radius_m' => $zone['radius_m'] ?? 500]
+                : null,
+        ];
+    }
+
+    /** Merge the action log (minus ask/answer/curse, which the question + curse rows carry) with the questions and curses into one sorted feed. */
+    private function buildEvents(Session $session, Collection $names, array $questions, array $curses): array
+    {
+        $events = [];
+
+        $skip = ['ask_question', 'answer_question', 'amend_answer', 'play_curse'];
+        foreach (ActionLog::query()->where('session_id', $session->id)->orderBy('created_at')->get(['type', 'player_id', 'created_at']) as $log) {
+            if (in_array($log->type, $skip, true)) {
+                continue;
+            }
+            $events[] = [
+                'at' => $log->created_at?->timestamp,
+                'kind' => 'action',
+                'label' => ucfirst(str_replace('_', ' ', $log->type)),
+                'by' => $names[$log->player_id] ?? null,
+            ];
+        }
+
+        foreach ($questions as $q) {
+            $events[] = [
+                'at' => $q['at'],
+                'kind' => 'ask',
+                'label' => ucfirst((string) $q['category']).' question'.($q['answer'] ? ' → '.str_replace('_', ' ', (string) $q['answer']) : ''),
+                'by' => $names[$q['by']] ?? null,
+            ];
+        }
+
+        foreach ($curses as $c) {
+            $events[] = ['at' => $c['at'], 'kind' => 'curse', 'label' => 'Curse: '.$c['name'], 'by' => $names[$c['by']] ?? null];
+        }
+
+        return collect($events)->filter(fn ($e) => $e['at'] !== null)->sortBy('at')->values()->all();
+    }
+
+    /** A stable, pleasant colour from a seed — mirrors the web colorFor() so tracks match the game map. */
+    private function colorFor(string $seed): string
+    {
+        $hash = 0;
+        for ($i = 0; $i < strlen($seed); $i++) {
+            $hash = ($hash * 31 + ord($seed[$i])) & 0xFFFFFFFF;
+        }
+
+        return 'hsl('.($hash % 360).' 62% 45%)';
+    }
+}
