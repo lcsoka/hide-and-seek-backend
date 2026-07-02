@@ -116,43 +116,10 @@ return [
         // choose-station action fast and off Overpass.
     ],
 
-    /*
-     | The hider's draw deck. Answering a question lets the hider draw `reward_draw`
-     | cards and keep `reward_keep` (per the question). The deck mixes curse cards
-     | (from the curses table) with time-bonus and powerup cards defined here.
-     | Composition mirrors the official deck: 25 time-bonus, 21 powerup, 24 curse cards.
-     */
     // Max cards the hider may hold. The 'draw_1_expand_1' powerup raises it by 1.
+    // The draw deck itself (curses + powerups + time-bonuses, with per-card copy counts)
+    // now lives in the `cards` table and is built by HideAndSeekMode::deckPool().
     'hand_limit' => 6,
-
-    'hider_deck' => [
-        // Minutes added to the hider's run time (official 5-tier set); `count` = copies.
-        'time_bonuses' => [
-            ['minutes' => 2, 'count' => 2],
-            ['minutes' => 3, 'count' => 2],
-            ['minutes' => 4, 'count' => 2],
-            ['minutes' => 5, 'count' => 2],
-            ['minutes' => 6, 'count' => 3],
-            ['minutes' => 8, 'count' => 2],
-            ['minutes' => 9, 'count' => 2],
-            ['minutes' => 10, 'count' => 2],
-            ['minutes' => 12, 'count' => 2],
-            ['minutes' => 15, 'count' => 2],
-            ['minutes' => 18, 'count' => 1],
-            ['minutes' => 20, 'count' => 1],
-            ['minutes' => 30, 'count' => 2],
-        ],
-        // Powerup cards (names/descriptions in lang/{locale}/cards.php). Official mix.
-        'powerups' => [
-            ['power' => 'randomize', 'count' => 4],
-            ['power' => 'veto', 'count' => 4],
-            ['power' => 'duplicate', 'count' => 2],
-            ['power' => 'move', 'count' => 1],
-            ['power' => 'discard_1_draw_2', 'count' => 4],
-            ['power' => 'discard_2_draw_3', 'count' => 4],
-            ['power' => 'draw_1_expand_1', 'count' => 2],
-        ],
-    ],
 
     /*
      | Abandoned-game cleanup (see App\Console\Commands\PruneAbandonedSessions,

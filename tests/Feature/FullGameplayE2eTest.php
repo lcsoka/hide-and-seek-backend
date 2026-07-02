@@ -35,7 +35,6 @@ class FullGameplayE2eTest extends TestCase
                 'description' => ['hu' => 'x', 'en' => 'x'], 'is_active' => true,
             ]);
         }
-        config(['game.hider_deck.time_bonuses' => [], 'game.hider_deck.powerups' => []]);
 
         // Host creates; a second player joins.
         $host = User::factory()->create();
@@ -110,7 +109,6 @@ class FullGameplayE2eTest extends TestCase
         for ($i = 1; $i <= 8; $i++) {
             Card::create(['key' => "c{$i}", 'name' => ['en' => 'Curse'], 'cost' => ['en' => 'x'], 'description' => ['en' => 'x'], 'is_active' => true]);
         }
-        config(['game.hider_deck.time_bonuses' => [], 'game.hider_deck.powerups' => []]);
 
         $host = User::factory()->create();
         Sanctum::actingAs($host);

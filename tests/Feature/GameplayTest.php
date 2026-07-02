@@ -198,8 +198,7 @@ class GameplayTest extends TestCase
     public function test_hider_draws_cards_by_answering_and_plays_them(): void
     {
         $this->setUpSession();
-        // Deck = curses only, so the draw is deterministic for this test.
-        config(['game.hider_deck.time_bonuses' => [], 'game.hider_deck.powerups' => []]);
+        // Deck = curses only (only curse cards are created below), so the draw is deterministic.
         $radar = Question::create([
             'key' => 'radar', 'category' => 'radar', 'title' => ['hu' => 'Radar', 'en' => 'Radar'],
             'prompt' => ['hu' => '?', 'en' => '?'], 'reward_draw' => 2, 'reward_keep' => 2, 'is_active' => true,
