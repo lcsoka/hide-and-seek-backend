@@ -12,7 +12,9 @@ use App\Models\Session;
 /**
  * "Is the hider closer to MY nearest {feature} than I am?" — the reference is the
  * feature nearest the asking seeker; both players' distances are measured to THAT
- * same feature.
+ * same feature. The seeker confirms/previews their reference place in the app
+ * (`ref_lat`/`ref_lng`); if present we use it (and skip Overpass), else we compute
+ * the seeker's nearest from OSM.
  */
 class MeasuringEvaluator implements QuestionEvaluator
 {
@@ -35,20 +37,30 @@ class MeasuringEvaluator implements QuestionEvaluator
             return null;
         }
 
-        // The reference is the feature closest to the SEEKER; compare both to it.
-        $reference = $this->map->nearest($feature, (float) $asker->last_lat, (float) $asker->last_lng);
-        if ($reference === null) {
-            return null;
+        // Prefer the seeker's confirmed reference place (what they saw on the map when asking),
+        // which keeps the answer consistent with the preview and avoids an Overpass call.
+        if (isset($payload['ref_lat'], $payload['ref_lng'])) {
+            $refLat = (float) $payload['ref_lat'];
+            $refLng = (float) $payload['ref_lng'];
+            $refName = $payload['ref_name'] ?? null;
+        } else {
+            $reference = $this->map->nearest($feature, (float) $asker->last_lat, (float) $asker->last_lng);
+            if ($reference === null) {
+                return null;
+            }
+            $refLat = $reference->lat;
+            $refLng = $reference->lng;
+            $refName = $reference->name;
         }
 
-        $askerDistance = Geo::distanceMeters((float) $asker->last_lat, (float) $asker->last_lng, $reference->lat, $reference->lng);
-        $hiderDistance = Geo::distanceMeters($hiderPoint[0], $hiderPoint[1], $reference->lat, $reference->lng);
+        $askerDistance = Geo::distanceMeters((float) $asker->last_lat, (float) $asker->last_lng, $refLat, $refLng);
+        $hiderDistance = Geo::distanceMeters($hiderPoint[0], $hiderPoint[1], $refLat, $refLng);
 
         return [
             'answer' => $hiderDistance <= $askerDistance ? 'closer' : 'further',
-            'feature_name' => $reference->name,
-            'feature_lat' => $reference->lat,
-            'feature_lng' => $reference->lng,
+            'feature_name' => $refName,
+            'feature_lat' => $refLat,
+            'feature_lng' => $refLng,
         ];
     }
 }
