@@ -3,6 +3,7 @@
 namespace App\Game;
 
 use App\Models\ActionLog;
+use App\Models\Card;
 use App\Models\PlayerPosition;
 use App\Models\Session;
 use Illuminate\Support\Collection;
@@ -21,7 +22,6 @@ class ReplayBuilder
     public function build(Session $session): array
     {
         $session->loadMissing('players.user');
-        $history = $this->presenter->history($session);
         $names = $session->players->pluck('display_name', 'id');
 
         $tracks = PlayerPosition::query()
@@ -41,7 +41,9 @@ class ReplayBuilder
             'last' => $p->last_lat !== null ? [(float) $p->last_lat, (float) $p->last_lng] : null,
         ])->values()->all();
 
-        $questions = collect($history['questions'])
+        // state_data only holds the current round; merge in the archived rounds so the replay covers the
+        // whole game (every round's questions + curses), not just the last one.
+        $questions = collect($this->presenter->questionsFrom($this->acrossRounds($session, 'questions')))
             ->map(function (array $q): array {
                 $ask = $q['ask'] ?? [];
                 $answer = $q['answer'] ?? null;
@@ -61,11 +63,15 @@ class ReplayBuilder
                 ];
             })
             ->filter(fn ($q) => $q['at'] !== null)
+            ->sortBy('at')
             ->values()->all();
 
-        $curses = collect($history['curses'])
-            ->map(fn (array $c) => ['at' => $c['at'] ?? null, 'by' => $c['by'] ?? null, 'name' => $c['name'] ?? 'Curse'])
+        $rawCurses = $this->acrossRounds($session, 'curses_played');
+        $curseNames = Card::whereIn('id', collect($rawCurses)->pluck('curse_id')->filter()->unique()->all())->pluck('name', 'id');
+        $curses = collect($rawCurses)
+            ->map(fn (array $c) => ['at' => $c['at'] ?? null, 'by' => $c['by'] ?? null, 'name' => $curseNames[$c['curse_id'] ?? null] ?? 'Curse'])
             ->filter(fn ($c) => $c['at'] !== null)
+            ->sortBy('at')
             ->values()->all();
 
         $events = $this->buildEvents($session, $names, $questions, $curses);
@@ -151,6 +157,27 @@ class ReplayBuilder
                 : null,
             'playAreaGeo' => $this->cityBoundary($city),
         ];
+    }
+
+    /**
+     * Flatten one round-scoped state_data key across every round: the archived rounds (rounds_log)
+     * followed by the current, live round. Used for questions + curses so replays span the whole game.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function acrossRounds(Session $session, string $key): array
+    {
+        $out = [];
+        foreach ($session->state_data['rounds_log'] ?? [] as $round) {
+            foreach ($round[$key] ?? [] as $item) {
+                $out[] = $item;
+            }
+        }
+        foreach ($session->state_data[$key] ?? [] as $item) {
+            $out[] = $item;
+        }
+
+        return $out;
     }
 
     /** The city's administrative boundary as GeoJSON (Polygon/MultiPolygon), fetched once from Nominatim and cached. */

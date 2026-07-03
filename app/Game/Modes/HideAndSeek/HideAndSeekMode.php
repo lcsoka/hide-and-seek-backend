@@ -1372,6 +1372,14 @@ class HideAndSeekMode implements GameMode
             return new ActionOutcome($data, 'finished', [$this->event('GameEnded', ['standings' => $this->standings($data)])]);
         }
 
+        // Archive the round that just ended before it's cleared, so a full-game replay can show every
+        // round's questions and curses (state_data only ever holds the current round).
+        $data['rounds_log'] = array_merge($data['rounds_log'] ?? [], [[
+            'round' => $data['round'] ?? 0,
+            'questions' => $data['questions'] ?? [],
+            'curses_played' => $data['curses_played'] ?? [],
+        ]]);
+
         $session->players()->update(['role' => null]);
         $data['round'] = $completed;
         // Clear all round-scoped state so the next round starts clean (scores persist).

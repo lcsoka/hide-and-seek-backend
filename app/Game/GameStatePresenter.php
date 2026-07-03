@@ -268,8 +268,18 @@ class GameStatePresenter
      */
     private function questions(Session $session): array
     {
-        $resolved = $session->state_data['questions'] ?? [];
+        return $this->questionsFrom($session->state_data['questions'] ?? []);
+    }
 
+    /**
+     * Shape a list of resolved questions (from state_data or an archived round) into the seeker-facing
+     * deduction view. Public so the replay can reassemble every round's questions, not just the live one.
+     *
+     * @param  array<int, array<string, mixed>>  $resolved
+     * @return array<int, array<string, mixed>>
+     */
+    public function questionsFrom(array $resolved): array
+    {
         return array_map(function (array $q): array {
             $payload = $q['payload'] ?? [];
 

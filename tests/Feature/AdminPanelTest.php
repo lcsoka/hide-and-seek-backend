@@ -298,11 +298,23 @@ class AdminPanelTest extends TestCase
         $session->update(['state_data' => [
             'round' => 1,
             'hiding_zone' => ['center' => [47.5, 19.05], 'radius_m' => 500, 'rule' => 'nearest'],
+            // The live (final) round's questions…
             'questions' => [[
-                'seq' => 1, 'category' => 'radar', 'asked_by' => $hider->id,
+                'seq' => 2, 'category' => 'radar', 'asked_by' => $hider->id,
                 'asked_at' => now()->subSeconds(8)->timestamp, 'resolved_at' => now()->subSeconds(7)->timestamp,
                 'answer' => ['answer' => 'yes'],
                 'payload' => ['ask_lat' => 47.50, 'ask_lng' => 19.05, 'radius_m' => 1000],
+            ]],
+            // …plus an archived earlier round, which the replay must also surface.
+            'rounds_log' => [[
+                'round' => 0,
+                'questions' => [[
+                    'seq' => 1, 'category' => 'thermometer', 'asked_by' => $hider->id,
+                    'asked_at' => now()->subSeconds(40)->timestamp, 'resolved_at' => now()->subSeconds(38)->timestamp,
+                    'answer' => ['answer' => 'hotter'],
+                    'payload' => ['start_lat' => 47.49, 'start_lng' => 19.04, 'end_lat' => 47.50, 'end_lng' => 19.05],
+                ]],
+                'curses_played' => [],
             ]],
         ]]);
 
@@ -319,6 +331,15 @@ class AdminPanelTest extends TestCase
         $this->assertNotEmpty($bundle['players']);
         $this->assertNotEmpty($bundle['players'][1]['track'] ?? $bundle['players'][0]['track']); // the hider has a track
         $this->assertNotEmpty($bundle['questions']);
+        // Both the live round's radar and the archived round's thermometer must be present (whole-game history),
+        // each carrying what the deduction needs to cut: a radius for radar, an end point for thermometer.
+        $cats = collect($bundle['questions'])->pluck('category');
+        $this->assertTrue($cats->contains('radar'), 'radar (radius cut) present');
+        $this->assertTrue($cats->contains('thermometer'), 'thermometer (archived round) present');
+        $radar = collect($bundle['questions'])->firstWhere('category', 'radar');
+        $thermo = collect($bundle['questions'])->firstWhere('category', 'thermometer');
+        $this->assertNotNull($radar['ask']['radius_m']); // radius cut input
+        $this->assertNotNull($thermo['end']);            // thermometer cut input
         $this->assertNotNull($bundle['zone']);
         $this->assertCount(2, $bundle['zones']); // one zone per round, oldest first
         $this->assertEqualsWithDelta(47.50, $bundle['zones'][0]['lat'], 1e-6);
