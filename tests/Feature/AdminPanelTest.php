@@ -309,6 +309,8 @@ class AdminPanelTest extends TestCase
         // Two rounds → two hiding zones reconstructed from the choose_station log (state_data only keeps the last).
         $r1 = $session->actionLogs()->create(['type' => 'choose_station', 'player_id' => $hider->id, 'payload' => ['lat' => 47.50, 'lng' => 19.05]]);
         $r1->forceFill(['created_at' => now()->subSeconds(30)])->save();
+        $adv = $session->actionLogs()->create(['type' => 'advance_round', 'player_id' => $hider->id, 'payload' => []]);
+        $adv->forceFill(['created_at' => now()->subSeconds(12)])->save();
         $r2 = $session->actionLogs()->create(['type' => 'choose_station', 'player_id' => $hider->id, 'payload' => ['lat' => 47.52, 'lng' => 19.08]]);
         $r2->forceFill(['created_at' => now()->subSeconds(6)])->save();
 
@@ -322,6 +324,9 @@ class AdminPanelTest extends TestCase
         $this->assertEqualsWithDelta(47.50, $bundle['zones'][0]['lat'], 1e-6);
         $this->assertEqualsWithDelta(47.52, $bundle['zones'][1]['lat'], 1e-6);
         $this->assertSame(500.0, $bundle['zones'][0]['radius_m']);
+        $this->assertCount(2, $bundle['rounds']); // advance_round split → two round windows
+        $this->assertSame(1, $bundle['rounds'][0]['round']);
+        $this->assertSame($bundle['rounds'][0]['end'], $bundle['rounds'][1]['start']); // windows are contiguous
         $this->assertNotNull($bundle['playArea']); // circle fallback
         $this->assertSame('Polygon', $bundle['playAreaGeo']['type'] ?? null); // the city boundary the deduction starts from
 
@@ -333,7 +338,10 @@ class AdminPanelTest extends TestCase
             ->assertSee($session->join_code)      // page title / header
             ->assertSee('Bo')                     // the hider appears in the embedded bundle + legend
             ->assertSee('Deduction cuts')         // deduction-layer toggle
-            ->assertSee('Movement trails');       // trace toggle
+            ->assertSee('Movement trails')        // trace toggle
+            ->assertSee('1× realtime', false)     // realtime playback speed option
+            ->assertSee('currentAction', false)   // "Now" current-action readout
+            ->assertSee('gotoRound', false);      // per-round switcher
     }
 
     public function test_admin_can_toggle_and_revoke(): void

@@ -18,15 +18,42 @@
                 </div>
             </div>
 
-            <div class="flex flex-wrap items-center gap-3 rounded-xl bg-white p-3 shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-900 dark:ring-white/10">
-                <button type="button" @click="toggle()" class="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-primary-500">
-                    <span x-text="playing ? '⏸' : '▶'"></span><span x-text="playing ? 'Pause' : 'Play'"></span>
-                </button>
-                <input type="range" :min="bundle.t0" :max="bundle.t1" step="1" x-model.number="time" @input="render()" class="h-2 flex-1 cursor-pointer accent-primary-600">
-                <select x-model.number="speed" class="rounded-lg border-gray-300 bg-white py-1 text-sm dark:border-white/10 dark:bg-gray-800">
-                    <option :value="15">15×</option><option :value="30">30×</option><option :value="60">60×</option><option :value="120">120×</option>
-                </select>
-                <span class="tabular-nums text-sm font-medium text-gray-500 dark:text-gray-400"><span x-text="rel(time)"></span> / <span x-text="rel(bundle.t1)"></span></span>
+            <div class="space-y-2.5 rounded-xl bg-white p-3 shadow-sm ring-1 ring-gray-950/5 dark:bg-gray-900 dark:ring-white/10">
+                {{-- Round switcher (only for multi-round games) --}}
+                <div x-show="rounds.length > 1" style="display:none" class="flex items-center gap-1.5">
+                    <span class="mr-1 text-xs font-medium text-gray-400">Round</span>
+                    <template x-for="r in rounds" :key="r.round">
+                        <button type="button" @click="gotoRound(r)"
+                                class="rounded-lg px-3 py-1 text-xs font-semibold transition"
+                                :class="activeRound && activeRound.round === r.round ? 'bg-primary-600 text-white shadow' : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-white/5 dark:text-gray-300 dark:hover:bg-white/10'"
+                                x-text="r.round"></button>
+                    </template>
+                </div>
+
+                {{-- Transport --}}
+                <div class="flex flex-wrap items-center gap-3">
+                    <button type="button" @click="toggle()" class="inline-flex items-center gap-1.5 rounded-lg bg-primary-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-primary-500">
+                        <span x-text="playing ? '⏸' : '▶'"></span><span x-text="playing ? 'Pause' : 'Play'"></span>
+                    </button>
+                    <input type="range" :min="bundle.t0" :max="bundle.t1" step="1" x-model.number="time" @input="render()" class="h-2 flex-1 cursor-pointer accent-primary-600">
+                    <select x-model.number="speed" class="rounded-lg border-gray-300 bg-white py-1 text-sm dark:border-white/10 dark:bg-gray-800">
+                        <option :value="1">1× realtime</option><option :value="2">2×</option><option :value="5">5×</option><option :value="15">15×</option><option :value="30">30×</option><option :value="60">60×</option><option :value="120">120×</option>
+                    </select>
+                    <span class="tabular-nums text-sm font-medium text-gray-500 dark:text-gray-400"><span x-text="rel(time)"></span> / <span x-text="rel(bundle.t1)"></span></span>
+                </div>
+
+                {{-- Current action at the scrubbed moment --}}
+                <div class="flex items-center gap-2 border-t border-gray-100 pt-2 text-sm dark:border-white/10">
+                    <span class="shrink-0 text-xs font-medium uppercase tracking-wide text-gray-400">Now</span>
+                    <template x-if="currentAction">
+                        <span class="inline-flex min-w-0 items-center gap-1.5">
+                            <span class="text-base leading-none" x-text="icon(currentAction.kind)"></span>
+                            <span class="truncate font-medium" x-text="currentAction.label"></span>
+                            <span class="shrink-0 text-xs text-gray-400" x-text="currentAction.by ? '· ' + currentAction.by : ''"></span>
+                        </span>
+                    </template>
+                    <template x-if="!currentAction"><span class="text-gray-400">Waiting for the first move…</span></template>
+                </div>
             </div>
 
             {{-- Layer toggles --}}
@@ -184,8 +211,13 @@
                 renderDeduction() {
                     this.dedLayer.clearLayers();
                     if (!this.showDeduction || !window.turf || (!this.bundle.playAreaGeo && !this.bundle.playArea)) return;
-                    const qs = this.bundle.questions.filter((q) => q.ask && q.at <= this.time && (q.category === 'radar' || q.category === 'thermometer'));
-                    if (qs.length !== this._dedKey) { this._dedKey = qs.length; this._dedGeo = this.computeCandidate(qs); }
+                    // The hider relocates each round, so a round's deduction starts fresh from the play area and
+                    // only uses that round's questions — carrying earlier cuts over would point at the wrong spot.
+                    const r = this.activeRound;
+                    const from = r ? r.start : this.bundle.t0;
+                    const qs = this.bundle.questions.filter((q) => q.ask && q.at <= this.time && q.at >= from && (q.category === 'radar' || q.category === 'thermometer'));
+                    const key = (r ? r.round : 0) + ':' + qs.length;
+                    if (key !== this._dedKey) { this._dedKey = key; this._dedGeo = this.computeCandidate(qs); }
                     if (this._dedGeo) L.geoJSON(this._dedGeo, { style: { color: '#16a34a', weight: 2, fillColor: '#16a34a', fillOpacity: 0.09 }, interactive: false }).addTo(this.dedLayer);
                 },
 
@@ -259,6 +291,10 @@
                 },
 
                 get currentEventIndex() { let idx = -1; this.bundle.events.forEach((e, i) => { if (e.at <= this.time) idx = i; }); return idx; },
+                get currentAction() { const i = this.currentEventIndex; return i >= 0 ? this.bundle.events[i] : null; },
+                get rounds() { return this.bundle.rounds || []; },
+                get activeRound() { let r = null; for (const c of this.rounds) { if (this.time >= c.start) r = c; } return r || this.rounds[0] || null; },
+                gotoRound(r) { this.seek(r.start + 1); },
                 seek(t) { this.time = Math.min(Math.max(t, this.bundle.t0), this.bundle.t1); this.render(); },
                 toggle() {
                     this.playing = !this.playing; clearInterval(this._timer);

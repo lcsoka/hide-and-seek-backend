@@ -109,6 +109,26 @@ class ReplayBuilder
             ->filter()
             ->values()->all();
 
+        // Round windows: the game splits at each advance_round, so round r spans [bounds[r-1], bounds[r]].
+        $advanceAts = ActionLog::query()
+            ->where('session_id', $session->id)
+            ->where('type', 'advance_round')
+            ->orderBy('created_at')
+            ->pluck('created_at')
+            ->map(fn ($d) => $d?->timestamp)
+            ->filter()
+            ->values()
+            ->all();
+        $bounds = array_merge([$t0], $advanceAts, [$t1]);
+        $rounds = [];
+        foreach ($bounds as $i => $start) {
+            $end = $bounds[$i + 1] ?? null;
+            if ($end === null || $end - $start <= 1) {
+                continue; // skip the final advance_round→finished boundary, which leaves a zero-width window
+            }
+            $rounds[] = ['round' => count($rounds) + 1, 'start' => $start, 'end' => $end];
+        }
+
         return [
             'code' => $session->join_code,
             'city' => $city,
@@ -122,6 +142,7 @@ class ReplayBuilder
                 ? ['lat' => $zoneLatLng[0], 'lng' => $zoneLatLng[1], 'radius_m' => $zone['radius_m'] ?? 500]
                 : null,
             'zones' => $zones, // per-round hiding zones, active from each `at` until the next
+            'rounds' => $rounds, // [{round, start, end}] so the replay can offer a per-round switcher
 
             // The deduction's starting candidate: the city's real admin boundary (like the web app),
             // with a plain circle as the fallback if the boundary can't be fetched.
