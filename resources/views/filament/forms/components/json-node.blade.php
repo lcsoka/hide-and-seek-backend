@@ -1,8 +1,9 @@
-{{-- Recursive block. Objects/lists → collapsible <details>; scalars → a smart/typed field-block
-     coloured by semantic category, with references (player/curse/question ids) and timestamps
-     rendered nicely. Bound to form state at $path. --}}
+{{-- Recursive block. Objects/lists → collapsible <details> (known lists like hand/questions get a
+     rich summary card); scalars → a smart/typed field-block coloured by category, with references
+     (players/curses/questions) + timestamps rendered nicely. Bound to form state at $path. --}}
 @php
     $parentIsList = $parentIsList ?? false;
+    $listKind = $listKind ?? null;
     $refs = $refs ?? ['players' => [], 'cards' => [], 'questions' => []];
     $lc = is_string($label) ? strtolower($label) : (string) $label;
 
@@ -17,11 +18,14 @@
     ];
     $playerIdKeys = ['hider_id', 'found_by', 'by', 'asked_by', 'player_id', 'host_player_id', 'seeker_id', 'winner_id', 'claimed_by'];
     $userIdKeys = ['host_user_id', 'user_id'];
+    $listKinds = ['hand' => 'card', 'cards' => 'card', 'questions' => 'question', 'curses_played' => 'curse', 'curses' => 'curse'];
+    $catEmoji = ['radar' => '📡', 'thermometer' => '🌡️', 'matching' => '🧩', 'measuring' => '📏', 'tentacles' => '🐙', 'photo' => '📷'];
 
     $isArray = is_array($node);
     $isChipList = $isArray && isset($chipOptions[$lc]) && (count($node) === 0 || ! is_array(reset($node)));
     $isNumber = is_int($node) || is_float($node);
     $isList = $isArray ? array_is_list($node) : false;
+    $childListKind = ($isArray && $isList) ? ($listKinds[$lc] ?? null) : null;
 
     $segOpts = $segments[$lc] ?? null;
     if ($segOpts !== null && $node !== null && ! in_array($node, $segOpts, true)) {
@@ -31,7 +35,6 @@
     $unit = str_ends_with($lc, '_km') ? 'km' : (str_ends_with($lc, '_m') ? 'm' : (str_ends_with($lc, '_s') ? 's' : null));
     $wide = $isChipList || $isRadiusSlider || ($segOpts !== null && count($segOpts) >= 3);
 
-    // Reference / timestamp / location detection (for colour + special rendering).
     $isPlayerRef = ! $isArray && $node !== null && in_array($lc, $playerIdKeys, true);
     $isUserRef = ! $isArray && $node !== null && in_array($lc, $userIdKeys, true);
     $isCurseRef = ! $isArray && $node !== null && $lc === 'curse_id';
@@ -39,9 +42,7 @@
     $isTime = ! $isArray && is_numeric($node) && $node > 0 && (str_ends_with($lc, '_at') || str_ends_with($lc, 'deadline') || in_array($lc, ['at', 'now', 'deadline'], true));
     $isLatLng = ! $isArray && in_array($lc, ['lat', 'lng', 'latitude', 'longitude'], true);
 
-    // Resolve a player from the value (player uuid) or user id.
     $player = $isPlayerRef ? ($refs['players'][$node] ?? null) : ($isUserRef ? ($refs['players']['u' . $node] ?? null) : null);
-    // Resolve the KEY as a player (e.g. a scores map keyed by player id).
     $keyPlayer = is_string($label) ? ($refs['players'][$label] ?? null) : null;
 
     if ($isArray) {
@@ -79,7 +80,35 @@
     }
     $avatarBg = fn ($role) => $role === 'hider' ? '#e11d48' : ($role === 'seeker' ? '#2563eb' : '#64748b');
 
-    // A location preview map for objects carrying coordinates (lat/lng, or a center + radius zone).
+    // Rich summary pill for known list items (hand cards, questions, curses).
+    $pill = null;
+    if ($isArray && $listKind === 'card') {
+        $t = $node['type'] ?? null;
+        $pill = [
+            'name' => $node['name'] ?? ($t === 'time_bonus' ? '+' . ($node['minutes'] ?? '?') . ' min' : ($node['power'] ?? ($refs['cards'][$node['curse_id'] ?? ''] ?? 'Card'))),
+            'tag' => $t, 'color' => $t === 'curse' ? '#7c3aed' : ($t === 'powerup' ? '#2563eb' : '#16a34a'),
+            'sub' => $node['cost'] ?? null, 'icon' => null, 'seq' => null,
+        ];
+    } elseif ($isArray && $listKind === 'question') {
+        $qc = $node['category'] ?? '';
+        $ask = $refs['players'][$node['asked_by'] ?? ''] ?? null;
+        $ans = is_array($node['answer'] ?? null) ? ($node['answer']['answer'] ?? null) : ($node['answer'] ?? null);
+        $pill = [
+            'name' => ucfirst((string) $qc), 'icon' => $catEmoji[$qc] ?? '❓',
+            'sub' => $ask ? 'by ' . $ask['name'] : null, 'tag' => $ans,
+            'color' => in_array($ans, ['yes', 'in_range', 'closer', 'hotter'], true) ? '#16a34a' : (in_array($ans, ['no', 'out_of_range', 'further', 'colder'], true) ? '#dc2626' : '#64748b'),
+            'seq' => $node['seq'] ?? null,
+        ];
+    } elseif ($isArray && $listKind === 'curse') {
+        $by = $refs['players'][$node['by'] ?? ''] ?? null;
+        $pill = [
+            'name' => $refs['cards'][$node['curse_id'] ?? ''] ?? ($node['name'] ?? 'Curse'),
+            'sub' => $by ? 'by ' . $by['name'] : null, 'tag' => $node['status'] ?? null,
+            'color' => '#7c3aed', 'icon' => null, 'seq' => null,
+        ];
+    }
+
+    // Location map for objects carrying coordinates.
     $mapLat = $mapLng = $mapRadius = null;
     if ($isArray && ! $isList) {
         if (isset($node['lat'], $node['lng']) && is_numeric($node['lat']) && is_numeric($node['lng'])) {
@@ -103,18 +132,29 @@
     <details class="jt-obj" data-key="{{ $lc }}" @if ($open) open @endif>
         <summary>
             <x-filament::icon icon="heroicon-m-chevron-right" class="jt-chevron" />
-            <span class="jt-key"><i class="jt-dot" style="background:{{ $cat }}"></i>{{ $label }}</span>
-            <span class="jt-badge">{{ $isList ? 'list' : 'object' }} · {{ count($node) }}</span>
-            @if ($preview)<span class="jt-preview">{{ $preview }}</span>@endif
+            @if ($pill)
+                <span class="jt-item">
+                    @if ($pill['icon'])<span class="jt-item-ic">{{ $pill['icon'] }}</span>@endif
+                    <span class="jt-item-name">{{ $pill['name'] }}</span>
+                    @if ($pill['sub'])<span class="jt-item-sub">{{ $pill['sub'] }}</span>@endif
+                    @if ($pill['tag'])<span class="jt-item-tag" style="color:{{ $pill['color'] }};border:1px solid {{ $pill['color'] }}55;background:{{ $pill['color'] }}14">{{ $pill['tag'] }}</span>@endif
+                    @if ($pill['seq'] !== null)<span class="jt-item-seq">#{{ $pill['seq'] }}</span>@endif
+                </span>
+            @else
+                <span class="jt-key"><i class="jt-dot" style="background:{{ $cat }}"></i>{{ $label }}</span>
+                <span class="jt-badge">{{ $isList ? 'list' : 'object' }} · {{ count($node) }}</span>
+                @if ($preview)<span class="jt-preview">{{ $preview }}</span>@endif
+            @endif
         </summary>
         @if ($mapLat !== null)
-            <div class="jt-map" data-lat="{{ $mapLat }}" data-lng="{{ $mapLng }}" @if ($mapRadius) data-radius="{{ $mapRadius }}" @endif></div>
+            <div class="jt-map" wire:ignore data-lat="{{ $mapLat }}" data-lng="{{ $mapLng }}" @if ($mapRadius) data-radius="{{ $mapRadius }}" @endif></div>
         @endif
         <div class="jt-grid">
             @forelse ($node as $k => $v)
                 @include('filament.forms.components.json-node', [
                     'node' => $v, 'path' => $path . '.' . $k, 'label' => $isList ? '#' . $k : $k,
-                    'depth' => $depth + 1, 'disabled' => $disabled, 'parentIsList' => $isList, 'refs' => $refs,
+                    'depth' => $depth + 1, 'disabled' => $disabled, 'parentIsList' => $isList,
+                    'refs' => $refs, 'listKind' => $childListKind,
                 ])
             @empty
                 <div class="jt-empty">empty</div>

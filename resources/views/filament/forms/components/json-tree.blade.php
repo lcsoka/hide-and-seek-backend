@@ -18,6 +18,12 @@
         .jt .jt-badge{font-size:10px;font-family:ui-monospace,monospace;color:rgb(107 114 128);background:rgb(17 24 39 / .05);padding:2px 7px;border-radius:6px;flex:none}
         .dark .jt .jt-badge{background:rgb(255 255 255 / .08);color:rgb(148 163 184)}
         .jt .jt-preview{flex:1;min-width:0;text-align:right;font-size:11px;color:rgb(148 163 184);font-family:ui-monospace,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .jt .jt-item{display:flex;align-items:center;gap:8px;flex:1;min-width:0}
+        .jt .jt-item-ic{font-size:14px;flex:none}
+        .jt .jt-item-name{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .jt .jt-item-sub{font-size:11px;color:rgb(148 163 184);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .jt .jt-item-tag{font-size:10px;padding:1px 8px;border-radius:999px;text-transform:capitalize;flex:none}
+        .jt .jt-item-seq{font-size:11px;color:rgb(148 163 184);margin-left:auto;font-family:ui-monospace,monospace;flex:none}
         .jt input.jt-num{width:100%;box-sizing:border-box;border:1px solid rgb(17 24 39 / .14);border-radius:8px;padding:7px 10px;font-size:13px;background:#fff;color:inherit}
         .dark .jt input.jt-num{background:rgb(255 255 255 / .05);border-color:rgb(255 255 255 / .14);color:#fff}
         .jt input.jt-num:focus{outline:0;border-color:rgb(var(--primary-500,244 63 94));box-shadow:0 0 0 3px rgb(var(--primary-500,244 63 94) / .15)}
@@ -157,6 +163,7 @@
                     }
                     el.__jtMap = map;
                     setTimeout(function () { map.invalidateSize(); }, 60);
+                    setTimeout(function () { map.invalidateSize(); }, 350);
                 });
             }
             var io = ('IntersectionObserver' in window) ? new IntersectionObserver(function (entries) {

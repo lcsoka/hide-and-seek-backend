@@ -234,10 +234,13 @@ class AdminPanelTest extends TestCase
     {
         $session = $this->seedSession();
         $hider = $session->players()->where('role', 'hider')->first();
+        $seeker = $session->players()->where('role', 'seeker')->first();
         $session->update([
             'config' => ['units' => 'metric', 'reveal_seekers_to_hider' => false, 'transit_modes' => ['metro', 'tram']],
             'state_data' => ['round' => 2, 'hider_id' => $hider->id, 'seeking_started_at' => 1782998047,
-                'hiding_zone' => ['center' => ['lat' => 47.5, 'lng' => 19.05], 'radius_m' => 500, 'rule' => 'nearest']],
+                'hiding_zone' => ['center' => ['lat' => 47.5, 'lng' => 19.05], 'radius_m' => 500, 'rule' => 'nearest'],
+                'hand' => [['uid' => 'h1', 'type' => 'curse', 'name' => 'Tentacles', 'cost' => '2']],
+                'questions' => [['seq' => 1, 'category' => 'radar', 'asked_by' => $seeker->id, 'answer' => ['answer' => 'yes']]]],
         ]);
         $this->actingAs($this->adminUser());
 
@@ -253,7 +256,9 @@ class AdminPanelTest extends TestCase
             ->assertSee($hider->display_name)
             ->assertSee('2026')
             ->assertSee('jt-map', false)
-            ->assertSee('data-lat="47.5"', false);
+            ->assertSee('data-lat="47.5"', false)
+            ->assertSee('Tentacles')   // hand card rendered as a summary pill
+            ->assertSee('Radar');      // question card rendered as a summary pill
 
         // Edit nested values through the tree (bound to the form state), then save.
         Livewire::test(EditSession::class, ['record' => $session->getKey()])
