@@ -28,8 +28,10 @@ class AdminPanelProvider extends PanelProvider
             ->path('admin')
             ->viteTheme('resources/css/filament/admin/theme.css')
             ->login()
+            // Match the web app's rose accent (rose-600 #e11d48) across the whole panel.
             ->colors([
-                'primary' => Color::Amber,
+                'primary' => Color::Rose,
+                'gray' => Color::Zinc,
             ])
             ->discoverResources(in: app_path('Filament/Resources'), for: 'App\Filament\Resources')
             ->discoverPages(in: app_path('Filament/Pages'), for: 'App\Filament\Pages')
