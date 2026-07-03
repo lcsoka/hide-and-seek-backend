@@ -286,6 +286,9 @@ class AdminPanelTest extends TestCase
 
     public function test_replay_builder_and_page(): void
     {
+        \Illuminate\Support\Facades\Http::fake(['nominatim.openstreetmap.org/*' => \Illuminate\Support\Facades\Http::response([
+            ['geojson' => ['type' => 'Polygon', 'coordinates' => [[[19.0, 47.4], [19.1, 47.4], [19.1, 47.6], [19.0, 47.6], [19.0, 47.4]]]]],
+        ])]);
         $session = $this->seedSession();
         $hider = $session->players()->where('role', 'hider')->first();
 
@@ -309,7 +312,8 @@ class AdminPanelTest extends TestCase
         $this->assertNotEmpty($bundle['players'][1]['track'] ?? $bundle['players'][0]['track']); // the hider has a track
         $this->assertNotEmpty($bundle['questions']);
         $this->assertNotNull($bundle['zone']);
-        $this->assertNotNull($bundle['playArea']); // deduction starting region (city centre + radius)
+        $this->assertNotNull($bundle['playArea']); // circle fallback
+        $this->assertSame('Polygon', $bundle['playAreaGeo']['type'] ?? null); // the city boundary the deduction starts from
 
         $this->actingAs($this->adminUser());
         $this->get(SessionResource::getUrl('replay', ['record' => $session]))

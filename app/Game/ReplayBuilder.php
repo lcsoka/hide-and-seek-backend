@@ -6,6 +6,8 @@ use App\Models\ActionLog;
 use App\Models\PlayerPosition;
 use App\Models\Session;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 
 /**
  * Assembles everything needed to replay a finished game on a map + timeline: per-player position
@@ -96,11 +98,46 @@ class ReplayBuilder
             'zone' => ($zone && isset($zone['center'][0], $zone['center'][1]))
                 ? ['lat' => (float) $zone['center'][0], 'lng' => (float) $zone['center'][1], 'radius_m' => $zone['radius_m'] ?? 500]
                 : null,
-            // The deduction's starting candidate: the play area (city centre + radius).
+            // The deduction's starting candidate: the city's real admin boundary (like the web app),
+            // with a plain circle as the fallback if the boundary can't be fetched.
             'playArea' => (is_array($city) && isset($city['lat'], $city['lng']))
                 ? ['lat' => (float) $city['lat'], 'lng' => (float) $city['lng'], 'radiusKm' => (float) ($session->config['play_radius_km'] ?? 15)]
                 : null,
+            'playAreaGeo' => $this->cityBoundary($city),
         ];
+    }
+
+    /** The city's administrative boundary as GeoJSON (Polygon/MultiPolygon), fetched once from Nominatim and cached. */
+    private function cityBoundary(mixed $city): ?array
+    {
+        if (! is_array($city) || empty($city['name'])) {
+            return null;
+        }
+
+        return Cache::remember('city_boundary:'.strtolower((string) $city['name']), now()->addDays(30), function () use ($city) {
+            try {
+                $results = Http::withHeaders(['User-Agent' => config('game.overpass.user_agent', 'HideAndSeek/1.0')])
+                    ->timeout(15)
+                    ->get('https://nominatim.openstreetmap.org/search', [
+                        'q' => $city['name'].', Hungary',
+                        'format' => 'jsonv2',
+                        'polygon_geojson' => 1,
+                        'limit' => 3,
+                    ])
+                    ->json();
+
+                foreach ((array) $results as $r) {
+                    $geo = $r['geojson'] ?? null;
+                    if (is_array($geo) && in_array($geo['type'] ?? '', ['Polygon', 'MultiPolygon'], true)) {
+                        return $geo;
+                    }
+                }
+            } catch (\Throwable) {
+                // fall back to the circle
+            }
+
+            return null;
+        });
     }
 
     /** Merge the action log (minus ask/answer/curse, which the question + curse rows carry) with the questions and curses into one sorted feed. */

@@ -117,6 +117,7 @@
                     this.bundle.players.forEach((p) => { if (p.last) pts.push(p.last); });
                     this.bundle.questions.forEach((q) => { if (q.ask) pts.push([q.ask.lat, q.ask.lng]); });
                     if (this.bundle.zone) pts.push([this.bundle.zone.lat, this.bundle.zone.lng]);
+                    if (this.bundle.playAreaGeo && window.turf) { const bb = turf.bbox(this.bundle.playAreaGeo); pts.push([bb[1], bb[0]], [bb[3], bb[2]]); }
                     if (pts.length) this.map.fitBounds(pts, { padding: [40, 40], maxZoom: 16 });
                     else this.map.setView([47.4979, 19.0402], 12);
 
@@ -164,8 +165,11 @@
                     return turf.polygon([[p1.geometry.coordinates, p2.geometry.coordinates, p3.geometry.coordinates, p4.geometry.coordinates, p1.geometry.coordinates]]);
                 },
                 computeCandidate(qs) {
-                    if (!this.bundle.playArea || !window.turf) return null;
-                    let cand = turf.circle([this.bundle.playArea.lng, this.bundle.playArea.lat], this.bundle.playArea.radiusKm, { units: 'kilometers', steps: 96 });
+                    if (!window.turf) return null;
+                    let cand;
+                    if (this.bundle.playAreaGeo) cand = turf.feature(this.bundle.playAreaGeo);
+                    else if (this.bundle.playArea) cand = turf.circle([this.bundle.playArea.lng, this.bundle.playArea.lat], this.bundle.playArea.radiusKm, { units: 'kilometers', steps: 96 });
+                    else return null;
                     for (const q of qs) {
                         try {
                             if (q.category === 'radar' && q.ask.radius_m) {
@@ -181,7 +185,7 @@
                 },
                 renderDeduction() {
                     this.dedLayer.clearLayers();
-                    if (!this.showDeduction || !window.turf || !this.bundle.playArea) return;
+                    if (!this.showDeduction || !window.turf || (!this.bundle.playAreaGeo && !this.bundle.playArea)) return;
                     const qs = this.bundle.questions.filter((q) => q.ask && q.at <= this.time && (q.category === 'radar' || q.category === 'thermometer'));
                     if (qs.length !== this._dedKey) { this._dedKey = qs.length; this._dedGeo = this.computeCandidate(qs); }
                     if (this._dedGeo) L.geoJSON(this._dedGeo, { style: { color: '#16a34a', weight: 2, fillColor: '#16a34a', fillOpacity: 0.09 }, interactive: false }).addTo(this.dedLayer);
