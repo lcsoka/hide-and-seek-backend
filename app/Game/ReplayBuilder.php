@@ -86,6 +86,29 @@ class ReplayBuilder
         $zone = $session->state_data['hiding_zone'] ?? null;
         $city = $session->config['city'] ?? null;
 
+        // The zone centre is stored as {lat,lng} by a real game but seeds/older rows may use [lat,lng].
+        $center = is_array($zone['center'] ?? null) ? $zone['center'] : null;
+        $zoneLatLng = match (true) {
+            isset($center['lat'], $center['lng']) => [(float) $center['lat'], (float) $center['lng']],
+            isset($center[0], $center[1]) => [(float) $center[0], (float) $center[1]],
+            default => null,
+        };
+
+        // Each round the hider picks a fresh station, so the zone moves over the game. state_data only
+        // keeps the current round's zone, so reconstruct the whole timeline from the choose_station log —
+        // otherwise the replay would draw the last round's zone while the hider sits in an earlier one.
+        $zoneRadius = (float) ($session->config['hiding_zone_radius_m'] ?? ($zone['radius_m'] ?? 500));
+        $zones = ActionLog::query()
+            ->where('session_id', $session->id)
+            ->where('type', 'choose_station')
+            ->orderBy('created_at')
+            ->get(['payload', 'created_at'])
+            ->map(fn (ActionLog $log) => isset($log->payload['lat'], $log->payload['lng'])
+                ? ['at' => $log->created_at?->timestamp, 'lat' => (float) $log->payload['lat'], 'lng' => (float) $log->payload['lng'], 'radius_m' => $zoneRadius]
+                : null)
+            ->filter()
+            ->values()->all();
+
         return [
             'code' => $session->join_code,
             'city' => $city,
@@ -95,9 +118,11 @@ class ReplayBuilder
             'questions' => $questions,
             'curses' => $curses,
             'events' => $events,
-            'zone' => ($zone && isset($zone['center'][0], $zone['center'][1]))
-                ? ['lat' => (float) $zone['center'][0], 'lng' => (float) $zone['center'][1], 'radius_m' => $zone['radius_m'] ?? 500]
+            'zone' => $zoneLatLng
+                ? ['lat' => $zoneLatLng[0], 'lng' => $zoneLatLng[1], 'radius_m' => $zone['radius_m'] ?? 500]
                 : null,
+            'zones' => $zones, // per-round hiding zones, active from each `at` until the next
+
             // The deduction's starting candidate: the city's real admin boundary (like the web app),
             // with a plain circle as the fallback if the boundary can't be fetched.
             'playArea' => (is_array($city) && isset($city['lat'], $city['lng']))

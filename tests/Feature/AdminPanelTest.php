@@ -306,12 +306,22 @@ class AdminPanelTest extends TestCase
             ]],
         ]]);
 
+        // Two rounds → two hiding zones reconstructed from the choose_station log (state_data only keeps the last).
+        $r1 = $session->actionLogs()->create(['type' => 'choose_station', 'player_id' => $hider->id, 'payload' => ['lat' => 47.50, 'lng' => 19.05]]);
+        $r1->forceFill(['created_at' => now()->subSeconds(30)])->save();
+        $r2 = $session->actionLogs()->create(['type' => 'choose_station', 'player_id' => $hider->id, 'payload' => ['lat' => 47.52, 'lng' => 19.08]]);
+        $r2->forceFill(['created_at' => now()->subSeconds(6)])->save();
+
         $bundle = app(ReplayBuilder::class)->build($session->fresh());
         $this->assertLessThanOrEqual($bundle['t1'], $bundle['t0']);
         $this->assertNotEmpty($bundle['players']);
         $this->assertNotEmpty($bundle['players'][1]['track'] ?? $bundle['players'][0]['track']); // the hider has a track
         $this->assertNotEmpty($bundle['questions']);
         $this->assertNotNull($bundle['zone']);
+        $this->assertCount(2, $bundle['zones']); // one zone per round, oldest first
+        $this->assertEqualsWithDelta(47.50, $bundle['zones'][0]['lat'], 1e-6);
+        $this->assertEqualsWithDelta(47.52, $bundle['zones'][1]['lat'], 1e-6);
+        $this->assertSame(500.0, $bundle['zones'][0]['radius_m']);
         $this->assertNotNull($bundle['playArea']); // circle fallback
         $this->assertSame('Polygon', $bundle['playAreaGeo']['type'] ?? null); // the city boundary the deduction starts from
 

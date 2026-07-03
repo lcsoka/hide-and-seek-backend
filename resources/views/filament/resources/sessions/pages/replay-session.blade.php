@@ -116,14 +116,12 @@
                     this.bundle.players.forEach((p) => p.track.forEach((s) => pts.push([s[1], s[2]])));
                     this.bundle.players.forEach((p) => { if (p.last) pts.push(p.last); });
                     this.bundle.questions.forEach((q) => { if (q.ask) pts.push([q.ask.lat, q.ask.lng]); });
-                    if (this.bundle.zone) pts.push([this.bundle.zone.lat, this.bundle.zone.lng]);
+                    this.zoneList().forEach((z) => pts.push([z.lat, z.lng]));
                     if (this.bundle.playAreaGeo && window.turf) { const bb = turf.bbox(this.bundle.playAreaGeo); pts.push([bb[1], bb[0]], [bb[3], bb[2]]); }
                     if (pts.length) this.map.fitBounds(pts, { padding: [40, 40], maxZoom: 16 });
                     else this.map.setView([47.4979, 19.0402], 12);
 
-                    if (this.bundle.zone) {
-                        L.circle([this.bundle.zone.lat, this.bundle.zone.lng], { radius: this.bundle.zone.radius_m, color: '#f59e0b', weight: 1, fillOpacity: 0.05, dashArray: '6' }).addTo(this.map);
-                    }
+                    this.zoneLayer = L.layerGroup().addTo(this.map);
                     this.dedLayer = L.layerGroup().addTo(this.map);
                     this.traceLayer = L.layerGroup().addTo(this.map);
                     this.qLayer = L.layerGroup().addTo(this.map);
@@ -215,7 +213,7 @@
                     });
                     this.bundle.curses.forEach((c) => {
                         if (this.time < c.at || this.time - c.at >= W) return;
-                        const h = this.hider(); const pos = h ? this.posAt(h.track, this.time) || h.last : (this.bundle.zone ? [this.bundle.zone.lat, this.bundle.zone.lng] : null);
+                        const h = this.hider(); const z = this.activeZone(); const pos = (h && (this.posAt(h.track, this.time) || h.last)) || (z ? [z.lat, z.lng] : null);
                         if (pos) L.marker(pos, { icon: this.pulseIcon('#7c3aed'), interactive: false }).addTo(this.evLayer);
                         active = { icon: '🎴', color: '#7c3aed', text: 'Curse: ' + c.name };
                     });
@@ -225,12 +223,30 @@
                     return L.divIcon({ className: '', iconSize: [16, 16], iconAnchor: [8, 8], html: `<div style="position:relative;width:16px;height:16px;color:${color}"><div class="jtr-ring"></div><div style="position:absolute;inset:4px;border-radius:9999px;background:${color};box-shadow:0 0 0 2px #fff"></div></div>` });
                 },
 
+                // The hider re-hides each round, so the zone moves. Use the per-round zones when present.
+                zoneList() { return (this.bundle.zones && this.bundle.zones.length) ? this.bundle.zones : (this.bundle.zone ? [this.bundle.zone] : []); },
+                activeZone() {
+                    const zs = this.zoneList();
+                    if (!zs.length) return null;
+                    let z = zs[0];
+                    for (const cand of zs) { if ((cand.at ?? -Infinity) <= this.time) z = cand; }
+                    return z;
+                },
+                renderZone() {
+                    if (!this.zoneLayer) return;
+                    this.zoneLayer.clearLayers();
+                    const z = this.activeZone();
+                    if (!z) return;
+                    L.circle([z.lat, z.lng], { radius: z.radius_m, color: '#f59e0b', weight: 1, fillOpacity: 0.05, dashArray: '6', interactive: false }).addTo(this.zoneLayer);
+                },
+
                 render() {
                     if (!this.map) return;
                     this.bundle.players.forEach((p) => {
                         const pos = this.posAt(p.track, this.time) || p.last, m = this.markers[p.id];
                         if (pos) { m.setLatLng(pos); m.setOpacity(1); } else { m.setOpacity(0); }
                     });
+                    this.renderZone();
                     this.renderDeduction();
                     this.renderTraces();
                     this.qLayer.clearLayers();
