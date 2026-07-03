@@ -52,6 +52,7 @@ class SessionForm
 
                 Section::make('Config')
                     ->description('Resolved GameModeConfig for this session.')
+                    ->columnSpanFull()
                     ->collapsible()
                     ->schema([
                         JsonTree::make('config')->hiddenLabel(),
@@ -59,6 +60,7 @@ class SessionForm
 
                 Section::make('Game state')
                     ->description('Mode-owned state: scores, hider zone, questions, curses, timers…')
+                    ->columnSpanFull()
                     ->collapsible()
                     ->schema([
                         JsonTree::make('state_data')->hiddenLabel(),
