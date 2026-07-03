@@ -8,6 +8,7 @@ use App\Game\Geo\ArrayMapDataSource;
 use App\Game\Geo\GeoFeature;
 use App\Game\Geo\MapDataSource;
 use App\Game\SessionFactory;
+use App\Game\Support\Geo;
 use App\Game\Support\Action;
 use App\Models\Card;
 use App\Models\Player;
@@ -87,7 +88,7 @@ class SampleGame extends Command
         while ($session->state !== 'finished' && $guard++ < 400) {
             $session = match ($session->state) {
                 'lobby' => $this->act($session, $this->host($session), 'start'),
-                'role_assignment' => $this->act($session, $this->host($session), 'assign_hider', ['player_id' => $this->host($session)->id]),
+                'role_assignment' => $this->assignHider($session),
                 'hiding' => $this->hide($session),
                 'seeking' => $this->seek($session),
                 'endgame' => $this->endgame($session),
@@ -110,6 +111,16 @@ class SampleGame extends Command
         $this->line("  Replay:       {$base}/admin/sessions/{$session->id}/replay");
 
         return self::SUCCESS;
+    }
+
+    /** Rotate the hider each round so a different player hides (round 0 → host, round 1 → next player, …). */
+    private function assignHider(Session $session): Session
+    {
+        $players = $session->players()->orderBy('created_at')->get();
+        $round = (int) ($session->state_data['round'] ?? 0);
+        $hider = $players[$round % $players->count()];
+
+        return $this->act($session, $this->host($session), 'assign_hider', ['player_id' => $hider->id]);
     }
 
     private function hide(Session $session): Session
@@ -167,9 +178,15 @@ class SampleGame extends Command
                 [$zLat, $zLng] = $this->hiderZoneCenter($session);
                 $this->moveTo($session, $mover, (float) $mover->last_lat + ($zLat - (float) $mover->last_lat) * 0.5, (float) $mover->last_lng + ($zLng - (float) $mover->last_lng) * 0.5, 3);
                 $session = $this->act($session, $this->seekerById($session, $seeker->id), 'stop_thermometer');
+                // Answer it right away so a curse/veto played later this round can't wipe the thermometer cut.
+                if (($session->state_data['pending_question'] ?? null) !== null) {
+                    $session = $this->act($session, $this->hider($session), 'answer_question', ['answer' => $this->answerFor($session, 'thermometer')]);
+                }
             } elseif ($this->canAct($session, $seeker, 'ask_question')) {
                 $disabled = array_merge($session->state_data['disabled_categories'] ?? [], array_filter([$session->state_data['spotty_category'] ?? null]));
-                $cat = $this->nextCategory($disabled);
+                // Guarantee a radar question early each round (unless it's disabled) so the replay always has a
+                // radius cut alongside the thermometer cut; otherwise cycle the catalogue for variety.
+                $cat = ($i === 0 && ! in_array('radar', $disabled, true)) ? 'radar' : $this->nextCategory($disabled);
                 if ($cat !== null && ($q = $this->randomQuestion($cat)) !== null) {
                     $session = $this->act($session, $seeker, 'ask_question', $this->askPayload($q));
                 }
@@ -179,7 +196,7 @@ class SampleGame extends Command
             $session = $this->playACurse($session);
             if (($session->state_data['pending_question'] ?? null) !== null) {
                 $cat = $session->state_data['pending_question']['category'] ?? null;
-                $payload = $cat === 'photo' ? ['photo_url' => 'https://placehold.co/320x200/e11d48/white?text=Photo'] : ['answer' => $this->manualAnswer($cat)];
+                $payload = $cat === 'photo' ? ['photo_url' => 'https://placehold.co/320x200/e11d48/white?text=Photo'] : ['answer' => $this->answerFor($session, $cat)];
                 $session = $this->act($session, $this->hider($session), 'answer_question', $payload);
                 $session = $this->resolveDraw($session);
             }
@@ -381,7 +398,9 @@ class SampleGame extends Command
         if ($choice === null) {
             return $session;
         }
-        $cats = array_slice(['radar', 'matching', 'measuring', 'thermometer'], 0, (int) $choice['count']);
+        // Disable the non-deduction categories first so radar + thermometer stay available — the replay
+        // needs both of those to survive to show a radius cut and a thermometer cut.
+        $cats = array_slice(['matching', 'measuring', 'tentacles', 'photo'], 0, (int) $choice['count']);
 
         return $this->act($session, $this->hider($session), 'choose_disabled_categories', ['categories' => $cats]);
     }
@@ -498,5 +517,25 @@ class SampleGame extends Command
             'tentacles' => collect(['in_range', 'out_of_range'])->random(),
             default => collect(['yes', 'no'])->random(),
         };
+    }
+
+    /** A truthful radar answer (does the circle actually contain the hider?) so the cut narrows toward them; else random. */
+    private function answerFor(Session $session, ?string $cat): string
+    {
+        $p = $session->state_data['pending_question']['payload'] ?? [];
+        [$zLat, $zLng] = $this->hiderZoneCenter($session);
+        if ($cat === 'radar' && isset($p['ask_lat'], $p['ask_lng'], $p['radius_m'])) {
+            $inside = Geo::distanceMeters((float) $p['ask_lat'], (float) $p['ask_lng'], $zLat, $zLng) <= (float) $p['radius_m'];
+
+            return $inside ? 'yes' : 'no';
+        }
+        if ($cat === 'thermometer' && isset($p['start_lat'], $p['start_lng'], $p['end_lat'], $p['end_lng'])) {
+            $dStart = Geo::distanceMeters((float) $p['start_lat'], (float) $p['start_lng'], $zLat, $zLng);
+            $dEnd = Geo::distanceMeters((float) $p['end_lat'], (float) $p['end_lng'], $zLat, $zLng);
+
+            return $dEnd < $dStart ? 'hotter' : 'colder';
+        }
+
+        return $this->manualAnswer($cat);
     }
 }
