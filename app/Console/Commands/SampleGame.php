@@ -49,7 +49,11 @@ class SampleGame extends Command
     public function handle(GameEngine $engine, SessionFactory $factory): int
     {
         $this->engine = $engine;
-        $this->clock = now()->subMinutes(28);
+        // Drive the whole simulation off one clock in the recent past. Positions record at $this->clock,
+        // and freezing now() to the same clock means every game event (questions, curses, choose_station —
+        // all timestamped via now()) lands on the SAME timeline, so the replay stays coherent.
+        $this->clock = now()->subMinutes(50);
+        Carbon::setTestNow($this->clock);
 
         // Offline OSM features so matching/measuring/tentacles resolve without Overpass.
         app()->instance(MapDataSource::class, new ArrayMapDataSource([
@@ -86,6 +90,8 @@ class SampleGame extends Command
             };
         }
 
+        Carbon::setTestNow(); // release the frozen clock
+
         $base = rtrim((string) config('app.url', 'http://hide-and-seek.test'), '/');
         $this->newLine();
         $this->info('✅ Sample game created and persisted.');
@@ -114,6 +120,7 @@ class SampleGame extends Command
         $session = $this->ensureCurseInHand($session);
         $steps = 7; // enough to cover every question category (+ a thermometer) and several curses
         for ($i = 0; $i < $steps && $session->state === 'seeking'; $i++) {
+            $this->tick(mt_rand(25, 75)); // deliberation time between question rounds, so events spread over the timeline
             $session = $this->clearCurses($session);
             $seeker = $this->aSeeker($session);
             // Move the seeker to a fresh spot (recording a track).
@@ -207,10 +214,17 @@ class SampleGame extends Command
         }
 
         foreach ($path as [$plat, $plng]) {
-            $this->clock = $this->clock->copy()->addSeconds(mt_rand(12, 30));
+            $this->tick(mt_rand(5, 13));
             PlayerPosition::create(['session_id' => $session->id, 'player_id' => $player->id, 'lat' => $plat, 'lng' => $plng, 'recorded_at' => $this->clock]);
         }
         $player->update(['last_lat' => $lat, 'last_lng' => $lng, 'last_location_at' => $this->clock]);
+    }
+
+    /** Advance the single simulation clock, keeping the frozen now() in lock-step so events + positions align. */
+    private function tick(int $seconds): void
+    {
+        $this->clock = $this->clock->copy()->addSeconds($seconds);
+        Carbon::setTestNow($this->clock);
     }
 
     /** A street-following path (up to ~14 points, [lat,lng]) between two points via the public OSRM, cached. */
