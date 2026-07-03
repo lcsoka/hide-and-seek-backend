@@ -159,20 +159,24 @@
                     setTimeout(function () { map.invalidateSize(); }, 60);
                 });
             }
+            var io = ('IntersectionObserver' in window) ? new IntersectionObserver(function (entries) {
+                entries.forEach(function (e) {
+                    if (!e.isIntersecting) return;
+                    var el = e.target;
+                    if (!el.__jtInited) initMap(el);
+                    else if (el.__jtMap) el.__jtMap.invalidateSize();
+                });
+            }, { threshold: 0.01 }) : null;
             function scan() {
                 document.querySelectorAll('.jt-map').forEach(function (el) {
-                    var d = el.closest('details');
-                    if (!d || d.open) initMap(el);
-                    if (d && !d.__jtBound) {
-                        d.__jtBound = true;
-                        d.addEventListener('toggle', function () {
-                            if (d.open) { initMap(el); if (el.__jtMap) setTimeout(function () { el.__jtMap.invalidateSize(); }, 60); }
-                        });
-                    }
+                    if (el.__jtObserved) return;
+                    el.__jtObserved = true;
+                    if (io) io.observe(el); else initMap(el);
                 });
             }
             if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scan);
             else scan();
+            document.addEventListener('livewire:navigated', scan);
         })();
     </script>
 </x-dynamic-component>
