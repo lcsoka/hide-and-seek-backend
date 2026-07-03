@@ -46,6 +46,9 @@ class SampleGame extends Command
 
     private int $catIx = 0;
 
+    /** Common meeting point (Deák Ferenc tér) where everyone starts the game together. */
+    private array $start = [47.4972, 19.0547];
+
     public function handle(GameEngine $engine, SessionFactory $factory): int
     {
         $this->engine = $engine;
@@ -76,6 +79,9 @@ class SampleGame extends Command
         for ($i = 1; $i <= max(1, (int) $this->option('seekers')); $i++) {
             $factory->join($session, User::factory()->create(['name' => "Sample Seeker {$i}"]), "Seeker {$i}");
         }
+
+        // Everyone gathers at the same spot before the game — the first-round start point.
+        $this->placeAllAtStart($session);
 
         $guard = 0;
         while ($session->state !== 'finished' && $guard++ < 400) {
@@ -109,9 +115,17 @@ class SampleGame extends Command
     private function hide(Session $session): Session
     {
         $hider = $this->hider($session);
-        $this->moveTo($session, $hider, 47.495 + mt_rand(0, 120) / 10000, 19.035 + mt_rand(0, 120) / 10000, 3);
+        $seekers = $session->players()->where('role', 'seeker')->get();
+
+        // The seekers wait at the start while the hider travels off to find a hiding zone. Record a few
+        // idle samples so the replay shows them holding position (not teleporting) during the hiding phase.
+        $this->recordIdle($session, $seekers);
+        $this->moveTo($session, $hider, 47.49 + mt_rand(0, 120) / 10000, 19.03 + mt_rand(0, 120) / 10000, 3);
+        $this->recordIdle($session, $seekers);
+
         $session = $this->act($session, $hider, 'choose_station', ['lat' => (float) $hider->last_lat, 'lng' => (float) $hider->last_lng]);
 
+        // The hider only declares hidden once settled; the seekers were idle until this moment.
         return $this->act($session, $this->hider($session), 'confirm_hidden');
     }
 
@@ -123,8 +137,19 @@ class SampleGame extends Command
             $this->tick(mt_rand(25, 75)); // deliberation time between question rounds, so events spread over the timeline
             $session = $this->clearCurses($session);
             $seeker = $this->aSeeker($session);
-            // Move the seeker to a fresh spot (recording a track).
-            $this->moveTo($session, $seeker, 47.50 + mt_rand(-60, 60) / 1000, 19.05 + mt_rand(-60, 60) / 1000, 4);
+            // The seekers deduce the hider's area and close in on it: each move covers part of the gap
+            // toward the hiding zone (with jitter, so they approach from their own direction) rather than
+            // teleporting to a random spot. By the endgame they arrive on top of the hider.
+            [$zLat, $zLng] = $this->hiderZoneCenter($session);
+            $curLat = (float) ($seeker->last_lat ?? $this->start[0]);
+            $curLng = (float) ($seeker->last_lng ?? $this->start[1]);
+            $close = 0.4; // fraction of the remaining distance covered this round
+            $this->moveTo(
+                $session, $seeker,
+                $curLat + ($zLat - $curLat) * $close + mt_rand(-70, 70) / 10000,
+                $curLng + ($zLng - $curLng) * $close + mt_rand(-90, 90) / 10000,
+                4
+            );
 
             // One transit ride on the first step.
             if ($i === 0) {
@@ -136,7 +161,11 @@ class SampleGame extends Command
             if ($i === 1 && $this->canAct($session, $seeker, 'start_thermometer')) {
                 $q = $this->randomQuestion('thermometer');
                 $session = $this->act($session, $seeker, 'start_thermometer', $this->askPayload($q) + ['distance_m' => 800, 'distance_label' => '½ mile']);
-                $this->moveTo($session, $this->seekerById($session, $seeker->id), 47.52, 19.08, 3);
+                // Walk halfway toward the zone so the thermometer reads "hotter" — the deduction then leans
+                // the candidate area toward the hider, which is exactly what a deducing seeker would produce.
+                $mover = $this->seekerById($session, $seeker->id);
+                [$zLat, $zLng] = $this->hiderZoneCenter($session);
+                $this->moveTo($session, $mover, (float) $mover->last_lat + ($zLat - (float) $mover->last_lat) * 0.5, (float) $mover->last_lng + ($zLng - (float) $mover->last_lng) * 0.5, 3);
                 $session = $this->act($session, $this->seekerById($session, $seeker->id), 'stop_thermometer');
             } elseif ($this->canAct($session, $seeker, 'ask_question')) {
                 $disabled = array_merge($session->state_data['disabled_categories'] ?? [], array_filter([$session->state_data['spotty_category'] ?? null]));
@@ -196,6 +225,43 @@ class SampleGame extends Command
     }
 
     // --- movement --------------------------------------------------------
+
+    /** Drop every player at the shared start point (with a touch of jitter so markers don't stack). */
+    private function placeAllAtStart(Session $session): void
+    {
+        foreach ($session->players()->get() as $p) {
+            $this->tick(mt_rand(1, 4));
+            $lat = $this->start[0] + mt_rand(-8, 8) / 10000;
+            $lng = $this->start[1] + mt_rand(-8, 8) / 10000;
+            PlayerPosition::create(['session_id' => $session->id, 'player_id' => $p->id, 'lat' => $lat, 'lng' => $lng, 'recorded_at' => $this->clock]);
+            $p->update(['last_lat' => $lat, 'last_lng' => $lng, 'last_location_at' => $this->clock]);
+        }
+    }
+
+    /** Record a fresh sample at each player's current spot (small GPS jitter) — they're standing still. */
+    private function recordIdle(Session $session, iterable $players): void
+    {
+        foreach ($players as $p) {
+            if ($p->last_lat === null) {
+                continue;
+            }
+            $this->tick(mt_rand(6, 16));
+            PlayerPosition::create([
+                'session_id' => $session->id, 'player_id' => $p->id,
+                'lat' => (float) $p->last_lat + mt_rand(-3, 3) / 10000,
+                'lng' => (float) $p->last_lng + mt_rand(-3, 3) / 10000,
+                'recorded_at' => $this->clock,
+            ]);
+        }
+    }
+
+    /** The centre of the hider's current zone (what the seekers are trying to deduce), or the map centre. */
+    private function hiderZoneCenter(Session $session): array
+    {
+        $c = $session->state_data['hiding_zone']['center'] ?? null;
+
+        return isset($c['lat'], $c['lng']) ? [(float) $c['lat'], (float) $c['lng']] : [47.50, 19.05];
+    }
 
     private function moveTo(Session $session, Player $player, float $lat, float $lng, int $minPoints): void
     {
@@ -353,7 +419,10 @@ class SampleGame extends Command
     private function act(Session $session, Player $player, string $type, array $payload = []): Session
     {
         try {
-            return $this->engine->submit($session->refresh(), $player->refresh(), new Action($type, $payload));
+            $result = $this->engine->submit($session->refresh(), $player->refresh(), new Action($type, $payload));
+            $this->tick(mt_rand(3, 9)); // each action takes a beat, so questions/dice/cards/answers don't share a timestamp
+
+            return $result;
         } catch (ValidationException) {
             return $session->refresh();
         } catch (\Throwable $e) {
