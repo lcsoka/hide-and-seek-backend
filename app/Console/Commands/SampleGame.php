@@ -19,6 +19,8 @@ use Database\Seeders\CardSeeder;
 use Database\Seeders\QuestionSeeder;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -188,22 +190,53 @@ class SampleGame extends Command
 
     // --- movement --------------------------------------------------------
 
-    private function moveTo(Session $session, Player $player, float $lat, float $lng, int $waypoints): void
+    private function moveTo(Session $session, Player $player, float $lat, float $lng, int $minPoints): void
     {
         $fromLat = (float) ($player->last_lat ?? $lat);
         $fromLng = (float) ($player->last_lng ?? $lng);
-        for ($i = 1; $i <= $waypoints; $i++) {
-            $f = $i / $waypoints;
-            $this->clock = $this->clock->copy()->addSeconds(mt_rand(18, 40));
-            PlayerPosition::create([
-                'session_id' => $session->id,
-                'player_id' => $player->id,
-                'lat' => $fromLat + ($lat - $fromLat) * $f + mt_rand(-6, 6) / 100000,
-                'lng' => $fromLng + ($lng - $fromLng) * $f + mt_rand(-6, 6) / 100000,
-                'recorded_at' => $this->clock,
-            ]);
+
+        // Follow the street network (OSRM) for a realistic path; fall back to a straight line.
+        $path = $this->route($fromLat, $fromLng, $lat, $lng);
+        if (count($path) < 2) {
+            $steps = max(3, $minPoints);
+            $path = [];
+            for ($i = 1; $i <= $steps; $i++) {
+                $f = $i / $steps;
+                $path[] = [$fromLat + ($lat - $fromLat) * $f + mt_rand(-6, 6) / 100000, $fromLng + ($lng - $fromLng) * $f + mt_rand(-6, 6) / 100000];
+            }
+        }
+
+        foreach ($path as [$plat, $plng]) {
+            $this->clock = $this->clock->copy()->addSeconds(mt_rand(12, 30));
+            PlayerPosition::create(['session_id' => $session->id, 'player_id' => $player->id, 'lat' => $plat, 'lng' => $plng, 'recorded_at' => $this->clock]);
         }
         $player->update(['last_lat' => $lat, 'last_lng' => $lng, 'last_location_at' => $this->clock]);
+    }
+
+    /** A street-following path (up to ~14 points, [lat,lng]) between two points via the public OSRM, cached. */
+    private function route(float $fromLat, float $fromLng, float $toLat, float $toLng): array
+    {
+        return Cache::remember(sprintf('osrm:%.4f,%.4f:%.4f,%.4f', $fromLat, $fromLng, $toLat, $toLng), now()->addDays(7), function () use ($fromLat, $fromLng, $toLat, $toLng) {
+            try {
+                $coords = Http::withHeaders(['User-Agent' => 'HideAndSeek/1.0'])->timeout(8)
+                    ->get("https://router.project-osrm.org/route/v1/driving/{$fromLng},{$fromLat};{$toLng},{$toLat}", ['overview' => 'full', 'geometries' => 'geojson'])
+                    ->json('routes.0.geometry.coordinates');
+                if (! is_array($coords) || count($coords) < 2) {
+                    return [];
+                }
+                $n = count($coords);
+                $target = min($n, 14);
+                $out = [];
+                for ($i = 0; $i < $target; $i++) {
+                    $c = $coords[(int) round($i * ($n - 1) / max(1, $target - 1))];
+                    $out[] = [(float) $c[1], (float) $c[0]];
+                }
+
+                return $out;
+            } catch (\Throwable) {
+                return [];
+            }
+        });
     }
 
     // --- card helpers (adapted from game:simulate) -----------------------
