@@ -63,6 +63,8 @@
         .jt .jt-tbtn:hover{border-color:rgb(var(--primary-500,244 63 94))}
         .jt .jt-legend{display:flex;flex-wrap:wrap;gap:8px 14px;margin-bottom:14px;font-size:11px;color:rgb(148 163 184)}
         .jt .jt-legend span{display:inline-flex;align-items:center;gap:5px}
+        .jt .jt-map{height:170px;border-radius:10px;overflow:hidden;margin-bottom:10px;border:1px solid rgb(17 24 39 / .1);background:rgb(17 24 39 / .03)}
+        .dark .jt .jt-map{border-color:rgb(255 255 255 / .12)}
     </style>
     @php
         $record = $getRecord();
@@ -119,4 +121,58 @@
         </div>
         <p class="jt-empty" x-ref="empty" style="display:none;margin-top:8px">No keys match that filter.</p>
     </div>
+
+    <script>
+        (function () {
+            function ensureLeaflet(cb) {
+                if (window.L) return cb();
+                if (!document.getElementById('jt-leaflet-css')) {
+                    var l = document.createElement('link');
+                    l.id = 'jt-leaflet-css'; l.rel = 'stylesheet'; l.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+                    document.head.appendChild(l);
+                }
+                window.__jtCbs = window.__jtCbs || [];
+                window.__jtCbs.push(cb);
+                if (window.__jtLoading) return;
+                window.__jtLoading = true;
+                var s = document.createElement('script');
+                s.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+                s.onload = function () { window.__jtCbs.forEach(function (f) { f(); }); window.__jtCbs = []; };
+                document.head.appendChild(s);
+            }
+            function initMap(el) {
+                if (el.__jtInited) return;
+                el.__jtInited = true;
+                ensureLeaflet(function () {
+                    var lat = parseFloat(el.dataset.lat), lng = parseFloat(el.dataset.lng), r = parseFloat(el.dataset.radius || '0');
+                    if (isNaN(lat) || isNaN(lng)) return;
+                    var map = L.map(el, { attributionControl: false, zoomControl: false, dragging: false, scrollWheelZoom: false, doubleClickZoom: false, boxZoom: false, keyboard: false });
+                    L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { subdomains: 'abcd', maxZoom: 19 }).addTo(map);
+                    L.circleMarker([lat, lng], { radius: 6, color: '#e11d48', weight: 2, fillColor: '#e11d48', fillOpacity: 1 }).addTo(map);
+                    if (r > 0) {
+                        var c = L.circle([lat, lng], { radius: r, color: '#e11d48', weight: 1, fillColor: '#e11d48', fillOpacity: 0.08 }).addTo(map);
+                        map.fitBounds(c.getBounds().pad(0.25));
+                    } else {
+                        map.setView([lat, lng], 15);
+                    }
+                    el.__jtMap = map;
+                    setTimeout(function () { map.invalidateSize(); }, 60);
+                });
+            }
+            function scan() {
+                document.querySelectorAll('.jt-map').forEach(function (el) {
+                    var d = el.closest('details');
+                    if (!d || d.open) initMap(el);
+                    if (d && !d.__jtBound) {
+                        d.__jtBound = true;
+                        d.addEventListener('toggle', function () {
+                            if (d.open) { initMap(el); if (el.__jtMap) setTimeout(function () { el.__jtMap.invalidateSize(); }, 60); }
+                        });
+                    }
+                });
+            }
+            if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', scan);
+            else scan();
+        })();
+    </script>
 </x-dynamic-component>

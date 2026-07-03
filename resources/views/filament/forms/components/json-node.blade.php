@@ -78,6 +78,25 @@
         $preview = mb_strlen($preview) > 64 ? mb_substr($preview, 0, 64) . '…' : $preview;
     }
     $avatarBg = fn ($role) => $role === 'hider' ? '#e11d48' : ($role === 'seeker' ? '#2563eb' : '#64748b');
+
+    // A location preview map for objects carrying coordinates (lat/lng, or a center + radius zone).
+    $mapLat = $mapLng = $mapRadius = null;
+    if ($isArray && ! $isList) {
+        if (isset($node['lat'], $node['lng']) && is_numeric($node['lat']) && is_numeric($node['lng'])) {
+            $mapLat = (float) $node['lat'];
+            $mapLng = (float) $node['lng'];
+        } elseif (isset($node['center']) && is_array($node['center'])) {
+            $c = $node['center'];
+            if (isset($c['lat'], $c['lng']) && is_numeric($c['lat'])) {
+                $mapLat = (float) $c['lat'];
+                $mapLng = (float) $c['lng'];
+            } elseif (array_is_list($c) && count($c) >= 2 && is_numeric($c[0]) && is_numeric($c[1])) {
+                $mapLat = (float) $c[0];
+                $mapLng = (float) $c[1];
+            }
+            $mapRadius = isset($node['radius_m']) && is_numeric($node['radius_m']) ? (float) $node['radius_m'] : null;
+        }
+    }
 @endphp
 
 @if ($isArray && ! $isChipList)
@@ -88,6 +107,9 @@
             <span class="jt-badge">{{ $isList ? 'list' : 'object' }} · {{ count($node) }}</span>
             @if ($preview)<span class="jt-preview">{{ $preview }}</span>@endif
         </summary>
+        @if ($mapLat !== null)
+            <div class="jt-map" data-lat="{{ $mapLat }}" data-lng="{{ $mapLng }}" @if ($mapRadius) data-radius="{{ $mapRadius }}" @endif></div>
+        @endif
         <div class="jt-grid">
             @forelse ($node as $k => $v)
                 @include('filament.forms.components.json-node', [
