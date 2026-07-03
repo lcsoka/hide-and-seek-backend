@@ -71,6 +71,8 @@
         .jt .jt-legend span{display:inline-flex;align-items:center;gap:5px}
         .jt .jt-map{height:170px;border-radius:10px;overflow:hidden;margin-bottom:10px;border:1px solid rgb(17 24 39 / .1);background:rgb(17 24 39 / .03)}
         .dark .jt .jt-map{border-color:rgb(255 255 255 / .12)}
+        .jt .jt-thumb{max-height:72px;max-width:100%;border-radius:8px;border:1px solid rgb(17 24 39 / .12);display:block;margin-bottom:6px;object-fit:cover}
+        .jt .jt-swatch{width:22px;height:22px;border-radius:6px;border:1px solid rgb(17 24 39 / .18);flex:none}
     </style>
     @php
         $record = $getRecord();
@@ -83,8 +85,9 @@
                     $refs['players']['u' . $p->user_id] = $info;
                 }
             }
-            $refs['cards'] = \App\Models\Card::query()->get(['id', 'name'])->mapWithKeys(fn ($c) => [$c->id => $c->name])->all();
-            $refs['questions'] = \App\Models\Question::query()->get(['id', 'title'])->mapWithKeys(fn ($q) => [$q->id => $q->title])->all();
+            $str = fn ($v) => is_array($v) ? (string) (array_values($v)[0] ?? '') : (string) $v;
+            $refs['cards'] = \App\Models\Card::query()->get(['id', 'name'])->mapWithKeys(fn ($c) => [$c->id => $str($c->name)])->all();
+            $refs['questions'] = \App\Models\Question::query()->get(['id', 'title'])->mapWithKeys(fn ($q) => [$q->id => $str($q->title)])->all();
         }
     @endphp
     <div class="jt" x-data="{

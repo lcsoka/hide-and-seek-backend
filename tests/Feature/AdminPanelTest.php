@@ -239,8 +239,15 @@ class AdminPanelTest extends TestCase
             'config' => ['units' => 'metric', 'reveal_seekers_to_hider' => false, 'transit_modes' => ['metro', 'tram']],
             'state_data' => ['round' => 2, 'hider_id' => $hider->id, 'seeking_started_at' => 1782998047,
                 'hiding_zone' => ['center' => ['lat' => 47.5, 'lng' => 19.05], 'radius_m' => 500, 'rule' => 'nearest'],
-                'hand' => [['uid' => 'h1', 'type' => 'curse', 'name' => 'Tentacles', 'cost' => '2']],
-                'questions' => [['seq' => 1, 'category' => 'radar', 'asked_by' => $seeker->id, 'answer' => ['answer' => 'yes']]]],
+                'hand' => [
+                    ['uid' => 'h1', 'type' => 'curse', 'name' => 'Tentacles', 'cost' => '2'],
+                    // a time_bonus card whose minutes is an object — this used to crash the pill.
+                    ['uid' => 'h2', 'type' => 'time_bonus', 'minutes' => ['small' => 5, 'medium' => 10, 'large' => 20]],
+                ],
+                'questions' => [['seq' => 1, 'category' => 'radar', 'asked_by' => $seeker->id, 'answer' => ['answer' => 'yes']]],
+                'scores' => [$hider->id => 320],
+                'proof_url' => 'https://example.com/proof.jpg',
+                'color' => '#e11d48'],
         ]);
         $this->actingAs($this->adminUser());
 
@@ -257,8 +264,12 @@ class AdminPanelTest extends TestCase
             ->assertSee('2026')
             ->assertSee('jt-map', false)
             ->assertSee('data-lat="47.5"', false)
-            ->assertSee('Tentacles')   // hand card rendered as a summary pill
-            ->assertSee('Radar');      // question card rendered as a summary pill
+            ->assertSee('Tentacles')      // hand card rendered as a summary pill
+            ->assertSee('Radar')          // question card rendered as a summary pill
+            ->assertSee('5/10/20 min')    // time_bonus card with object minutes (no crash)
+            ->assertSee('5:20')           // scores value formatted as a duration
+            ->assertSee('jt-thumb', false)   // proof_url rendered as an image thumbnail
+            ->assertSee('jt-swatch', false); // color rendered as a swatch
 
         // Edit nested values through the tree (bound to the form state), then save.
         Livewire::test(EditSession::class, ['record' => $session->getKey()])

@@ -18,7 +18,7 @@
     ];
     $playerIdKeys = ['hider_id', 'found_by', 'by', 'asked_by', 'player_id', 'host_player_id', 'seeker_id', 'winner_id', 'claimed_by'];
     $userIdKeys = ['host_user_id', 'user_id'];
-    $listKinds = ['hand' => 'card', 'cards' => 'card', 'questions' => 'question', 'curses_played' => 'curse', 'curses' => 'curse'];
+    $listKinds = ['hand' => 'card', 'cards' => 'card', 'deckpool' => 'card', 'deck' => 'card', 'questions' => 'question', 'curses_played' => 'curse', 'curses' => 'curse', 'transit_log' => 'transit'];
     $catEmoji = ['radar' => '📡', 'thermometer' => '🌡️', 'matching' => '🧩', 'measuring' => '📏', 'tentacles' => '🐙', 'photo' => '📷'];
 
     $isArray = is_array($node);
@@ -80,31 +80,55 @@
     }
     $avatarBg = fn ($role) => $role === 'hider' ? '#e11d48' : ($role === 'seeker' ? '#2563eb' : '#64748b');
 
+    $sstr = fn ($v, $d = null) => is_scalar($v) ? (string) $v : $d;
+
+    // Image / colour / duration leaves (nicer display than a bare input).
+    $isImageUrl = ! $isArray && is_string($node) && (str_ends_with($lc, '_url') || $lc === 'avatar') && (str_starts_with($node, 'http') || str_starts_with($node, '/'));
+    $isColor = ! $isArray && is_string($node) && in_array($lc, ['color', 'colour'], true) && preg_match('/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/', $node);
+    $isDuration = ! $isArray && is_numeric($node) && ! $isTime && ($unit === 's' || $keyPlayer !== null);
+    $fmtDur = function ($v) {
+        $s = max(0, (int) $v);
+        $h = intdiv($s, 3600);
+        return $h > 0 ? sprintf('%d:%02d:%02d', $h, intdiv($s % 3600, 60), $s % 60) : sprintf('%d:%02d', intdiv($s, 60), $s % 60);
+    };
+
     // Rich summary pill for known list items (hand cards, questions, curses).
     $pill = null;
     if ($isArray && $listKind === 'card') {
-        $t = $node['type'] ?? null;
+        $t = $sstr($node['type'] ?? null);
+        $mins = $node['minutes'] ?? null;
+        $minLabel = is_array($mins) ? implode('/', array_map('strval', $mins)) : $sstr($mins, '?');
         $pill = [
-            'name' => $node['name'] ?? ($t === 'time_bonus' ? '+' . ($node['minutes'] ?? '?') . ' min' : ($node['power'] ?? ($refs['cards'][$node['curse_id'] ?? ''] ?? 'Card'))),
+            'name' => $sstr($node['name'] ?? null) ?: ($t === 'time_bonus' ? '+' . $minLabel . ' min' : ($sstr($node['power'] ?? null) ?: ($refs['cards'][$node['curse_id'] ?? ''] ?? 'Card'))),
             'tag' => $t, 'color' => $t === 'curse' ? '#7c3aed' : ($t === 'powerup' ? '#2563eb' : '#16a34a'),
-            'sub' => $node['cost'] ?? null, 'icon' => null, 'seq' => null,
+            'sub' => $sstr($node['cost'] ?? null), 'icon' => null, 'seq' => null,
         ];
     } elseif ($isArray && $listKind === 'question') {
-        $qc = $node['category'] ?? '';
+        $qc = $sstr($node['category'] ?? '', '');
         $ask = $refs['players'][$node['asked_by'] ?? ''] ?? null;
-        $ans = is_array($node['answer'] ?? null) ? ($node['answer']['answer'] ?? null) : ($node['answer'] ?? null);
+        $ans = is_array($node['answer'] ?? null) ? $sstr($node['answer']['answer'] ?? null) : $sstr($node['answer'] ?? null);
         $pill = [
-            'name' => ucfirst((string) $qc), 'icon' => $catEmoji[$qc] ?? '❓',
+            'name' => $qc !== '' ? ucfirst($qc) : 'Question', 'icon' => $catEmoji[$qc] ?? '❓',
             'sub' => $ask ? 'by ' . $ask['name'] : null, 'tag' => $ans,
             'color' => in_array($ans, ['yes', 'in_range', 'closer', 'hotter'], true) ? '#16a34a' : (in_array($ans, ['no', 'out_of_range', 'further', 'colder'], true) ? '#dc2626' : '#64748b'),
-            'seq' => $node['seq'] ?? null,
+            'seq' => is_numeric($node['seq'] ?? null) ? $node['seq'] : null,
         ];
     } elseif ($isArray && $listKind === 'curse') {
         $by = $refs['players'][$node['by'] ?? ''] ?? null;
         $pill = [
-            'name' => $refs['cards'][$node['curse_id'] ?? ''] ?? ($node['name'] ?? 'Curse'),
-            'sub' => $by ? 'by ' . $by['name'] : null, 'tag' => $node['status'] ?? null,
+            'name' => ($refs['cards'][$node['curse_id'] ?? ''] ?? null) ?: ($sstr($node['name'] ?? null) ?: 'Curse'),
+            'sub' => $by ? 'by ' . $by['name'] : null, 'tag' => $sstr($node['status'] ?? null),
             'color' => '#7c3aed', 'icon' => null, 'seq' => null,
+        ];
+    } elseif ($isArray && $listKind === 'transit') {
+        $pl = $refs['players'][$node['player_id'] ?? ''] ?? null;
+        $line = $sstr($node['line'] ?? null);
+        $mode = $sstr($node['mode'] ?? null);
+        $dur = isset($node['duration_s']) && is_numeric($node['duration_s']) ? $fmtDur($node['duration_s']) : null;
+        $pill = [
+            'name' => $line ?: ($mode ?: 'Leg'), 'icon' => '🚆',
+            'sub' => trim(($pl ? $pl['name'] : '') . ($dur ? ' · ' . $dur : '')) ?: null,
+            'tag' => $mode, 'color' => '#0891b2', 'seq' => null,
         ];
     }
 
@@ -193,9 +217,17 @@
             @php $name = $isCurseRef ? ($refs['cards'][$node] ?? null) : ($refs['questions'][$node] ?? null); @endphp
             @if ($name)<span class="jt-refchip" style="border-color:#7c3aed;color:#7c3aed">{{ $name }}</span>@endif
             <input type="text" class="jt-num jt-idinput" value="{{ $node }}" wire:model="{{ $path }}" @disabled($disabled)>
+        @elseif ($isImageUrl)
+            <a href="{{ $node }}" target="_blank" rel="noopener"><img class="jt-thumb" src="{{ $node }}" alt="" loading="lazy"></a>
+            <input type="text" class="jt-num jt-idinput" value="{{ $node }}" wire:model="{{ $path }}" @disabled($disabled)>
+        @elseif ($isColor)
+            <div class="jt-numwrap"><span class="jt-swatch" style="background:{{ $node }}"></span><input type="text" class="jt-num" value="{{ $node }}" wire:model="{{ $path }}" @disabled($disabled)></div>
         @elseif ($isTime)
             <div class="jt-numwrap"><input type="number" step="1" class="jt-num" value="{{ $node }}" wire:model.number="{{ $path }}" @disabled($disabled)><span class="jt-unit">unix</span></div>
             <div class="jt-tshint">{{ \Illuminate\Support\Carbon::createFromTimestamp((int) $node)->timezone(config('app.timezone', 'UTC'))->format('M j, Y · H:i:s') }}</div>
+        @elseif ($isDuration)
+            <div class="jt-numwrap"><input type="number" step="any" class="jt-num" value="{{ $node }}" wire:model.number="{{ $path }}" @disabled($disabled)><span class="jt-unit">s</span></div>
+            <div class="jt-tshint" style="color:#e11d48">{{ $fmtDur($node) }}</div>
         @elseif (is_bool($node))
             <label class="jt-switch"><input type="checkbox" wire:model="{{ $path }}" @checked($node) @disabled($disabled)><span class="jt-knob"></span></label>
         @elseif ($segOpts !== null)
