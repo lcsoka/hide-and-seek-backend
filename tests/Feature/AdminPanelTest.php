@@ -234,16 +234,19 @@ class AdminPanelTest extends TestCase
     {
         $session = $this->seedSession();
         $session->update([
-            'config' => ['units' => 'metric', 'reveal_seekers_to_hider' => false],
+            'config' => ['units' => 'metric', 'reveal_seekers_to_hider' => false, 'transit_modes' => ['metro', 'tram']],
             'state_data' => ['round' => 2, 'hiding_zone' => ['radius_m' => 500, 'rule' => 'nearest']],
         ]);
         $this->actingAs($this->adminUser());
 
-        // The edit page renders the visual config + state trees.
+        // The edit page renders the block/smart-widget trees: the units segment ('imperial'
+        // option) and the transit-modes chips ('rail' option) are present in the markup.
         $this->get(SessionResource::getUrl('edit', ['record' => $session]))
             ->assertSuccessful()
             ->assertSee('Game state')
-            ->assertSee('Config');
+            ->assertSee('Config')
+            ->assertSee('imperial')
+            ->assertSee('rail');
 
         // Edit nested values through the tree (bound to the form state), then save.
         Livewire::test(EditSession::class, ['record' => $session->getKey()])
