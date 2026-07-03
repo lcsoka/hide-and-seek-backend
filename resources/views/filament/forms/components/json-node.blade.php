@@ -1,6 +1,8 @@
-{{-- Recursive block: a field-block (smart control by key, else typed control) or a nested
-     object/list card. Bound to form state at $path. --}}
+{{-- Recursive block. Objects/lists render as a collapsible <details> (lists + list-items closed
+     by default, other objects open); scalars render as a smart/typed field-block. Bound to form
+     state at $path. --}}
 @php
+    $parentIsList = $parentIsList ?? false;
     $lc = is_string($label) ? strtolower($label) : (string) $label;
 
     $segments = [
@@ -20,25 +22,45 @@
     $isArray = is_array($node);
     $isChipList = $isArray && isset($chipOptions[$lc]) && (count($node) === 0 || ! is_array(reset($node)));
     $isNumber = is_int($node) || is_float($node);
+    $isList = $isArray ? array_is_list($node) : false;
 
     $segOpts = $segments[$lc] ?? null;
     if ($segOpts !== null && $node !== null && ! in_array($node, $segOpts, true)) {
-        $segOpts[] = $node; // keep an unexpected current value selectable
+        $segOpts[] = $node;
     }
     $isRadiusSlider = $isNumber && str_contains($lc, 'radius') && str_ends_with($lc, '_m');
     $unit = str_ends_with($lc, '_km') ? 'km' : (str_ends_with($lc, '_m') ? 'm' : (str_ends_with($lc, '_s') ? 's' : null));
-
-    // Blocks that need the full row so controls don't wrap/overflow.
     $wide = $isChipList || $isRadiusSlider || ($segOpts !== null && count($segOpts) >= 3);
+
+    // Keep the page scannable: open plain objects, but collapse lists and anything nested in a list.
+    $open = ! $isList && ! $parentIsList;
+    $dataKey = $lc;
+
+    // A one-line preview of an object's first scalar fields, so collapsed items are self-describing.
+    $preview = null;
+    if ($isArray && ! $isList) {
+        $bits = [];
+        foreach ($node as $pk => $pv) {
+            if (! is_array($pv)) {
+                $bits[] = $pk . ': ' . (is_bool($pv) ? ($pv ? 'true' : 'false') : (is_null($pv) ? 'null' : (string) $pv));
+            }
+            if (count($bits) >= 2) {
+                break;
+            }
+        }
+        $preview = implode(' · ', $bits);
+        $preview = mb_strlen($preview) > 64 ? mb_substr($preview, 0, 64) . '…' : $preview;
+    }
 @endphp
 
 @if ($isArray && ! $isChipList)
-    @php $isList = array_is_list($node); @endphp
-    <div class="jt-obj">
-        <div class="jt-obj-head">
+    <details class="jt-obj" data-key="{{ $dataKey }}" @if ($open) open @endif>
+        <summary class="jt-obj-head">
+            <x-filament::icon icon="heroicon-m-chevron-right" class="jt-chevron" />
             <span class="jt-key">{{ $label }}</span>
             <span class="jt-badge">{{ $isList ? 'list' : 'object' }} · {{ count($node) }}</span>
-        </div>
+            @if ($preview)<span class="jt-preview">{{ $preview }}</span>@endif
+        </summary>
         <div class="jt-grid">
             @forelse ($node as $k => $v)
                 @include('filament.forms.components.json-node', [
@@ -47,14 +69,15 @@
                     'label' => $isList ? '#' . $k : $k,
                     'depth' => $depth + 1,
                     'disabled' => $disabled,
+                    'parentIsList' => $isList,
                 ])
             @empty
                 <div class="jt-empty">empty</div>
             @endforelse
         </div>
-    </div>
+    </details>
 @else
-    <div class="jt-block @if ($wide) jt-wide @endif">
+    <div class="jt-block @if ($wide) jt-wide @endif" data-key="{{ $dataKey }}">
         <div class="jt-key">{{ $label }}</div>
 
         @if ($isChipList)

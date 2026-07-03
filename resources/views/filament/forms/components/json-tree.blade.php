@@ -4,17 +4,22 @@
         .jt .jt-wide{grid-column:1/-1}
         .jt .jt-block{background:#fff;border:1px solid rgb(17 24 39 / .08);border-radius:12px;padding:10px 12px;min-width:0}
         .dark .jt .jt-block{background:rgb(255 255 255 / .03);border-color:rgb(255 255 255 / .08)}
-        .jt .jt-obj{grid-column:1/-1;border:1px solid rgb(17 24 39 / .08);border-radius:12px;padding:10px 12px;background:rgb(17 24 39 / .02)}
-        .dark .jt .jt-obj{border-color:rgb(255 255 255 / .08);background:rgb(255 255 255 / .02)}
-        .jt .jt-obj-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px}
+        .jt details.jt-obj{grid-column:1/-1;border:1px solid rgb(17 24 39 / .08);border-radius:12px;padding:8px 12px;background:rgb(17 24 39 / .02)}
+        .dark .jt details.jt-obj{border-color:rgb(255 255 255 / .08);background:rgb(255 255 255 / .02)}
+        .jt details.jt-obj>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;padding:2px 0}
+        .jt details.jt-obj>summary::-webkit-details-marker{display:none}
+        .jt details.jt-obj[open]>summary{margin-bottom:10px}
+        .jt .jt-chevron{width:14px;height:14px;flex:none;color:rgb(148 163 184);transition:transform .12s}
+        .jt details.jt-obj[open]>summary .jt-chevron{transform:rotate(90deg)}
         .jt .jt-key{font-size:11px;letter-spacing:.02em;color:rgb(107 114 128);font-family:ui-monospace,monospace;margin-bottom:7px}
-        .jt .jt-obj-head .jt-key{margin-bottom:0}
+        .jt summary .jt-key{margin-bottom:0}
         .dark .jt .jt-key{color:rgb(148 163 184)}
-        .jt .jt-badge{font-size:10px;font-family:ui-monospace,monospace;color:rgb(107 114 128);background:rgb(17 24 39 / .05);padding:2px 7px;border-radius:6px}
+        .jt .jt-badge{font-size:10px;font-family:ui-monospace,monospace;color:rgb(107 114 128);background:rgb(17 24 39 / .05);padding:2px 7px;border-radius:6px;flex:none}
         .dark .jt .jt-badge{background:rgb(255 255 255 / .08);color:rgb(148 163 184)}
+        .jt .jt-preview{flex:1;min-width:0;text-align:right;font-size:11px;color:rgb(148 163 184);font-family:ui-monospace,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         .jt input.jt-num{width:100%;box-sizing:border-box;border:1px solid rgb(17 24 39 / .14);border-radius:8px;padding:7px 10px;font-size:13px;background:#fff;color:inherit}
         .dark .jt input.jt-num{background:rgb(255 255 255 / .05);border-color:rgb(255 255 255 / .14);color:#fff}
-        .jt input.jt-num:focus{outline:0;border-color:rgb(var(--primary-500,245 158 11));box-shadow:0 0 0 3px rgb(var(--primary-500,245 158 11) / .15)}
+        .jt input.jt-num:focus{outline:0;border-color:rgb(var(--primary-500,244 63 94));box-shadow:0 0 0 3px rgb(var(--primary-500,244 63 94) / .15)}
         .jt .jt-numwrap{display:flex;align-items:center;gap:10px;min-width:0}
         .jt .jt-unit{font-size:12px;color:rgb(107 114 128);flex:none}
         .jt .jt-seg{display:flex;width:100%;border:1px solid rgb(17 24 39 / .14);border-radius:8px;overflow:hidden}
@@ -25,24 +30,46 @@
         .jt .jt-seg input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
         .jt .jt-seg span{display:block;text-align:center;padding:7px 8px;font-size:12px;color:rgb(75 85 99);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         .dark .jt .jt-seg span{color:rgb(203 213 225)}
-        .jt .jt-seg input:checked+span{background:rgb(var(--primary-600,217 119 6));color:#fff}
+        .jt .jt-seg input:checked+span{background:rgb(var(--primary-600,225 29 72));color:#fff}
         .jt .jt-chips{display:flex;flex-wrap:wrap;gap:6px}
         .jt .jt-chip{position:relative;cursor:pointer}
         .jt .jt-chip input{position:absolute;opacity:0;margin:0}
         .jt .jt-chip span{display:inline-block;padding:5px 12px;border-radius:999px;font-size:12px;border:1px solid rgb(17 24 39 / .14);color:rgb(75 85 99)}
         .dark .jt .jt-chip span{border-color:rgb(255 255 255 / .14);color:rgb(203 213 225)}
-        .jt .jt-chip input:checked+span{background:rgb(var(--primary-600,217 119 6));color:#fff;border-color:transparent}
+        .jt .jt-chip input:checked+span{background:rgb(var(--primary-600,225 29 72));color:#fff;border-color:transparent}
         .jt .jt-switch{position:relative;display:inline-block;width:36px;height:21px;cursor:pointer}
         .jt .jt-switch input{position:absolute;opacity:0;margin:0}
         .jt .jt-knob{position:absolute;inset:0;border-radius:999px;background:rgb(17 24 39 / .22)}
         .jt .jt-knob::after{content:"";position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgb(0 0 0 / .15)}
-        .jt .jt-switch input:checked+.jt-knob{background:rgb(var(--primary-600,217 119 6))}
+        .jt .jt-switch input:checked+.jt-knob{background:rgb(var(--primary-600,225 29 72))}
         .jt .jt-switch input:checked+.jt-knob::after{left:16px}
-        .jt input[type=range]{flex:1;min-width:0;accent-color:rgb(var(--primary-600,217 119 6))}
+        .jt input[type=range]{flex:1;min-width:0;accent-color:rgb(var(--primary-600,225 29 72))}
         .jt .jt-empty{font-size:12px;color:rgb(148 163 184);font-family:ui-monospace,monospace}
         .jt input:disabled{opacity:.55;cursor:not-allowed}
+        .jt .jt-toolbar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+        .jt .jt-tbtn{font-size:12px;padding:7px 11px;border:1px solid rgb(17 24 39 / .14);border-radius:8px;background:#fff;color:rgb(75 85 99);cursor:pointer}
+        .dark .jt .jt-tbtn{background:rgb(255 255 255 / .05);border-color:rgb(255 255 255 / .14);color:rgb(203 213 225)}
+        .jt .jt-tbtn:hover{border-color:rgb(var(--primary-500,244 63 94))}
     </style>
-    <div class="jt">
+    <div class="jt" x-data="{
+        q: '',
+        toggleAll(open) { this.$el.querySelectorAll('details.jt-obj').forEach(d => d.open = open); },
+        filter() {
+            const q = this.q.trim().toLowerCase();
+            let shown = 0;
+            this.$el.querySelectorAll(':scope > .jt-grid > [data-key]').forEach(el => {
+                const match = !q || el.dataset.key.includes(q);
+                el.style.display = match ? '' : 'none';
+                if (match) shown++;
+            });
+            this.$refs.empty.style.display = shown === 0 ? '' : 'none';
+        },
+    }">
+        <div class="jt-toolbar">
+            <input type="search" placeholder="Filter keys…" x-model="q" @input="filter()" class="jt-num" style="max-width:240px">
+            <button type="button" class="jt-tbtn" @click="toggleAll(true)">Expand all</button>
+            <button type="button" class="jt-tbtn" @click="toggleAll(false)">Collapse all</button>
+        </div>
         @php $state = $getState() ?? []; @endphp
         <div class="jt-grid">
             @forelse ($state as $key => $value)
@@ -52,10 +79,12 @@
                     'label' => $key,
                     'depth' => 0,
                     'disabled' => $isDisabled(),
+                    'parentIsList' => false,
                 ])
             @empty
                 <p class="jt-empty">Empty — nothing set yet.</p>
             @endforelse
         </div>
+        <p class="jt-empty" x-ref="empty" style="display:none;margin-top:8px">No keys match that filter.</p>
     </div>
 </x-dynamic-component>
