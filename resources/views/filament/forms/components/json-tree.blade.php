@@ -11,17 +11,28 @@
         .jt details.jt-obj[open]>summary{margin-bottom:10px}
         .jt .jt-chevron{width:14px;height:14px;flex:none;color:rgb(148 163 184);transition:transform .12s}
         .jt details.jt-obj[open]>summary .jt-chevron{transform:rotate(90deg)}
-        .jt .jt-key{font-size:11px;letter-spacing:.02em;color:rgb(107 114 128);font-family:ui-monospace,monospace;margin-bottom:7px}
+        .jt .jt-key{display:flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.02em;color:rgb(107 114 128);font-family:ui-monospace,monospace;margin-bottom:7px;min-width:0}
         .jt summary .jt-key{margin-bottom:0}
         .dark .jt .jt-key{color:rgb(148 163 184)}
+        .jt .jt-dot{width:8px;height:8px;border-radius:2px;flex:none}
         .jt .jt-badge{font-size:10px;font-family:ui-monospace,monospace;color:rgb(107 114 128);background:rgb(17 24 39 / .05);padding:2px 7px;border-radius:6px;flex:none}
         .dark .jt .jt-badge{background:rgb(255 255 255 / .08);color:rgb(148 163 184)}
         .jt .jt-preview{flex:1;min-width:0;text-align:right;font-size:11px;color:rgb(148 163 184);font-family:ui-monospace,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         .jt input.jt-num{width:100%;box-sizing:border-box;border:1px solid rgb(17 24 39 / .14);border-radius:8px;padding:7px 10px;font-size:13px;background:#fff;color:inherit}
         .dark .jt input.jt-num{background:rgb(255 255 255 / .05);border-color:rgb(255 255 255 / .14);color:#fff}
         .jt input.jt-num:focus{outline:0;border-color:rgb(var(--primary-500,244 63 94));box-shadow:0 0 0 3px rgb(var(--primary-500,244 63 94) / .15)}
+        .jt input.jt-idinput{font-size:11px;padding:5px 8px;color:rgb(107 114 128);font-family:ui-monospace,monospace}
         .jt .jt-numwrap{display:flex;align-items:center;gap:10px;min-width:0}
         .jt .jt-unit{font-size:12px;color:rgb(107 114 128);flex:none}
+        .jt .jt-idcard{display:flex;align-items:center;gap:8px;margin-bottom:6px;min-width:0}
+        .jt .jt-avatar{width:26px;height:26px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:600;flex:none}
+        .jt .jt-avatar.sm{width:18px;height:18px;font-size:9px}
+        .jt .jt-avatar img{width:100%;height:100%;object-fit:cover}
+        .jt .jt-idname{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .jt .jt-role{font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:rgb(148 163 184);margin-left:6px}
+        .jt .jt-refchip{display:inline-block;padding:3px 11px;border-radius:999px;font-size:12px;border:1px solid;background:rgb(124 58 237 / .08);margin-bottom:6px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .jt .jt-tshint{font-size:11px;color:rgb(37 99 235);margin-top:5px}
+        .dark .jt .jt-tshint{color:rgb(147 197 253)}
         .jt .jt-seg{display:flex;width:100%;border:1px solid rgb(17 24 39 / .14);border-radius:8px;overflow:hidden}
         .dark .jt .jt-seg{border-color:rgb(255 255 255 / .14)}
         .jt .jt-seg label{flex:1;position:relative;cursor:pointer;min-width:0}
@@ -30,7 +41,7 @@
         .jt .jt-seg input{position:absolute;inset:0;opacity:0;margin:0;cursor:pointer}
         .jt .jt-seg span{display:block;text-align:center;padding:7px 8px;font-size:12px;color:rgb(75 85 99);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         .dark .jt .jt-seg span{color:rgb(203 213 225)}
-        .jt .jt-seg input:checked+span{background:rgb(var(--primary-600,225 29 72));color:#fff}
+        .jt .jt-seg input:checked+span{background:rgb(79 70 229);color:#fff}
         .jt .jt-chips{display:flex;flex-wrap:wrap;gap:6px}
         .jt .jt-chip{position:relative;cursor:pointer}
         .jt .jt-chip input{position:absolute;opacity:0;margin:0}
@@ -39,18 +50,35 @@
         .jt .jt-chip input:checked+span{background:rgb(var(--primary-600,225 29 72));color:#fff;border-color:transparent}
         .jt .jt-switch{position:relative;display:inline-block;width:36px;height:21px;cursor:pointer}
         .jt .jt-switch input{position:absolute;opacity:0;margin:0}
-        .jt .jt-knob{position:absolute;inset:0;border-radius:999px;background:rgb(17 24 39 / .22)}
+        .jt .jt-knob{position:absolute;inset:0;border-radius:999px;background:rgb(217 119 6 / .4)}
         .jt .jt-knob::after{content:"";position:absolute;top:2px;left:2px;width:17px;height:17px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgb(0 0 0 / .15)}
-        .jt .jt-switch input:checked+.jt-knob{background:rgb(var(--primary-600,225 29 72))}
+        .jt .jt-switch input:checked+.jt-knob{background:rgb(217 119 6)}
         .jt .jt-switch input:checked+.jt-knob::after{left:16px}
         .jt input[type=range]{flex:1;min-width:0;accent-color:rgb(var(--primary-600,225 29 72))}
         .jt .jt-empty{font-size:12px;color:rgb(148 163 184);font-family:ui-monospace,monospace}
         .jt input:disabled{opacity:.55;cursor:not-allowed}
-        .jt .jt-toolbar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+        .jt .jt-toolbar{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
         .jt .jt-tbtn{font-size:12px;padding:7px 11px;border:1px solid rgb(17 24 39 / .14);border-radius:8px;background:#fff;color:rgb(75 85 99);cursor:pointer}
         .dark .jt .jt-tbtn{background:rgb(255 255 255 / .05);border-color:rgb(255 255 255 / .14);color:rgb(203 213 225)}
         .jt .jt-tbtn:hover{border-color:rgb(var(--primary-500,244 63 94))}
+        .jt .jt-legend{display:flex;flex-wrap:wrap;gap:8px 14px;margin-bottom:14px;font-size:11px;color:rgb(148 163 184)}
+        .jt .jt-legend span{display:inline-flex;align-items:center;gap:5px}
     </style>
+    @php
+        $record = $getRecord();
+        $refs = ['players' => [], 'cards' => [], 'questions' => []];
+        if ($record && $record->exists) {
+            foreach ($record->players()->with('user')->get() as $p) {
+                $info = ['name' => $p->display_name, 'avatar' => $p->user?->avatar, 'role' => $p->role];
+                $refs['players'][$p->id] = $info;
+                if ($p->user_id) {
+                    $refs['players']['u' . $p->user_id] = $info;
+                }
+            }
+            $refs['cards'] = \App\Models\Card::query()->get(['id', 'name'])->mapWithKeys(fn ($c) => [$c->id => $c->name])->all();
+            $refs['questions'] = \App\Models\Question::query()->get(['id', 'title'])->mapWithKeys(fn ($q) => [$q->id => $q->title])->all();
+        }
+    @endphp
     <div class="jt" x-data="{
         q: '',
         toggleAll(open) { this.$el.querySelectorAll('details.jt-obj').forEach(d => d.open = open); },
@@ -65,6 +93,14 @@
             this.$refs.empty.style.display = shown === 0 ? '' : 'none';
         },
     }">
+        <div class="jt-legend">
+            <span><i class="jt-dot" style="background:#7c3aed"></i>reference</span>
+            <span><i class="jt-dot" style="background:#2563eb"></i>time</span>
+            <span><i class="jt-dot" style="background:#0d9488"></i>location</span>
+            <span><i class="jt-dot" style="background:#d97706"></i>flag</span>
+            <span><i class="jt-dot" style="background:#4f46e5"></i>option</span>
+            <span><i class="jt-dot" style="background:#e11d48"></i>measure</span>
+        </div>
         <div class="jt-toolbar">
             <input type="search" placeholder="Filter keys…" x-model="q" @input="filter()" class="jt-num" style="max-width:240px">
             <button type="button" class="jt-tbtn" @click="toggleAll(true)">Expand all</button>
@@ -74,12 +110,8 @@
         <div class="jt-grid">
             @forelse ($state as $key => $value)
                 @include('filament.forms.components.json-node', [
-                    'node' => $value,
-                    'path' => $getStatePath() . '.' . $key,
-                    'label' => $key,
-                    'depth' => 0,
-                    'disabled' => $isDisabled(),
-                    'parentIsList' => false,
+                    'node' => $value, 'path' => $getStatePath() . '.' . $key, 'label' => $key,
+                    'depth' => 0, 'disabled' => $isDisabled(), 'parentIsList' => false, 'refs' => $refs,
                 ])
             @empty
                 <p class="jt-empty">Empty — nothing set yet.</p>

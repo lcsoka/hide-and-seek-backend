@@ -233,20 +233,23 @@ class AdminPanelTest extends TestCase
     public function test_edit_form_shows_json_trees_and_saves_nested_edits(): void
     {
         $session = $this->seedSession();
+        $hider = $session->players()->where('role', 'hider')->first();
         $session->update([
             'config' => ['units' => 'metric', 'reveal_seekers_to_hider' => false, 'transit_modes' => ['metro', 'tram']],
-            'state_data' => ['round' => 2, 'hiding_zone' => ['radius_m' => 500, 'rule' => 'nearest']],
+            'state_data' => ['round' => 2, 'hider_id' => $hider->id, 'seeking_started_at' => 1782998047, 'hiding_zone' => ['radius_m' => 500, 'rule' => 'nearest']],
         ]);
         $this->actingAs($this->adminUser());
 
-        // The edit page renders the block/smart-widget trees: the units segment ('imperial'
-        // option) and the transit-modes chips ('rail' option) are present in the markup.
+        // The edit page renders: units segment ('imperial'), transit chips ('rail'), the hider_id
+        // resolved to a player card (the hider's name), and the timestamp formatted (year).
         $this->get(SessionResource::getUrl('edit', ['record' => $session]))
             ->assertSuccessful()
             ->assertSee('Game state')
             ->assertSee('Config')
             ->assertSee('imperial')
-            ->assertSee('rail');
+            ->assertSee('rail')
+            ->assertSee($hider->display_name)
+            ->assertSee('2026');
 
         // Edit nested values through the tree (bound to the form state), then save.
         Livewire::test(EditSession::class, ['record' => $session->getKey()])
