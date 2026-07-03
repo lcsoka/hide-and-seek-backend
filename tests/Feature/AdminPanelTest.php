@@ -309,6 +309,7 @@ class AdminPanelTest extends TestCase
         $this->assertNotEmpty($bundle['players'][1]['track'] ?? $bundle['players'][0]['track']); // the hider has a track
         $this->assertNotEmpty($bundle['questions']);
         $this->assertNotNull($bundle['zone']);
+        $this->assertNotNull($bundle['playArea']); // deduction starting region (city centre + radius)
 
         $this->actingAs($this->adminUser());
         $this->get(SessionResource::getUrl('replay', ['record' => $session]))
@@ -316,7 +317,9 @@ class AdminPanelTest extends TestCase
             ->assertSee('replayApp(', false)      // the Alpine timeline player is wired up
             ->assertSee('x-ref="map"', false)     // the Leaflet map container renders
             ->assertSee($session->join_code)      // page title / header
-            ->assertSee('Bo');                    // the hider appears in the embedded bundle + legend
+            ->assertSee('Bo')                     // the hider appears in the embedded bundle + legend
+            ->assertSee('Deduction cuts')         // deduction-layer toggle
+            ->assertSee('Movement trails');       // trace toggle
     }
 
     public function test_admin_can_toggle_and_revoke(): void

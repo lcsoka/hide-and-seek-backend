@@ -82,10 +82,11 @@ class ReplayBuilder
         }
 
         $zone = $session->state_data['hiding_zone'] ?? null;
+        $city = $session->config['city'] ?? null;
 
         return [
             'code' => $session->join_code,
-            'city' => $session->config['city'] ?? null,
+            'city' => $city,
             't0' => $t0,
             't1' => $t1,
             'players' => $players,
@@ -94,6 +95,10 @@ class ReplayBuilder
             'events' => $events,
             'zone' => ($zone && isset($zone['center'][0], $zone['center'][1]))
                 ? ['lat' => (float) $zone['center'][0], 'lng' => (float) $zone['center'][1], 'radius_m' => $zone['radius_m'] ?? 500]
+                : null,
+            // The deduction's starting candidate: the play area (city centre + radius).
+            'playArea' => (is_array($city) && isset($city['lat'], $city['lng']))
+                ? ['lat' => (float) $city['lat'], 'lng' => (float) $city['lng'], 'radiusKm' => (float) ($session->config['play_radius_km'] ?? 15)]
                 : null,
         ];
     }
