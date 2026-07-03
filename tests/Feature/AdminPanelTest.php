@@ -289,6 +289,11 @@ class AdminPanelTest extends TestCase
         \Illuminate\Support\Facades\Http::fake(['nominatim.openstreetmap.org/*' => \Illuminate\Support\Facades\Http::response([
             ['geojson' => ['type' => 'Polygon', 'coordinates' => [[[19.0, 47.4], [19.1, 47.4], [19.1, 47.6], [19.0, 47.6], [19.0, 47.4]]]]],
         ])]);
+        // Offline transit stops so zone carving is deterministic (no real Overpass call from the builder).
+        app()->instance(\App\Game\Geo\MapDataSource::class, new \App\Game\Geo\ArrayMapDataSource([
+            new \App\Game\Geo\GeoFeature('s1', 'tram_stop', 47.50, 19.05, 'Chosen stop'),
+            new \App\Game\Geo\GeoFeature('s2', 'tram_stop', 47.505, 19.058, 'Neighbour'),
+        ]));
         $session = $this->seedSession();
         $hider = $session->players()->where('role', 'hider')->first();
 
@@ -345,6 +350,8 @@ class AdminPanelTest extends TestCase
         $this->assertEqualsWithDelta(47.50, $bundle['zones'][0]['lat'], 1e-6);
         $this->assertEqualsWithDelta(47.52, $bundle['zones'][1]['lat'], 1e-6);
         $this->assertSame(500.0, $bundle['zones'][0]['radius_m']);
+        $this->assertNotEmpty($bundle['zones'][0]['stations']); // nearby transit stops for carving the zone
+        $this->assertEqualsWithDelta(47.50, $bundle['zones'][0]['stations'][0][0], 1e-4);
         $this->assertCount(2, $bundle['rounds']); // advance_round split → two round windows
         $this->assertSame(1, $bundle['rounds'][0]['round']);
         $this->assertSame($bundle['rounds'][0]['end'], $bundle['rounds'][1]['start']); // windows are contiguous

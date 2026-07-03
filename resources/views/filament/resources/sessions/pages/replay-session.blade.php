@@ -78,6 +78,7 @@
 
             {{-- Map symbol legend --}}
             <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                <span class="inline-flex items-center gap-1.5"><span class="inline-block h-3 w-3 rounded-sm border border-dashed border-amber-500 bg-amber-500/10"></span> Hiding zone (🚉 carved by stops)</span>
                 <span class="inline-flex items-center gap-1.5"><span class="inline-block h-3 w-3 rounded-full border border-dashed border-gray-400"></span> Radar range</span>
                 <span class="inline-flex items-center gap-1.5"><span class="inline-block h-2.5 w-2.5 rounded-full border-2 border-gray-400 bg-white"></span>→ 🌡️ Thermometer start → end</span>
                 <span class="inline-flex items-center gap-1.5"><span class="inline-block h-2.5 w-2.5 rounded-full bg-green-600"></span> hotter / <span class="inline-block h-2.5 w-2.5 rounded-full bg-red-600"></span> colder</span>
@@ -180,7 +181,15 @@
                     const last = track[track.length - 1];
                     if (t >= last[0]) return [last[1], last[2]];
                     for (let i = 1; i < track.length; i++) {
-                        if (track[i][0] >= t) { const a = track[i - 1], b = track[i], f = (t - a[0]) / ((b[0] - a[0]) || 1); return [a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f]; }
+                        if (track[i][0] >= t) {
+                            const a = track[i - 1], b = track[i], gap = b[0] - a[0];
+                            // A big gap between fixes means the player was stationary (e.g. the hider sitting in
+                            // their zone all round, or a backgrounded phone) — hold at the earlier fix instead of
+                            // gliding a straight line across it, which looked like the hider drifting away.
+                            if (gap > 150) return [a[1], a[2]];
+                            const f = (t - a[0]) / (gap || 1);
+                            return [a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+                        }
                     }
                     return [last[1], last[2]];
                 },
@@ -274,12 +283,37 @@
                     for (const cand of zs) { if ((cand.at ?? -Infinity) <= this.time) z = cand; }
                     return z;
                 },
+                // The zone the hider must stay in: the chosen stop's cell (radius circle carved wherever another
+                // transit stop becomes closer), matching how the live game draws it. Falls back to the circle.
+                carveZone(z) {
+                    if (!window.turf) return null;
+                    try {
+                        let cell = turf.circle([z.lng, z.lat], z.radius_m / 1000, { units: 'kilometers', steps: 64 });
+                        for (const s of (z.stations || [])) {
+                            if (turf.distance(turf.point([z.lng, z.lat]), turf.point([s[1], s[0]]), { units: 'meters' }) < 25) continue; // the chosen stop itself
+                            cell = turf.intersect(turf.featureCollection([cell, this.halfPlane([z.lat, z.lng], [s[0], s[1]], false)]));
+                            if (!cell) return null;
+                        }
+                        return cell;
+                    } catch (e) { return null; }
+                },
+                stationIcon() {
+                    return L.divIcon({ className: '', iconSize: [12, 12], iconAnchor: [6, 6], html: `<div style="width:12px;height:12px;border-radius:3px;background:#f59e0b;border:1.5px solid #fff;box-shadow:0 0 2px rgba(0,0,0,.5);font-size:8px;line-height:9px;text-align:center">🚉</div>` });
+                },
                 renderZone() {
                     if (!this.zoneLayer) return;
                     this.zoneLayer.clearLayers();
                     const z = this.activeZone();
                     if (!z) return;
-                    L.circle([z.lat, z.lng], { radius: z.radius_m, color: '#f59e0b', weight: 1, fillOpacity: 0.05, dashArray: '6', interactive: false }).addTo(this.zoneLayer);
+                    const carved = this.carveZone(z);
+                    if (carved) {
+                        L.geoJSON(carved, { style: { color: '#f59e0b', weight: 2, fillColor: '#f59e0b', fillOpacity: 0.08, dashArray: '6', interactive: false } }).addTo(this.zoneLayer);
+                    } else {
+                        L.circle([z.lat, z.lng], { radius: z.radius_m, color: '#f59e0b', weight: 1, fillOpacity: 0.05, dashArray: '6', interactive: false }).addTo(this.zoneLayer);
+                    }
+                    (z.stations || []).forEach((s) => {
+                        L.marker([s[0], s[1]], { icon: this.stationIcon(), zIndexOffset: 400 }).bindTooltip('Transit stop').addTo(this.zoneLayer);
+                    });
                 },
 
                 render() {

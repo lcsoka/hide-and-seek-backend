@@ -2,6 +2,7 @@
 
 namespace App\Game;
 
+use App\Game\Geo\MapDataSource;
 use App\Models\ActionLog;
 use App\Models\Card;
 use App\Models\PlayerPosition;
@@ -104,13 +105,32 @@ class ReplayBuilder
         // keeps the current round's zone, so reconstruct the whole timeline from the choose_station log —
         // otherwise the replay would draw the last round's zone while the hider sits in an earlier one.
         $zoneRadius = (float) ($session->config['hiding_zone_radius_m'] ?? ($zone['radius_m'] ?? 500));
+        // Carve the zone by the transit stops of the game's modes (metro/tram), which is what actually bounds
+        // it — and which are far denser than plain rail stations, so urban zones get a meaningful cell.
+        $stationTypes = [];
+        if ((string) ($session->config['hiding_zone_rule'] ?? config('game.hiding_zone.default_rule', 'circle')) === 'nearest') {
+            $modeMap = ['metro' => 'subway_station', 'tram' => 'tram_stop', 'rail' => 'rail_station', 'train' => 'rail_station', 'bus' => 'bus_stop'];
+            $modes = (array) ($session->config['transit_modes'] ?? config('game.hiding_zone.default_modes', ['metro', 'tram']));
+            $stationTypes = array_values(array_unique(array_filter(array_map(fn ($m) => $modeMap[$m] ?? null, $modes))));
+            if (empty($stationTypes)) {
+                $stationTypes = [(string) config('game.hiding_zone.station_feature', 'rail_station')];
+            }
+        }
         $zones = ActionLog::query()
             ->where('session_id', $session->id)
             ->where('type', 'choose_station')
             ->orderBy('created_at')
             ->get(['payload', 'created_at'])
             ->map(fn (ActionLog $log) => isset($log->payload['lat'], $log->payload['lng'])
-                ? ['at' => $log->created_at?->timestamp, 'lat' => (float) $log->payload['lat'], 'lng' => (float) $log->payload['lng'], 'radius_m' => $zoneRadius]
+                ? [
+                    'at' => $log->created_at?->timestamp,
+                    'lat' => (float) $log->payload['lat'],
+                    'lng' => (float) $log->payload['lng'],
+                    'radius_m' => $zoneRadius,
+                    // Nearby transit stops so the replay can draw the real carved zone (the chosen stop's
+                    // cell, cut where another stop becomes closer), mirroring how the game client draws it.
+                    'stations' => $this->zoneStations($stationTypes, (float) $log->payload['lat'], (float) $log->payload['lng'], $zoneRadius),
+                ]
                 : null)
             ->filter()
             ->values()->all();
@@ -178,6 +198,37 @@ class ReplayBuilder
         }
 
         return $out;
+    }
+
+    /**
+     * Nearby transit stops around a hiding zone (chosen stop + neighbours whose bisectors could carve it),
+     * as [[lat,lng],…]. Best-effort + cached; the map source at replay time supplies the real OSM stops.
+     *
+     * @param  array<int, string>  $types
+     * @return array<int, array{0: float, 1: float}>
+     */
+    private function zoneStations(array $types, float $lat, float $lng, float $radiusM): array
+    {
+        if (empty($types)) {
+            return [];
+        }
+
+        return Cache::remember(sprintf('zone_stations:%s:%.4f,%.4f:%d', implode(',', $types), $lat, $lng, (int) $radiusM), now()->addDays(7), function () use ($types, $lat, $lng, $radiusM) {
+            try {
+                // A neighbouring stop only cuts the radius circle if it's within ~2× the radius of the centre.
+                $source = app(MapDataSource::class);
+                $out = [];
+                foreach ($types as $type) {
+                    foreach ($source->within($type, $lat, $lng, $radiusM * 2.5) as $f) {
+                        $out[] = [round($f->lat, 6), round($f->lng, 6)];
+                    }
+                }
+
+                return $out;
+            } catch (\Throwable) {
+                return [];
+            }
+        });
     }
 
     /** The city's administrative boundary as GeoJSON (Polygon/MultiPolygon), fetched once from Nominatim and cached. */
