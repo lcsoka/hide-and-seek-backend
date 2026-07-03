@@ -75,6 +75,13 @@
                     </span>
                 </template>
             </div>
+
+            {{-- Map symbol legend --}}
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500 dark:text-gray-400">
+                <span class="inline-flex items-center gap-1.5"><span class="inline-block h-3 w-3 rounded-full border border-dashed border-gray-400"></span> Radar range</span>
+                <span class="inline-flex items-center gap-1.5"><span class="inline-block h-2.5 w-2.5 rounded-full border-2 border-gray-400 bg-white"></span>→ 🌡️ Thermometer start → end</span>
+                <span class="inline-flex items-center gap-1.5"><span class="inline-block h-2.5 w-2.5 rounded-full bg-green-600"></span> hotter / <span class="inline-block h-2.5 w-2.5 rounded-full bg-red-600"></span> colder</span>
+            </div>
         </div>
 
         {{-- Event feed --}}
@@ -254,6 +261,9 @@
                 pulseIcon(color) {
                     return L.divIcon({ className: '', iconSize: [16, 16], iconAnchor: [8, 8], html: `<div style="position:relative;width:16px;height:16px;color:${color}"><div class="jtr-ring"></div><div style="position:absolute;inset:4px;border-radius:9999px;background:${color};box-shadow:0 0 0 2px #fff"></div></div>` });
                 },
+                thermoIcon(color) {
+                    return L.divIcon({ className: '', iconSize: [22, 22], iconAnchor: [11, 11], html: `<div style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:9999px;background:${color};box-shadow:0 0 0 2px #fff;font-size:12px;line-height:1">🌡️</div>` });
+                },
 
                 // The hider re-hides each round, so the zone moves. Use the per-round zones when present.
                 zoneList() { return (this.bundle.zones && this.bundle.zones.length) ? this.bundle.zones : (this.bundle.zone ? [this.bundle.zone] : []); },
@@ -282,10 +292,22 @@
                     this.renderDeduction();
                     this.renderTraces();
                     this.qLayer.clearLayers();
-                    this.bundle.questions.filter((q) => q.ask && q.at <= this.time).forEach((q) => {
+                    const r = this.activeRound, from = r ? r.start : this.bundle.t0;
+                    this.bundle.questions.filter((q) => q.ask && q.at <= this.time && q.at >= from).forEach((q) => {
                         const color = this.answerColor(q.answer);
-                        if (q.ask.radius_m) L.circle([q.ask.lat, q.ask.lng], { radius: q.ask.radius_m, color, weight: 1, fillOpacity: 0.03, dashArray: '4', interactive: false }).addTo(this.qLayer);
-                        L.circleMarker([q.ask.lat, q.ask.lng], { radius: 4, color, weight: 2, fillColor: color, fillOpacity: 0.9, interactive: false }).addTo(this.qLayer);
+                        const a = [q.ask.lat, q.ask.lng];
+                        if (q.category === 'thermometer' && q.end) {
+                            // The seeker's thermometer walk: hollow start ●, line, 🌡️ end (green = hotter, red = colder).
+                            const b = [q.end.lat, q.end.lng];
+                            L.polyline([a, b], { color, weight: 3, opacity: 0.85, dashArray: '1 6', interactive: false }).addTo(this.qLayer);
+                            L.circleMarker(a, { radius: 5, color, weight: 2, fillColor: '#fff', fillOpacity: 1 }).bindTooltip('Thermometer start').addTo(this.qLayer);
+                            L.marker(b, { icon: this.thermoIcon(color), zIndexOffset: 600 }).bindTooltip('Thermometer end · ' + (q.answer || '')).addTo(this.qLayer);
+                        } else if (q.category === 'radar' && q.ask.radius_m) {
+                            L.circle(a, { radius: q.ask.radius_m, color, weight: 1, fillOpacity: 0.03, dashArray: '4', interactive: false }).addTo(this.qLayer);
+                            L.circleMarker(a, { radius: 4, color, weight: 2, fillColor: color, fillOpacity: 0.9, interactive: false }).addTo(this.qLayer);
+                        } else {
+                            L.circleMarker(a, { radius: 4, color, weight: 2, fillColor: color, fillOpacity: 0.9, interactive: false }).addTo(this.qLayer);
+                        }
                     });
                     this.renderEvents();
                 },

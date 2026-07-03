@@ -362,7 +362,9 @@ class AdminPanelTest extends TestCase
             ->assertSee('Movement trails')        // trace toggle
             ->assertSee('1× realtime', false)     // realtime playback speed option
             ->assertSee('currentAction', false)   // "Now" current-action readout
-            ->assertSee('gotoRound', false);      // per-round switcher
+            ->assertSee('gotoRound', false)       // per-round switcher
+            ->assertSee('thermoIcon', false)      // thermometer start→end markers
+            ->assertSee('Thermometer start', false);
     }
 
     public function test_admin_can_toggle_and_revoke(): void
