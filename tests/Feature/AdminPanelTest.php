@@ -388,4 +388,19 @@ class AdminPanelTest extends TestCase
         $this->assertTrue($target->fresh()->is_admin);
         $this->assertDatabaseCount('personal_access_tokens', 0);
     }
+
+    public function test_system_status_page_renders(): void
+    {
+        // Seed the version cache so the page doesn't make a live git/network call.
+        \Illuminate\Support\Facades\Cache::put('health:version', [
+            'current' => 'abc1234', 'remote' => 'abc1234', 'up_to_date' => true, 'available' => false, 'error' => null,
+        ], now()->addMinutes(5));
+
+        $this->actingAs($this->adminUser());
+        $this->get(\App\Filament\Pages\SystemStatus::getUrl())
+            ->assertSuccessful()
+            ->assertSee('System status')
+            ->assertSee('Database')          // a service row
+            ->assertSee('Reverb (WebSocket)');
+    }
 }

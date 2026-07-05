@@ -17,6 +17,9 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->api(append: [SetLocale::class]);
+        // Keep the admin panel usable while the app is in maintenance mode (e.g. during a deploy),
+        // so the ops page can still trigger + watch the deploy. The public API/site stay 503'd.
+        $middleware->preventRequestsDuringMaintenance(except: ['admin', 'admin/*', 'livewire/*']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

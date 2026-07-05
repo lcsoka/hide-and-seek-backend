@@ -17,6 +17,10 @@ fi
 
 cd "$(dirname "$0")"
 PHP=/usr/bin/php8.4
+# Resolve composer/npm/git even when launched from the web (FPM has a minimal PATH).
+export PATH="/usr/local/bin:/usr/bin:/bin:$PATH"
+# Clear the admin "deploying" flag on exit (success OR failure), so the button resets.
+trap '$PHP artisan cache:forget deploy:running >/dev/null 2>&1 || true' EXIT
 
 echo "→ maintenance mode on"
 $PHP artisan down || true
