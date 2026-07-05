@@ -59,13 +59,21 @@ class SendWebPush implements ShouldQueue
                     'authToken' => $sub->auth_token,
                     'contentEncoding' => config('webpush.content_encoding'),
                 ]),
+                // Angular's ngsw-worker reads `notification.*` and uses `data.onActionClick.default`
+                // to open the URL when the notification is clicked.
                 (string) json_encode([
-                    'title' => __($this->key.'.title', $this->params, $sub->locale),
-                    'body' => __($this->key.'.body', $this->params, $sub->locale),
-                    'url' => $this->url,
-                    'tag' => $this->tag,
-                    'icon' => '/icon-192.png',
-                    'badge' => '/icon-192.png',
+                    'notification' => [
+                        'title' => __($this->key.'.title', $this->params, $sub->locale),
+                        'body' => __($this->key.'.body', $this->params, $sub->locale),
+                        'icon' => '/icon-192.png',
+                        'badge' => '/icon-192.png',
+                        'tag' => $this->tag,
+                        'data' => [
+                            'onActionClick' => [
+                                'default' => ['operation' => 'openWindow', 'url' => $this->url],
+                            ],
+                        ],
+                    ],
                 ]),
             );
         }
