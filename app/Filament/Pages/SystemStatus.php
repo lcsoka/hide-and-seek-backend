@@ -8,6 +8,7 @@ use Filament\Actions\Action;
 use Filament\Notifications\Notification;
 use Filament\Pages\Page;
 use Filament\Support\Icons\Heroicon;
+use Illuminate\Support\Facades\Artisan;
 
 /** Ops page: live service health, the deployed vs latest version, and a guarded deploy button + log. */
 class SystemStatus extends Page
@@ -73,6 +74,18 @@ class SystemStatus extends Page
                 ->icon(Heroicon::OutlinedArrowPath)
                 ->color('gray')
                 ->action(fn () => $this->health()->refreshVersion()),
+            Action::make('prune')
+                ->label('Run cleanup')
+                ->icon(Heroicon::OutlinedTrash)
+                ->color('gray')
+                ->requiresConfirmation()
+                ->modalHeading('Run session cleanup now?')
+                ->modalDescription('Marks idle games abandoned (notifying any players still connected), deletes old finished/abandoned games, and prunes orphan guest accounts — the same job the scheduler runs every 15 minutes.')
+                ->modalSubmitActionLabel('Run cleanup')
+                ->action(function () {
+                    Artisan::call('game:prune-abandoned');
+                    Notification::make()->title('Cleanup complete')->body(trim(Artisan::output()))->success()->send();
+                }),
             Action::make('deploy')
                 ->label('Deploy latest')
                 ->icon(Heroicon::OutlinedRocketLaunch)

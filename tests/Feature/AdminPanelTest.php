@@ -403,7 +403,23 @@ class AdminPanelTest extends TestCase
             ->assertSee('Database')          // a service row
             ->assertSee('Reverb (WebSocket)')
             ->assertSee('Check for updates') // header action
+            ->assertSee('Run cleanup')       // manual prune action
             ->assertSee('Deploy latest')     // deploy button is shown (disabled), not hidden
             ->assertSee('ADMIN_DEPLOY_ENABLED'); // hint shown while deploy is disabled
+    }
+
+    public function test_run_cleanup_action_prunes_idle_sessions(): void
+    {
+        // An idle lobby session well past the 120-minute threshold.
+        $stale = Session::create([
+            'join_code' => 'STALE1', 'game_mode' => 'hide_and_seek', 'state' => 'lobby',
+            'status' => SessionStatus::Open, 'config' => [], 'state_data' => [],
+            'last_activity_at' => now()->subHours(5),
+        ]);
+
+        $this->actingAs($this->adminUser());
+        Livewire::test(\App\Filament\Pages\SystemStatus::class)->callAction('prune');
+
+        $this->assertSame(SessionStatus::Abandoned, $stale->fresh()->status);
     }
 }
