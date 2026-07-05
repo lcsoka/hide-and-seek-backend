@@ -55,6 +55,11 @@ class SystemStatus extends Page
         return $this->health()->isDeploying();
     }
 
+    public function deployEnabled(): bool
+    {
+        return $this->health()->deployEnabled();
+    }
+
     public function deployLog(): string
     {
         return $this->health()->deployLog();
@@ -76,8 +81,14 @@ class SystemStatus extends Page
                 ->modalHeading('Deploy the latest version?')
                 ->modalDescription('Pulls main, rebuilds admin assets, migrates, and restarts the workers + Reverb. The public site shows a maintenance screen for ~1 minute; this admin panel stays up.')
                 ->modalSubmitActionLabel('Deploy')
-                ->visible(fn () => $this->health()->deployEnabled())
-                ->disabled(fn () => $this->health()->isDeploying())
+                // Always shown so it's discoverable, but disabled (with a reason) until the server is
+                // wired for it: ADMIN_DEPLOY_ENABLED=true + deploy.sh present, and no deploy running.
+                ->disabled(fn () => ! $this->health()->deployEnabled() || $this->health()->isDeploying())
+                ->tooltip(fn (): ?string => match (true) {
+                    $this->health()->isDeploying() => 'A deploy is already running.',
+                    ! $this->health()->deployEnabled() => 'Disabled — set ADMIN_DEPLOY_ENABLED=true on the server to enable one-click deploys.',
+                    default => null,
+                })
                 ->action(function () {
                     $this->health()->deploy();
                     Notification::make()->title('Deploy started')->body('Watch the log below — it refreshes automatically.')->success()->send();

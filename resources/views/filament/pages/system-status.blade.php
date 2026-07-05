@@ -19,6 +19,13 @@
             </div>
         </div>
 
+        {{-- Deploy availability hint --}}
+        @unless ($this->deployEnabled())
+            <div class="rounded-xl p-3 text-xs" style="border:1px solid rgba(120,120,120,0.15);opacity:0.75">
+                The <strong>Deploy latest</strong> button is disabled. Set <code style="background:rgba(120,120,120,0.14);padding:0.1em 0.35em;border-radius:0.3rem">ADMIN_DEPLOY_ENABLED=true</code> on the server (and grant the <code style="background:rgba(120,120,120,0.14);padding:0.1em 0.35em;border-radius:0.3rem">deploy.sh</code> sudoers rule) to enable one-click deploys.
+            </div>
+        @endunless
+
         {{-- Services --}}
         <div class="grid gap-3" style="grid-template-columns:repeat(auto-fill,minmax(230px,1fr))">
             @foreach ($this->services() as $s)

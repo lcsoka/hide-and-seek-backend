@@ -401,6 +401,9 @@ class AdminPanelTest extends TestCase
             ->assertSuccessful()
             ->assertSee('System status')
             ->assertSee('Database')          // a service row
-            ->assertSee('Reverb (WebSocket)');
+            ->assertSee('Reverb (WebSocket)')
+            ->assertSee('Check for updates') // header action
+            ->assertSee('Deploy latest')     // deploy button is shown (disabled), not hidden
+            ->assertSee('ADMIN_DEPLOY_ENABLED'); // hint shown while deploy is disabled
     }
 }
