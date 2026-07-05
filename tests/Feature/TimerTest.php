@@ -19,12 +19,12 @@ class TimerTest extends TestCase
     private function startHiding(): array
     {
         Sanctum::actingAs(User::factory()->create());
-        $create = $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
+        $create = $this->postJson('/api/v1/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
         $sessionId = $create->json('id');
         $hostPlayerId = $create->json('players.0.id');
 
-        $this->postJson("/api/sessions/{$sessionId}/start");
-        $this->postJson("/api/sessions/{$sessionId}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $hostPlayerId]]);
+        $this->postJson("/api/v1/sessions/{$sessionId}/start");
+        $this->postJson("/api/v1/sessions/{$sessionId}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $hostPlayerId]]);
 
         return [$sessionId, $hostPlayerId];
     }
@@ -50,7 +50,7 @@ class TimerTest extends TestCase
     public function test_timer_is_ignored_after_early_confirm(): void
     {
         [$sessionId] = $this->startHiding();
-        $this->postJson("/api/sessions/{$sessionId}/actions", ['type' => 'confirm_hidden']);
+        $this->postJson("/api/v1/sessions/{$sessionId}/actions", ['type' => 'confirm_hidden']);
         $session = Session::find($sessionId);
         $this->assertSame('seeking', $session->state);
 

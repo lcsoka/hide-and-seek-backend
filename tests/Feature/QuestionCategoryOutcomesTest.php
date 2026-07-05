@@ -28,32 +28,32 @@ class QuestionCategoryOutcomesTest extends TestCase
     {
         $host = User::factory()->create();
         Sanctum::actingAs($host);
-        $create = $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
+        $create = $this->postJson('/api/v1/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
         $sid = $create->json('id');
         $hiderId = $create->json('players.0.id');
         $seeker = User::factory()->create();
         Sanctum::actingAs($seeker);
-        $seekerId = $this->postJson("/api/sessions/{$create->json('join_code')}/join", ['display_name' => 'S'])->json('player.id');
+        $seekerId = $this->postJson("/api/v1/sessions/{$create->json('join_code')}/join", ['display_name' => 'S'])->json('player.id');
 
         Sanctum::actingAs($host);
-        $this->postJson("/api/sessions/{$sid}/start");
-        $this->postJson("/api/sessions/{$sid}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $hiderId]]);
+        $this->postJson("/api/v1/sessions/{$sid}/start");
+        $this->postJson("/api/v1/sessions/{$sid}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $hiderId]]);
 
         // Hider commits at spot A, then their GPS drifts far away to B.
         Player::whereKey($hiderId)->update(['last_lat' => 47.50, 'last_lng' => 19.04]);
-        $this->postJson("/api/sessions/{$sid}/actions", ['type' => 'confirm_hidden']);
+        $this->postJson("/api/v1/sessions/{$sid}/actions", ['type' => 'confirm_hidden']);
         Player::whereKey($hiderId)->update(['last_lat' => 47.70, 'last_lng' => 19.40]); // drift ~35 km away
         Player::whereKey($seekerId)->update(['last_lat' => 47.505, 'last_lng' => 19.045]); // ~0.6 km from A
 
         $q = Question::create(['key' => 'radar.drift', 'category' => 'radar', 'title' => ['en' => 'R'], 'prompt' => ['en' => '?'], 'reward_draw' => 1, 'reward_keep' => 1]);
         Sanctum::actingAs($seeker);
-        $this->postJson("/api/sessions/{$sid}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'radius_m' => 3000]]);
+        $this->postJson("/api/v1/sessions/{$sid}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'radius_m' => 3000]]);
         Sanctum::actingAs($host);
-        $this->postJson("/api/sessions/{$sid}/actions", ['type' => 'answer_question']);
+        $this->postJson("/api/v1/sessions/{$sid}/actions", ['type' => 'answer_question']);
 
         // References the committed spot A (within 3 km) → yes; the drift B would be "no".
         Sanctum::actingAs($seeker);
-        $this->assertSame('yes', $this->getJson("/api/sessions/{$sid}/state")->json('questions.0.answer.answer'));
+        $this->assertSame('yes', $this->getJson("/api/v1/sessions/{$sid}/state")->json('questions.0.answer.answer'));
     }
 
     public function test_radar_yes_when_within_and_no_when_beyond(): void
@@ -109,11 +109,11 @@ class QuestionCategoryOutcomesTest extends TestCase
         // Seeker asks a matching question with a confirmed reference place.
         Sanctum::actingAs($ctx['seeker']);
         $q = Question::create(['key' => 'matching.m'.uniqid(), 'category' => 'matching', 'title' => ['en' => 'M'], 'prompt' => ['en' => '?'], 'reward_draw' => 1, 'reward_keep' => 1]);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'feature' => 'museum', 'ref_lat' => 47.21, 'ref_lng' => 19.11, 'ref_name' => 'Seeker Museum']])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'feature' => 'museum', 'ref_lat' => 47.21, 'ref_lng' => 19.11, 'ref_name' => 'Seeker Museum']])->assertOk();
 
         // The hider's /state shows the seeker's closest place on the pending question.
         Sanctum::actingAs($ctx['host']);
-        $ref = $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('pending_question.reference');
+        $ref = $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('pending_question.reference');
         $this->assertSame('Seeker Museum', $ref['name']);
         $this->assertEqualsWithDelta(47.21, $ref['lat'], 0.001);
     }
@@ -176,16 +176,16 @@ class QuestionCategoryOutcomesTest extends TestCase
         $q = Question::create(['key' => 'matching.v'.uniqid(), 'category' => 'matching', 'title' => ['en' => 'M'], 'prompt' => ['en' => '?'], 'reward_draw' => 1, 'reward_keep' => 1]);
 
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'feature' => 'museum']])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'feature' => 'museum']])->assertOk();
 
         // Hider "answers" with no verdict and no map data → the question is voided.
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question'])->assertOk();
         Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'QuestionVoided');
 
         // Nothing recorded; the seeker can ask again.
         Sanctum::actingAs($ctx['seeker']);
-        $state = $this->getJson("/api/sessions/{$ctx['sessionId']}/state");
+        $state = $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state");
         $this->assertCount(0, $state->json('questions'));
         $this->assertNull($state->json('pending_question'));
         $this->assertContains('ask_question', $state->json('available_actions'));
@@ -212,12 +212,12 @@ class QuestionCategoryOutcomesTest extends TestCase
 
         Player::whereKey($ctx['seekerId'])->update(['last_lat' => $start[0], 'last_lng' => $start[1]]);
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'start_thermometer', 'payload' => ['question_id' => $question->id, 'distance_m' => 5000]])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'start_thermometer', 'payload' => ['question_id' => $question->id, 'distance_m' => 5000]])->assertOk();
 
         Player::whereKey($ctx['seekerId'])->update(['last_lat' => $end[0], 'last_lng' => $end[1]]);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'stop_thermometer'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'stop_thermometer'])->assertOk();
 
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question'])->assertOk();
     }
 }

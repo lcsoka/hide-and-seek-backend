@@ -12,7 +12,7 @@ class FeedbackApiTest extends TestCase
 
     public function test_anyone_can_submit_a_suggestion(): void
     {
-        $response = $this->postJson('/api/feedback', [
+        $response = $this->postJson('/api/v1/feedback', [
             'type' => 'suggestion',
             'subject' => 'Dark mode',
             'message' => 'Please add a dark mode to the map.',
@@ -34,7 +34,7 @@ class FeedbackApiTest extends TestCase
         ]);
         $player = $session->players()->create(['display_name' => 'Reporter']);
 
-        $response = $this->postJson('/api/feedback', [
+        $response = $this->postJson('/api/v1/feedback', [
             'type' => 'bug',
             'message' => 'Map froze during seeking.',
             'session_id' => $session->id,
@@ -52,21 +52,21 @@ class FeedbackApiTest extends TestCase
 
     public function test_type_and_message_are_required(): void
     {
-        $this->postJson('/api/feedback', [])
+        $this->postJson('/api/v1/feedback', [])
             ->assertStatus(422)
             ->assertJsonValidationErrors(['type', 'message']);
     }
 
     public function test_type_must_be_a_valid_enum_value(): void
     {
-        $this->postJson('/api/feedback', ['type' => 'rant', 'message' => 'hi'])
+        $this->postJson('/api/v1/feedback', ['type' => 'rant', 'message' => 'hi'])
             ->assertStatus(422)
             ->assertJsonValidationErrors(['type']);
     }
 
     public function test_context_ids_must_exist(): void
     {
-        $this->postJson('/api/feedback', [
+        $this->postJson('/api/v1/feedback', [
             'type' => 'bug',
             'message' => 'x',
             'session_id' => '019ef981-0000-7000-8000-000000000000',

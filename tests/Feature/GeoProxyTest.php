@@ -20,11 +20,11 @@ class GeoProxyTest extends TestCase
 
         $ql = '[out:json];node["amenity"="cinema"](around:1000,47.5,19.0);out center;';
 
-        $first = $this->postJson('/api/geo/overpass', ['ql' => $ql]);
+        $first = $this->postJson('/api/v1/geo/overpass', ['ql' => $ql]);
         $first->assertOk()->assertJsonPath('elements.0.id', 1);
 
         // A second identical query is served from cache — Overpass is hit only once.
-        $this->postJson('/api/geo/overpass', ['ql' => $ql])->assertOk()->assertJsonPath('elements.0.id', 1);
+        $this->postJson('/api/v1/geo/overpass', ['ql' => $ql])->assertOk()->assertJsonPath('elements.0.id', 1);
 
         Http::assertSentCount(1);
     }
@@ -34,15 +34,15 @@ class GeoProxyTest extends TestCase
         Cache::flush();
         Http::fake(['*' => Http::response('rate limited', 429)]);
 
-        $this->postJson('/api/geo/overpass', ['ql' => '[out:json];node;out;'])
+        $this->postJson('/api/v1/geo/overpass', ['ql' => '[out:json];node;out;'])
             ->assertStatus(502)
             ->assertJsonPath('elements', []);
     }
 
     public function test_it_validates_the_query(): void
     {
-        $this->postJson('/api/geo/overpass', [])->assertStatus(422);
-        $this->postJson('/api/geo/overpass', ['ql' => str_repeat('x', 8001)])->assertStatus(422);
+        $this->postJson('/api/v1/geo/overpass', [])->assertStatus(422);
+        $this->postJson('/api/v1/geo/overpass', ['ql' => str_repeat('x', 8001)])->assertStatus(422);
     }
 
     public function test_it_retries_a_transient_5xx_then_succeeds(): void
@@ -53,7 +53,7 @@ class GeoProxyTest extends TestCase
             ->push('bad gateway', 502)
             ->push(['elements' => [['id' => 7, 'type' => 'node']]], 200)]);
 
-        $this->postJson('/api/geo/overpass', ['ql' => '[out:json];node;out;'])
+        $this->postJson('/api/v1/geo/overpass', ['ql' => '[out:json];node;out;'])
             ->assertOk()->assertJsonPath('elements.0.id', 7);
 
         Http::assertSentCount(2);
@@ -64,7 +64,7 @@ class GeoProxyTest extends TestCase
         Cache::flush();
         Http::fake(['*' => Http::response('bad request', 400)]);
 
-        $this->postJson('/api/geo/overpass', ['ql' => '[out:json];node;out;'])
+        $this->postJson('/api/v1/geo/overpass', ['ql' => '[out:json];node;out;'])
             ->assertStatus(502)->assertJsonPath('elements', []);
 
         // A 4xx is our bad query — no retry, no second mirror.
@@ -78,13 +78,13 @@ class GeoProxyTest extends TestCase
 
         // A first success caches a fresh + a longer-lived stale copy.
         Http::fake(['*' => Http::response(['elements' => [['id' => 1, 'type' => 'node']]], 200)]);
-        $this->postJson('/api/geo/overpass', ['ql' => $ql])->assertOk();
+        $this->postJson('/api/v1/geo/overpass', ['ql' => $ql])->assertOk();
 
         // Drop the fresh copy and simulate an outage: the stale copy is served, not a 502.
         Cache::forget('overpass_ql:'.sha1($ql));
         Http::fake(['*' => Http::response('service unavailable', 503)]);
 
-        $this->postJson('/api/geo/overpass', ['ql' => $ql])
+        $this->postJson('/api/v1/geo/overpass', ['ql' => $ql])
             ->assertOk()->assertJsonPath('elements.0.id', 1);
     }
 }

@@ -29,7 +29,7 @@ class LocationVisibilityTest extends TestCase
     {
         $this->host = User::factory()->create();
         Sanctum::actingAs($this->host);
-        $create = $this->postJson('/api/sessions', [
+        $create = $this->postJson('/api/v1/sessions', [
             'city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1],
         ])->assertCreated();
         $this->sessionId = $create->json('id');
@@ -37,18 +37,18 @@ class LocationVisibilityTest extends TestCase
 
         $this->seeker = User::factory()->create();
         Sanctum::actingAs($this->seeker);
-        $this->seekerPlayerId = $this->postJson("/api/sessions/{$create->json('join_code')}/join", ['display_name' => 'Seeker'])
+        $this->seekerPlayerId = $this->postJson("/api/v1/sessions/{$create->json('join_code')}/join", ['display_name' => 'Seeker'])
             ->json('player.id');
     }
 
     private function report(float $lat, float $lng)
     {
-        return $this->postJson("/api/sessions/{$this->sessionId}/location", ['lat' => $lat, 'lng' => $lng]);
+        return $this->postJson("/api/v1/sessions/{$this->sessionId}/location", ['lat' => $lat, 'lng' => $lng]);
     }
 
     private function statePlayers(): Collection
     {
-        return collect($this->getJson("/api/sessions/{$this->sessionId}/state")->json('players'))->keyBy('id');
+        return collect($this->getJson("/api/v1/sessions/{$this->sessionId}/state")->json('players'))->keyBy('id');
     }
 
     public function test_player_can_report_location(): void
@@ -93,7 +93,7 @@ class LocationVisibilityTest extends TestCase
         $this->setUpSession();
 
         Sanctum::actingAs($this->seeker);
-        $this->postJson("/api/sessions/{$this->sessionId}/location", ['lng' => 19.0])
+        $this->postJson("/api/v1/sessions/{$this->sessionId}/location", ['lng' => 19.0])
             ->assertStatus(422)->assertJsonValidationErrors(['lat']);
     }
 
@@ -114,9 +114,9 @@ class LocationVisibilityTest extends TestCase
 
         // Host becomes the hider; progress to seeking.
         Sanctum::actingAs($this->host);
-        $this->postJson("/api/sessions/{$this->sessionId}/start");
-        $this->postJson("/api/sessions/{$this->sessionId}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $this->hostPlayerId]]);
-        $this->postJson("/api/sessions/{$this->sessionId}/actions", ['type' => 'confirm_hidden']);
+        $this->postJson("/api/v1/sessions/{$this->sessionId}/start");
+        $this->postJson("/api/v1/sessions/{$this->sessionId}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $this->hostPlayerId]]);
+        $this->postJson("/api/v1/sessions/{$this->sessionId}/actions", ['type' => 'confirm_hidden']);
         $this->report(47.40, 19.00); // hider's position
 
         Sanctum::actingAs($this->seeker);
@@ -140,9 +140,9 @@ class LocationVisibilityTest extends TestCase
         Session::find($this->sessionId)->update(['config' => ['rounds' => 1, 'reveal_seekers_to_hider' => true]]);
 
         Sanctum::actingAs($this->host);
-        $this->postJson("/api/sessions/{$this->sessionId}/start");
-        $this->postJson("/api/sessions/{$this->sessionId}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $this->hostPlayerId]]);
-        $this->postJson("/api/sessions/{$this->sessionId}/actions", ['type' => 'confirm_hidden']);
+        $this->postJson("/api/v1/sessions/{$this->sessionId}/start");
+        $this->postJson("/api/v1/sessions/{$this->sessionId}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $this->hostPlayerId]]);
+        $this->postJson("/api/v1/sessions/{$this->sessionId}/actions", ['type' => 'confirm_hidden']);
         $this->report(47.40, 19.00);
 
         Sanctum::actingAs($this->seeker);
@@ -158,8 +158,8 @@ class LocationVisibilityTest extends TestCase
         $this->setUpSession();
 
         Sanctum::actingAs($this->host);
-        $this->postJson("/api/sessions/{$this->sessionId}/start");
-        $this->postJson("/api/sessions/{$this->sessionId}/actions", ['type' => 'assign_hider'])
+        $this->postJson("/api/v1/sessions/{$this->sessionId}/start");
+        $this->postJson("/api/v1/sessions/{$this->sessionId}/actions", ['type' => 'assign_hider'])
             ->assertOk()->assertJsonPath('state', 'hiding');
 
         $this->assertSame(1, Session::find($this->sessionId)->players()->where('role', 'hider')->count());

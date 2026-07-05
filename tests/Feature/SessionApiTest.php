@@ -22,7 +22,7 @@ class SessionApiTest extends TestCase
     {
         $this->signInGuest();
 
-        $response = $this->postJson('/api/sessions', [
+        $response = $this->postJson('/api/v1/sessions', [
             'city' => 'budapest', 'game_size' => 'medium', 'display_name' => 'Host',
         ]);
 
@@ -42,10 +42,10 @@ class SessionApiTest extends TestCase
     {
         $this->signInGuest();
 
-        $this->postJson('/api/sessions', ['city' => 'paris', 'game_size' => 'medium'])
+        $this->postJson('/api/v1/sessions', ['city' => 'paris', 'game_size' => 'medium'])
             ->assertStatus(422)->assertJsonValidationErrors(['city']);
 
-        $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'huge'])
+        $this->postJson('/api/v1/sessions', ['city' => 'budapest', 'game_size' => 'huge'])
             ->assertStatus(422)->assertJsonValidationErrors(['game_size']);
     }
 
@@ -54,25 +54,25 @@ class SessionApiTest extends TestCase
         $this->signInGuest();
 
         // Defaults when not supplied.
-        $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'medium'])
+        $this->postJson('/api/v1/sessions', ['city' => 'budapest', 'game_size' => 'medium'])
             ->assertCreated()->assertJsonPath('config.transit_modes', ['metro', 'tram']);
 
         // Caller can choose which stops players hide at.
-        $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'medium', 'config' => ['transit_modes' => ['rail', 'bus']]])
+        $this->postJson('/api/v1/sessions', ['city' => 'budapest', 'game_size' => 'medium', 'config' => ['transit_modes' => ['rail', 'bus']]])
             ->assertCreated()->assertJsonPath('config.transit_modes', ['rail', 'bus']);
 
         // Unknown modes are rejected.
-        $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'medium', 'config' => ['transit_modes' => ['spaceship']]])
+        $this->postJson('/api/v1/sessions', ['city' => 'budapest', 'game_size' => 'medium', 'config' => ['transit_modes' => ['spaceship']]])
             ->assertStatus(422)->assertJsonValidationErrors(['config.transit_modes.0']);
     }
 
     public function test_join_by_code_adds_a_player(): void
     {
         $this->signInGuest();
-        $code = $this->postJson('/api/sessions', ['city' => 'szeged', 'game_size' => 'small'])->json('join_code');
+        $code = $this->postJson('/api/v1/sessions', ['city' => 'szeged', 'game_size' => 'small'])->json('join_code');
 
         Sanctum::actingAs(User::factory()->create());
-        $response = $this->postJson("/api/sessions/{$code}/join", ['display_name' => 'Bob']);
+        $response = $this->postJson("/api/v1/sessions/{$code}/join", ['display_name' => 'Bob']);
 
         $response->assertOk()->assertJsonPath('player.display_name', 'Bob');
         $this->assertCount(2, $response->json('session.players'));
@@ -82,7 +82,7 @@ class SessionApiTest extends TestCase
     {
         $this->signInGuest();
 
-        $res = $this->postJson('/api/sessions/ZZZZZZ/join', ['display_name' => 'Bob'])->assertNotFound();
+        $res = $this->postJson('/api/v1/sessions/ZZZZZZ/join', ['display_name' => 'Bob'])->assertNotFound();
         // A clean, human message — never the raw route-binding exception.
         $this->assertStringNotContainsString('No query results', (string) $res->json('message'));
     }
@@ -90,20 +90,20 @@ class SessionApiTest extends TestCase
     public function test_join_requires_a_display_name(): void
     {
         $this->signInGuest();
-        $code = $this->postJson('/api/sessions', ['city' => 'szeged', 'game_size' => 'small'])->json('join_code');
+        $code = $this->postJson('/api/v1/sessions', ['city' => 'szeged', 'game_size' => 'small'])->json('join_code');
 
-        $this->postJson("/api/sessions/{$code}/join", [])
+        $this->postJson("/api/v1/sessions/{$code}/join", [])
             ->assertStatus(422)->assertJsonValidationErrors(['display_name']);
     }
 
     public function test_show_and_state_endpoints(): void
     {
         $this->signInGuest();
-        $id = $this->postJson('/api/sessions', ['city' => 'pecs', 'game_size' => 'large'])->json('id');
+        $id = $this->postJson('/api/v1/sessions', ['city' => 'pecs', 'game_size' => 'large'])->json('id');
 
-        $this->getJson("/api/sessions/{$id}")->assertOk()->assertJsonPath('id', $id);
+        $this->getJson("/api/v1/sessions/{$id}")->assertOk()->assertJsonPath('id', $id);
 
-        $this->getJson("/api/sessions/{$id}/state")
+        $this->getJson("/api/v1/sessions/{$id}/state")
             ->assertOk()
             ->assertJsonPath('session_id', $id)
             ->assertJsonPath('state', 'lobby')

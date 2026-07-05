@@ -39,19 +39,19 @@ class FullGameplayE2eTest extends TestCase
         // Host creates; a second player joins.
         $host = User::factory()->create();
         Sanctum::actingAs($host);
-        $create = $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1], 'display_name' => 'Al'])->assertCreated();
+        $create = $this->postJson('/api/v1/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1], 'display_name' => 'Al'])->assertCreated();
         $sid = $create->json('id');
         $hostPid = $create->json('players.0.id');
 
         $seeker = User::factory()->create();
         Sanctum::actingAs($seeker);
-        $seekerPid = $this->postJson("/api/sessions/{$create->json('join_code')}/join", ['display_name' => 'Bo'])->assertOk()->json('player.id');
+        $seekerPid = $this->postJson("/api/v1/sessions/{$create->json('join_code')}/join", ['display_name' => 'Bo'])->assertOk()->json('player.id');
 
         // Host starts and makes themselves the hider (so Bo is the seeker).
         Sanctum::actingAs($host);
-        $this->postJson("/api/sessions/{$sid}/start")->assertJsonPath('state', 'role_assignment');
+        $this->postJson("/api/v1/sessions/{$sid}/start")->assertJsonPath('state', 'role_assignment');
         $this->action($sid, 'assign_hider', ['player_id' => $hostPid])->assertJsonPath('state', 'hiding');
-        $this->assertCount(0, $this->getJson("/api/sessions/{$sid}/state")->json('hand'), 'hider starts empty-handed');
+        $this->assertCount(0, $this->getJson("/api/v1/sessions/{$sid}/state")->json('hand'), 'hider starts empty-handed');
 
         // Real positions: ~8 km apart.
         Player::whereKey($hostPid)->update(['last_lat' => 47.4979, 'last_lng' => 19.0402]);
@@ -61,29 +61,29 @@ class FullGameplayE2eTest extends TestCase
 
         // Seeker asks a radar question.
         Sanctum::actingAs($seeker);
-        $this->assertContains('ask_question', $this->getJson("/api/sessions/{$sid}/state")->json('available_actions'));
+        $this->assertContains('ask_question', $this->getJson("/api/v1/sessions/{$sid}/state")->json('available_actions'));
         $this->action($sid, 'ask_question', ['question_id' => $radar->id, 'radius_m' => 5000])->assertOk();
         // While pending, the seeker cannot ask another.
-        $this->assertNotContains('ask_question', $this->getJson("/api/sessions/{$sid}/state")->json('available_actions'));
+        $this->assertNotContains('ask_question', $this->getJson("/api/v1/sessions/{$sid}/state")->json('available_actions'));
 
         // Hider answers (radar truth: ~8 km apart, 5 km radius → "no"), draws 2, keeps 1.
         Sanctum::actingAs($host);
         $this->action($sid, 'answer_question')->assertOk();
-        $draw = $this->getJson("/api/sessions/{$sid}/state")->json('pending_draw');
+        $draw = $this->getJson("/api/v1/sessions/{$sid}/state")->json('pending_draw');
         $this->assertCount(2, $draw['cards'], 'hider drew reward_draw cards');
         $this->action($sid, 'keep_cards', ['uids' => [$draw['cards'][0]['uid']]])->assertOk();
-        $this->assertCount(1, $this->getJson("/api/sessions/{$sid}/state")->json('hand'), 'hider kept reward_keep card');
+        $this->assertCount(1, $this->getJson("/api/v1/sessions/{$sid}/state")->json('hand'), 'hider kept reward_keep card');
 
         // THE REGRESSION GUARD: the seeker can ask again after the answer, and sees it.
         Sanctum::actingAs($seeker);
-        $state = $this->getJson("/api/sessions/{$sid}/state");
+        $state = $this->getJson("/api/v1/sessions/{$sid}/state");
         $this->assertContains('ask_question', $state->json('available_actions'));
         $this->assertSame('no', $state->json('questions.0.answer.answer'));
         $this->action($sid, 'ask_question', ['question_id' => $radar->id, 'radius_m' => 50000])->assertOk();
 
         // Hider plays a curse from hand (by uid), then answers.
         Sanctum::actingAs($host);
-        $cardUid = $this->getJson("/api/sessions/{$sid}/state")->json('hand.0.uid');
+        $cardUid = $this->getJson("/api/v1/sessions/{$sid}/state")->json('hand.0.uid');
         $this->action($sid, 'play_curse', ['card_uid' => $cardUid])->assertOk();
         $this->action($sid, 'answer_question')->assertOk();
 
@@ -112,30 +112,30 @@ class FullGameplayE2eTest extends TestCase
 
         $host = User::factory()->create();
         Sanctum::actingAs($host);
-        $create = $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 2], 'display_name' => 'Al'])->assertCreated();
+        $create = $this->postJson('/api/v1/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 2], 'display_name' => 'Al'])->assertCreated();
         $sid = $create->json('id');
         $hostPid = $create->json('players.0.id');
         $seeker = User::factory()->create();
         Sanctum::actingAs($seeker);
-        $seekerPid = $this->postJson("/api/sessions/{$create->json('join_code')}/join", ['display_name' => 'Bo'])->json('player.id');
+        $seekerPid = $this->postJson("/api/v1/sessions/{$create->json('join_code')}/join", ['display_name' => 'Bo'])->json('player.id');
 
         // --- ROUND 1: the HOST hides at spot A ---
         Sanctum::actingAs($host);
-        $this->postJson("/api/sessions/{$sid}/start");
+        $this->postJson("/api/v1/sessions/{$sid}/start");
         $this->action($sid, 'assign_hider', ['player_id' => $hostPid])->assertJsonPath('state', 'hiding');
         Player::whereKey($hostPid)->update(['last_lat' => 47.4979, 'last_lng' => 19.0402]);
         Player::whereKey($seekerPid)->update(['last_lat' => 47.55, 'last_lng' => 19.10]);
         $this->action($sid, 'choose_station', ['lat' => 47.4979, 'lng' => 19.0402]);
         // The hider's zone is centred on spot A.
-        $this->assertEqualsWithDelta(47.4979, $this->getJson("/api/sessions/{$sid}/state")->json('hiding_zone.center.lat'), 1e-6);
+        $this->assertEqualsWithDelta(47.4979, $this->getJson("/api/v1/sessions/{$sid}/state")->json('hiding_zone.center.lat'), 1e-6);
         $this->action($sid, 'confirm_hidden')->assertJsonPath('state', 'seeking');
 
         Sanctum::actingAs($seeker);
         $this->action($sid, 'ask_question', ['question_id' => $radar->id, 'radius_m' => 5000]);
         Sanctum::actingAs($host);
         $this->action($sid, 'answer_question');
-        $this->assertSame(1, $this->getJson("/api/sessions/{$sid}/state")->json('questions.0.seq'), 'round 1 first question is #1');
-        $draw = $this->getJson("/api/sessions/{$sid}/state")->json('pending_draw');
+        $this->assertSame(1, $this->getJson("/api/v1/sessions/{$sid}/state")->json('questions.0.seq'), 'round 1 first question is #1');
+        $draw = $this->getJson("/api/v1/sessions/{$sid}/state")->json('pending_draw');
         $this->action($sid, 'keep_cards', ['uids' => [$draw['cards'][0]['uid']]]);
         Sanctum::actingAs($seeker);
         Player::whereKey($seekerPid)->update(['last_lat' => 47.4979, 'last_lng' => 19.0402]);
@@ -154,7 +154,7 @@ class FullGameplayE2eTest extends TestCase
         Player::whereKey($seekerPid)->update(['last_lat' => 47.5100, 'last_lng' => 19.0700]);
         $this->action($sid, 'choose_station', ['lat' => 47.5100, 'lng' => 19.0700]);
         // The zone is recomputed for the NEW hider's spot B (not the old spot A).
-        $zone = $this->getJson("/api/sessions/{$sid}/state")->json('hiding_zone.center');
+        $zone = $this->getJson("/api/v1/sessions/{$sid}/state")->json('hiding_zone.center');
         $this->assertEqualsWithDelta(47.5100, $zone['lat'], 1e-6, 'round 2 zone is for the new hider');
         $this->assertEqualsWithDelta(19.0700, $zone['lng'], 1e-6);
         $this->action($sid, 'confirm_hidden')->assertJsonPath('state', 'seeking');
@@ -165,13 +165,13 @@ class FullGameplayE2eTest extends TestCase
         $this->action($sid, 'ask_question', ['question_id' => $radar->id, 'radius_m' => 5000]);
         Sanctum::actingAs($seeker); // Bo (hider) answers
         $this->action($sid, 'answer_question');
-        $questions = $this->getJson("/api/sessions/{$sid}/state")->json('questions');
+        $questions = $this->getJson("/api/v1/sessions/{$sid}/state")->json('questions');
         $this->assertCount(1, $questions, 'round 2 starts with no carried-over questions');
         $this->assertSame(1, $questions[0]['seq'], 'question numbering resets each round');
     }
 
     private function action(string $sid, string $type, array $payload = [])
     {
-        return $this->postJson("/api/sessions/{$sid}/actions", ['type' => $type, 'payload' => $payload]);
+        return $this->postJson("/api/v1/sessions/{$sid}/actions", ['type' => $type, 'payload' => $payload]);
     }
 }

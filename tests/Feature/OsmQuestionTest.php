@@ -27,18 +27,18 @@ class OsmQuestionTest extends TestCase
     {
         $host = User::factory()->create();
         Sanctum::actingAs($host);
-        $create = $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
+        $create = $this->postJson('/api/v1/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
         $sessionId = $create->json('id');
         $hostPlayerId = $create->json('players.0.id');
 
         $seeker = User::factory()->create();
         Sanctum::actingAs($seeker);
-        $seekerPlayerId = $this->postJson("/api/sessions/{$create->json('join_code')}/join", ['display_name' => 'Seeker'])->json('player.id');
+        $seekerPlayerId = $this->postJson("/api/v1/sessions/{$create->json('join_code')}/join", ['display_name' => 'Seeker'])->json('player.id');
 
         Sanctum::actingAs($host);
-        $this->postJson("/api/sessions/{$sessionId}/start");
-        $this->postJson("/api/sessions/{$sessionId}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $hostPlayerId]]);
-        $this->postJson("/api/sessions/{$sessionId}/actions", ['type' => 'confirm_hidden']);
+        $this->postJson("/api/v1/sessions/{$sessionId}/start");
+        $this->postJson("/api/v1/sessions/{$sessionId}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $hostPlayerId]]);
+        $this->postJson("/api/v1/sessions/{$sessionId}/actions", ['type' => 'confirm_hidden']);
 
         return compact('sessionId', 'hostPlayerId', 'seekerPlayerId', 'host', 'seeker');
     }
@@ -67,12 +67,12 @@ class OsmQuestionTest extends TestCase
         ]);
 
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", [
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", [
             'type' => 'ask_question', 'payload' => ['question_id' => $question->id, 'feature' => 'museum'],
         ])->assertOk();
 
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question'])->assertOk();
     }
 
     public function test_matching_is_yes_when_nearest_feature_is_shared(): void
@@ -143,9 +143,9 @@ class OsmQuestionTest extends TestCase
             'title' => ['en' => 'Q'], 'prompt' => ['en' => 'Q'], 'reward_draw' => 3, 'reward_keep' => 1,
         ]);
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $question->id, 'feature' => 'museum']])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $question->id, 'feature' => 'museum']])->assertOk();
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question', 'payload' => ['answer' => 'manual']])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question', 'payload' => ['answer' => 'manual']])->assertOk();
 
         Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'QuestionAnswered' && ($e->payload['answer'] ?? null) === 'manual');
     }
@@ -162,9 +162,9 @@ class OsmQuestionTest extends TestCase
         ]);
 
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'feature' => 'museum', 'radius_m' => 5000]])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'feature' => 'museum', 'radius_m' => 5000]])->assertOk();
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question'])->assertOk();
 
         Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'QuestionAnswered'
             && ($e->payload['answer'] ?? null) === 'in_range' && ($e->payload['feature_id'] ?? null) === 'm/1');
@@ -182,9 +182,9 @@ class OsmQuestionTest extends TestCase
         ]);
 
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'feature' => 'museum', 'radius_m' => 5000]])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'feature' => 'museum', 'radius_m' => 5000]])->assertOk();
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question'])->assertOk();
 
         Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'QuestionAnswered' && ($e->payload['answer'] ?? null) === 'out_of_range');
     }
@@ -203,7 +203,7 @@ class OsmQuestionTest extends TestCase
 
         // Asking does NOT compute truth inline (Overpass is slow) — it queues a job.
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'feature' => 'museum']])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'feature' => 'museum']])->assertOk();
 
         Queue::assertPushed(ComputeQuestionTruth::class);
         $this->assertNull(Session::find($ctx['sessionId'])->state_data['pending_question']['truth']);
@@ -227,15 +227,15 @@ class OsmQuestionTest extends TestCase
 
         // The seeker starts the thermometer (captures the far start position).
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'start_thermometer', 'payload' => ['question_id' => $q->id, 'distance_m' => 5000]])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'start_thermometer', 'payload' => ['question_id' => $q->id, 'distance_m' => 5000]])->assertOk();
 
         // Seeker travels toward the hider, then STOPS (captures the closer end position).
         Player::whereKey($ctx['seekerPlayerId'])->update(['last_lat' => 47.5100, 'last_lng' => 19.0600]);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'stop_thermometer'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'stop_thermometer'])->assertOk();
 
         // The hider answers — the stored start→end says the seeker got closer.
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question'])->assertOk();
 
         Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'QuestionAnswered' && ($e->payload['answer'] ?? null) === 'hotter');
     }

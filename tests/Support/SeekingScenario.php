@@ -23,18 +23,18 @@ trait SeekingScenario
     {
         $host = User::factory()->create();
         Sanctum::actingAs($host);
-        $create = $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
+        $create = $this->postJson('/api/v1/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
         $sessionId = $create->json('id');
         $hiderId = $create->json('players.0.id');
 
         $seeker = User::factory()->create();
         Sanctum::actingAs($seeker);
-        $seekerId = $this->postJson("/api/sessions/{$create->json('join_code')}/join", ['display_name' => 'Seeker'])->json('player.id');
+        $seekerId = $this->postJson("/api/v1/sessions/{$create->json('join_code')}/join", ['display_name' => 'Seeker'])->json('player.id');
 
         Sanctum::actingAs($host);
-        $this->postJson("/api/sessions/{$sessionId}/start");
-        $this->postJson("/api/sessions/{$sessionId}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $hiderId]]);
-        $this->postJson("/api/sessions/{$sessionId}/actions", ['type' => 'confirm_hidden']);
+        $this->postJson("/api/v1/sessions/{$sessionId}/start");
+        $this->postJson("/api/v1/sessions/{$sessionId}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $hiderId]]);
+        $this->postJson("/api/v1/sessions/{$sessionId}/actions", ['type' => 'confirm_hidden']);
 
         return compact('sessionId', 'hiderId', 'seekerId', 'host', 'seeker');
     }
@@ -66,17 +66,17 @@ trait SeekingScenario
         ]);
 
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $question->id] + $payload])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $question->id] + $payload])->assertOk();
 
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question', 'payload' => $payload])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question', 'payload' => $payload])->assertOk();
     }
 
     /** The most recent answered question's answer payload (as the seeker sees it). */
     protected function lastAnswer(array $ctx): ?array
     {
         Sanctum::actingAs($ctx['seeker']);
-        $questions = $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('questions');
+        $questions = $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('questions');
 
         return $questions ? end($questions)['answer'] : null;
     }
@@ -93,8 +93,8 @@ trait SeekingScenario
     protected function catchHider(array $ctx): void
     {
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'claim_found'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'claim_found'])->assertOk();
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'confirm_caught'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'confirm_caught'])->assertOk();
     }
 }

@@ -32,7 +32,7 @@ class AbandonedGamesTest extends TestCase
     private function hostSession(): array
     {
         Sanctum::actingAs(User::factory()->create());
-        $create = $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
+        $create = $this->postJson('/api/v1/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
 
         return [$create->json('id'), $create->json('players.0.id')];
     }
@@ -44,7 +44,7 @@ class AbandonedGamesTest extends TestCase
         [$id] = $this->hostSession();
         $this->assertSame(SessionStatus::Open, Session::find($id)->status);
 
-        $this->postJson("/api/sessions/{$id}/start")->assertOk();
+        $this->postJson("/api/v1/sessions/{$id}/start")->assertOk();
 
         $this->assertSame(SessionStatus::Running, Session::find($id)->status);
     }
@@ -52,9 +52,9 @@ class AbandonedGamesTest extends TestCase
     public function test_host_can_end_the_game(): void
     {
         [$id] = $this->hostSession();
-        $this->postJson("/api/sessions/{$id}/start");
+        $this->postJson("/api/v1/sessions/{$id}/start");
 
-        $this->postJson("/api/sessions/{$id}/actions", ['type' => 'end_game'])
+        $this->postJson("/api/v1/sessions/{$id}/actions", ['type' => 'end_game'])
             ->assertOk()->assertJsonPath('state', 'finished')->assertJsonPath('status', 'finished');
 
         $this->assertNotNull(Session::find($id)->ended_at);
@@ -65,12 +65,12 @@ class AbandonedGamesTest extends TestCase
         [$id] = $this->hostSession();
         $this->assertNull(Session::find($id)->last_activity_at);
 
-        $this->postJson("/api/sessions/{$id}/start");
+        $this->postJson("/api/v1/sessions/{$id}/start");
         $this->assertNotNull(Session::find($id)->last_activity_at);
 
         $before = Session::find($id)->last_activity_at;
         $this->travel(1)->minute();
-        $this->postJson("/api/sessions/{$id}/location", ['lat' => 47.5, 'lng' => 19.0])->assertNoContent();
+        $this->postJson("/api/v1/sessions/{$id}/location", ['lat' => 47.5, 'lng' => 19.0])->assertNoContent();
         $this->assertTrue(Session::find($id)->last_activity_at->gt($before));
     }
 

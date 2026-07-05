@@ -45,7 +45,7 @@ class AnswerAmendTest extends TestCase
             'title' => ['en' => 'Matching'], 'prompt' => ['en' => 'Q'], 'parameters' => ['feature' => 'museum'],
         ]);
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => [
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => [
             'question_id' => $question->id, 'feature' => 'museum', 'ref_lat' => 47.5105, 'ref_lng' => 19.0505, 'ref_name' => 'Seeker Museum',
         ]])->assertOk();
 
@@ -55,11 +55,11 @@ class AnswerAmendTest extends TestCase
 
         // The hider sees their own nearest museum...
         Sanctum::actingAs($ctx['host']);
-        $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->assertJsonPath('pending_question.hider_nearest.name', 'Hider Museum');
+        $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->assertJsonPath('pending_question.hider_nearest.name', 'Hider Museum');
 
         // ...but a seeker never does.
         Sanctum::actingAs($ctx['seeker']);
-        $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->assertJsonPath('pending_question.hider_nearest', null);
+        $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->assertJsonPath('pending_question.hider_nearest', null);
     }
 
     public function test_a_featureless_measuring_question_skips_the_truth_job_and_is_answered_manually(): void
@@ -74,14 +74,14 @@ class AnswerAmendTest extends TestCase
             'title' => ['en' => 'Measuring — International Border'], 'prompt' => ['en' => 'Q'], 'parameters' => null,
         ]);
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $question->id]])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $question->id]])->assertOk();
 
         // No truth job is queued (it would only fail + retry forever).
         Queue::assertNotPushed(ComputeQuestionTruth::class);
 
         // The hider answers it themselves — no error, recorded as manual.
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question', 'payload' => ['answer' => 'closer']])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question', 'payload' => ['answer' => 'closer']])->assertOk();
         $this->assertSame('closer', $this->lastAnswer($ctx)['answer']);
     }
 
@@ -94,7 +94,7 @@ class AnswerAmendTest extends TestCase
         $this->assertSame('no', $this->lastAnswer($ctx)['answer']);
 
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'amend_answer', 'payload' => ['answer' => 'yes']])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'amend_answer', 'payload' => ['answer' => 'yes']])->assertOk();
 
         $this->assertSame('yes', $this->lastAnswer($ctx)['answer']);
     }
@@ -111,7 +111,7 @@ class AnswerAmendTest extends TestCase
         $this->askAndAnswer($ctx, 'matching', ['ref_lat' => 47.50, 'ref_lng' => 19.04, 'ref_name' => 'A'], ['feature' => 'museum']);
 
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'amend_answer', 'payload' => ['answer' => 'no']])->assertStatus(422);
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'amend_answer', 'payload' => ['answer' => 'no']])->assertStatus(422);
     }
 
     public function test_amend_window_closes_after_the_configured_time(): void
@@ -128,6 +128,6 @@ class AnswerAmendTest extends TestCase
         $session->update(['state_data' => $sd]);
 
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'amend_answer', 'payload' => ['answer' => 'yes']])->assertStatus(422);
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'amend_answer', 'payload' => ['answer' => 'yes']])->assertStatus(422);
     }
 }

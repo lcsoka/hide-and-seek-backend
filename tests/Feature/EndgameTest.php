@@ -36,11 +36,11 @@ class EndgameTest extends TestCase
         $this->patchState($ctx['sessionId'], ['hider_position' => ['lat' => 47.50, 'lng' => 19.04]]);
         Player::whereKey($ctx['hiderId'])->update(['last_lat' => 47.80, 'last_lng' => 19.60]);
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'declare_endgame'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'declare_endgame'])->assertOk();
 
         // Standing on the live drift B, the seeker is NOT close enough to claim the catch.
         Player::whereKey($ctx['seekerId'])->update(['last_lat' => 47.80, 'last_lng' => 19.60]);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'claim_found'])->assertStatus(422);
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'claim_found'])->assertStatus(422);
 
         // Standing on the committed spot A, they can claim — and the round ends once the hider confirms.
         Player::whereKey($ctx['seekerId'])->update(['last_lat' => 47.50, 'last_lng' => 19.04]);
@@ -58,12 +58,12 @@ class EndgameTest extends TestCase
 
         // The seeker claims the catch — the round stays live until the hider acts.
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'claim_found'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'claim_found'])->assertOk();
         $this->assertSame('seeking', Session::find($ctx['sessionId'])->state);
 
         // The hider disputes it — claim cleared, round continues.
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'dispute_found'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'dispute_found'])->assertOk();
         $session = Session::find($ctx['sessionId']);
         $this->assertSame('seeking', $session->state);
         $this->assertArrayNotHasKey('found_claim', $session->state_data);
@@ -79,10 +79,10 @@ class EndgameTest extends TestCase
         Player::whereKey($ctx['seekerId'])->update(['last_lat' => 47.50, 'last_lng' => 19.04]);
 
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'declare_endgame'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'declare_endgame'])->assertOk();
         $this->catchHider($ctx);
 
-        $state = $this->getJson("/api/sessions/{$ctx['sessionId']}/state");
+        $state = $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state");
         $state->assertJsonPath('state', 'round_end');
         $state->assertJsonPath('last_round.found_by', $ctx['seekerId']);
         $state->assertJsonPath('last_round.hider_id', $ctx['hiderId']);
@@ -103,10 +103,10 @@ class EndgameTest extends TestCase
         Player::whereKey($ctx['seekerId'])->update(['last_lat' => 47.50, 'last_lng' => 19.04]);
 
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'declare_endgame'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'declare_endgame'])->assertOk();
         $this->catchHider($ctx);
 
-        $state = $this->getJson("/api/sessions/{$ctx['sessionId']}/state");
+        $state = $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state");
         // 120s survived + 600s banked bonus.
         $state->assertJsonPath('standings.0.player_id', $ctx['hiderId']);
         $this->assertGreaterThanOrEqual(720, $state->json('standings.0.total_hiding_time_s'));
@@ -120,7 +120,7 @@ class EndgameTest extends TestCase
 
         // The seeker reports a position inside the zone → the dwell clock + timer start.
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/location", ['lat' => 47.501, 'lng' => 19.041])->assertNoContent();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/location", ['lat' => 47.501, 'lng' => 19.041])->assertNoContent();
         $session = Session::find($ctx['sessionId']);
         $this->assertNotNull($session->state_data['endgame_dwell'] ?? null);
 
@@ -135,11 +135,11 @@ class EndgameTest extends TestCase
         $this->patchState($ctx['sessionId'], ['hiding_zone' => ['center' => ['lat' => 47.50, 'lng' => 19.04], 'radius_m' => 400, 'rule' => 'circle']]);
 
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/location", ['lat' => 47.501, 'lng' => 19.041])->assertNoContent();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/location", ['lat' => 47.501, 'lng' => 19.041])->assertNoContent();
         $guard = Session::find($ctx['sessionId'])->state_data['endgame_dwell'];
 
         // Leaving before the dwell elapses cancels it.
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/location", ['lat' => 47.60, 'lng' => 19.30])->assertNoContent();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/location", ['lat' => 47.60, 'lng' => 19.30])->assertNoContent();
         $this->assertNull(Session::find($ctx['sessionId'])->state_data['endgame_dwell'] ?? null);
 
         // The now-stale timer fires → no transition.
@@ -155,14 +155,14 @@ class EndgameTest extends TestCase
 
         // Playing 'move' drops the committed spot and opens a re-confirm.
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'play_powerup', 'payload' => ['card_uid' => 'mv1']])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'play_powerup', 'payload' => ['card_uid' => 'mv1']])->assertOk();
         $session = Session::find($ctx['sessionId']);
         $this->assertTrue($session->state_data['relocating']);
         $this->assertArrayNotHasKey('hider_position', $session->state_data);
 
         // The hider moves to B and re-confirms → new snapshot, still seeking.
         Player::whereKey($ctx['hiderId'])->update(['last_lat' => 47.70, 'last_lng' => 19.40]);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'confirm_hidden'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'confirm_hidden'])->assertOk();
         $session = Session::find($ctx['sessionId']);
         $this->assertSame('seeking', $session->state);
         $this->assertFalse($session->state_data['relocating'] ?? false);

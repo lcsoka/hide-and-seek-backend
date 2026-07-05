@@ -22,18 +22,18 @@ class GeoQuestionTest extends TestCase
     {
         $host = User::factory()->create();
         Sanctum::actingAs($host);
-        $create = $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
+        $create = $this->postJson('/api/v1/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
         $sessionId = $create->json('id');
         $hostPlayerId = $create->json('players.0.id');
 
         $seeker = User::factory()->create();
         Sanctum::actingAs($seeker);
-        $seekerPlayerId = $this->postJson("/api/sessions/{$create->json('join_code')}/join", ['display_name' => 'Seeker'])->json('player.id');
+        $seekerPlayerId = $this->postJson("/api/v1/sessions/{$create->json('join_code')}/join", ['display_name' => 'Seeker'])->json('player.id');
 
         Sanctum::actingAs($host);
-        $this->postJson("/api/sessions/{$sessionId}/start");
-        $this->postJson("/api/sessions/{$sessionId}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $hostPlayerId]]);
-        $this->postJson("/api/sessions/{$sessionId}/actions", ['type' => 'confirm_hidden']);
+        $this->postJson("/api/v1/sessions/{$sessionId}/start");
+        $this->postJson("/api/v1/sessions/{$sessionId}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $hostPlayerId]]);
+        $this->postJson("/api/v1/sessions/{$sessionId}/actions", ['type' => 'confirm_hidden']);
 
         return compact('sessionId', 'hostPlayerId', 'seekerPlayerId', 'host', 'seeker');
     }
@@ -57,7 +57,7 @@ class GeoQuestionTest extends TestCase
     {
         Sanctum::actingAs($ctx['seeker']);
 
-        return $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", [
+        return $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", [
             'type' => 'ask_question', 'payload' => ['question_id' => $questionId, 'radius_m' => $radiusM],
         ]);
     }
@@ -66,7 +66,7 @@ class GeoQuestionTest extends TestCase
     {
         Sanctum::actingAs($ctx['host']); // host is the hider
 
-        return $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", [
+        return $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", [
             'type' => 'answer_question', 'payload' => $value === null ? [] : ['answer' => $value],
         ]);
     }
@@ -136,7 +136,7 @@ class GeoQuestionTest extends TestCase
         ]);
 
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $photo->id]])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $photo->id]])->assertOk();
 
         $this->answer($ctx, 'a photo of a tree')->assertOk();
 

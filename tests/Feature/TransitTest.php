@@ -26,7 +26,7 @@ class TransitTest extends TestCase
     {
         Sanctum::actingAs($ctx['seeker']);
 
-        return $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json();
+        return $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json();
     }
 
     public function test_board_then_alight_records_a_journey_leg(): void
@@ -35,7 +35,7 @@ class TransitTest extends TestCase
         Player::whereKey($ctx['seekerId'])->update(['last_lat' => 47.4979, 'last_lng' => 19.0402]);
 
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'board_transit'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'board_transit'])->assertOk();
 
         $boarded = $this->state($ctx);
         $this->assertTrue($boarded['transit']['on_transit']);
@@ -44,7 +44,7 @@ class TransitTest extends TestCase
 
         // Travel, then alight — the leg is logged with a distance + duration.
         Player::whereKey($ctx['seekerId'])->update(['last_lat' => 47.5200, 'last_lng' => 19.0700]);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'alight_transit'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'alight_transit'])->assertOk();
 
         $after = $this->state($ctx);
         $this->assertFalse($after['transit']['on_transit']);
@@ -61,12 +61,12 @@ class TransitTest extends TestCase
         Player::whereKey($ctx['seekerId'])->update(['last_lat' => 47.4979, 'last_lng' => 19.0402]);
 
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'board_transit'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'board_transit'])->assertOk();
 
         // On transit: the thermometer is neither offered nor allowed.
         $onTransit = $this->state($ctx);
         $this->assertNotContains('start_thermometer', $onTransit['available_actions']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'start_thermometer', 'payload' => ['distance_m' => 800]])
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'start_thermometer', 'payload' => ['distance_m' => 800]])
             ->assertStatus(422);
     }
 
@@ -76,11 +76,11 @@ class TransitTest extends TestCase
         Player::whereKey($ctx['seekerId'])->update(['last_lat' => 47.4979, 'last_lng' => 19.0402]);
 
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'start_thermometer', 'payload' => ['distance_m' => 800]])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'start_thermometer', 'payload' => ['distance_m' => 800]])->assertOk();
 
         $running = $this->state($ctx);
         $this->assertNotContains('board_transit', $running['available_actions']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'board_transit'])->assertStatus(422);
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'board_transit'])->assertStatus(422);
     }
 
     public function test_transit_state_resets_between_rounds(): void
@@ -88,16 +88,16 @@ class TransitTest extends TestCase
         $ctx = $this->startSeeking();
         Player::whereKey($ctx['seekerId'])->update(['last_lat' => 47.4979, 'last_lng' => 19.0402]);
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'board_transit'])->assertOk();
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'alight_transit'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'board_transit'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'alight_transit'])->assertOk();
 
         // Force a multi-round game and advance the round (endgame → hider surrenders → next round).
         $s = Session::find($ctx['sessionId']);
         $s->update(['config' => array_merge($s->config, ['rounds' => 2])]);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'declare_endgame'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'declare_endgame'])->assertOk();
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'surrender'])->assertOk();
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'advance_round'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'surrender'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'advance_round'])->assertOk();
 
         $this->assertArrayNotHasKey('transit_log', Session::find($ctx['sessionId'])->state_data);
     }

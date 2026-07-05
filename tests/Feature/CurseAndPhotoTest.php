@@ -23,18 +23,18 @@ class CurseAndPhotoTest extends TestCase
     {
         $host = User::factory()->create();
         Sanctum::actingAs($host);
-        $create = $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
+        $create = $this->postJson('/api/v1/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
         $sessionId = $create->json('id');
         $hiderId = $create->json('players.0.id');
 
         $seeker = User::factory()->create();
         Sanctum::actingAs($seeker);
-        $this->postJson("/api/sessions/{$create->json('join_code')}/join", ['display_name' => 'Seeker']);
+        $this->postJson("/api/v1/sessions/{$create->json('join_code')}/join", ['display_name' => 'Seeker']);
 
         Sanctum::actingAs($host);
-        $this->postJson("/api/sessions/{$sessionId}/start");
-        $this->postJson("/api/sessions/{$sessionId}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $hiderId]]);
-        $this->postJson("/api/sessions/{$sessionId}/actions", ['type' => 'confirm_hidden']);
+        $this->postJson("/api/v1/sessions/{$sessionId}/start");
+        $this->postJson("/api/v1/sessions/{$sessionId}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $hiderId]]);
+        $this->postJson("/api/v1/sessions/{$sessionId}/actions", ['type' => 'confirm_hidden']);
 
         return compact('sessionId', 'hiderId', 'host', 'seeker');
     }
@@ -57,12 +57,12 @@ class CurseAndPhotoTest extends TestCase
         // Pre-computed truth → shown to the hider.
         $session->update(['state_data' => array_merge($session->state_data, ['pending_question' => $base + ['truth' => ['answer' => 'yes']]])]);
         Sanctum::actingAs($ctx['host']);
-        $this->assertSame('yes', $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('pending_question.preview_answer.answer'));
+        $this->assertSame('yes', $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('pending_question.preview_answer.answer'));
 
         // No truth yet → null. The /state read path must never evaluate it inline
         // (that previously hit Overpass synchronously and timed the request out).
         $session->update(['state_data' => array_merge($session->state_data, ['pending_question' => $base + ['truth' => null]])]);
-        $this->assertNull($this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('pending_question.preview_answer'));
+        $this->assertNull($this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('pending_question.preview_answer'));
     }
 
     public function test_seeker_movement_broadcasts_but_the_hiders_does_not(): void
@@ -72,12 +72,12 @@ class CurseAndPhotoTest extends TestCase
 
         // A seeker moving is broadcast (others, incl. the hider, see it).
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/location", ['lat' => 47.50, 'lng' => 19.05])->assertNoContent();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/location", ['lat' => 47.50, 'lng' => 19.05])->assertNoContent();
         Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'PlayerMoved');
 
         // The hider's position is concealed — never broadcast.
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/location", ['lat' => 47.49, 'lng' => 19.04])->assertNoContent();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/location", ['lat' => 47.49, 'lng' => 19.04])->assertNoContent();
         Event::assertNotDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'PlayerMoved' && ($e->payload['player_id'] ?? null) === $ctx['hiderId']);
     }
 
@@ -88,7 +88,7 @@ class CurseAndPhotoTest extends TestCase
         $ctx = $this->setUpSeeking();
 
         Sanctum::actingAs($ctx['seeker']);
-        $res = $this->post("/api/sessions/{$ctx['sessionId']}/media", ['image' => UploadedFile::fake()->image('clue.jpg')]);
+        $res = $this->post("/api/v1/sessions/{$ctx['sessionId']}/media", ['image' => UploadedFile::fake()->image('clue.jpg')]);
 
         $res->assertOk()->assertJsonStructure(['path', 'url']);
         Storage::disk('public')->assertExists($res->json('path'));
@@ -104,15 +104,15 @@ class CurseAndPhotoTest extends TestCase
         ]);
 
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $question->id]])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $question->id]])->assertOk();
 
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", [
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", [
             'type' => 'answer_question', 'payload' => ['photo_url' => 'http://localhost/storage/media/x/photo.jpg'],
         ])->assertOk();
 
         Sanctum::actingAs($ctx['seeker']);
-        $answer = $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('questions.0.answer');
+        $answer = $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('questions.0.answer');
         $this->assertSame('photo', $answer['answer']);
         $this->assertSame('http://localhost/storage/media/x/photo.jpg', $answer['photo_url']);
     }
@@ -129,21 +129,21 @@ class CurseAndPhotoTest extends TestCase
         // Put the curse card in the hider's hand, then play it.
         $this->giveHiderCard($ctx['sessionId'], ['uid' => 'h1', 'type' => 'curse', 'curse_id' => $curse->id]);
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'play_curse', 'payload' => ['card_uid' => 'h1']])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'play_curse', 'payload' => ['card_uid' => 'h1']])->assertOk();
 
         // The seeker now sees an active proof-curse and may clear it.
         Sanctum::actingAs($ctx['seeker']);
-        $state = $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json();
+        $state = $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json();
         $this->assertContains('complete_curse', $state['available_actions']);
         $this->assertTrue($state['curses'][0]['requires_proof']);
         $this->assertSame('active', $state['curses'][0]['status']);
         $uid = $state['curses'][0]['uid'];
 
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", [
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", [
             'type' => 'complete_curse', 'payload' => ['curse_uid' => $uid, 'proof_url' => 'http://localhost/storage/media/x/proof.jpg'],
         ])->assertOk();
 
-        $curses = $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('curses');
+        $curses = $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('curses');
         $this->assertSame('completed', $curses[0]['status']);
         $this->assertSame('http://localhost/storage/media/x/proof.jpg', $curses[0]['proof_url']);
     }
@@ -156,7 +156,7 @@ class CurseAndPhotoTest extends TestCase
         $this->giveHiderCard($ctx['sessionId'], ['uid' => 't2', 'type' => 'time_bonus', 'minutes' => 5]);
 
         Sanctum::actingAs($ctx['host']);
-        $this->assertSame(900, $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('time_bonus_s'));
+        $this->assertSame(900, $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('time_bonus_s'));
     }
 
     public function test_veto_powerup_discards_the_pending_question(): void
@@ -170,14 +170,14 @@ class CurseAndPhotoTest extends TestCase
         $this->giveHiderCard($ctx['sessionId'], ['uid' => 'v1', 'type' => 'powerup', 'power' => 'veto']);
 
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $question->id, 'radius_m' => 5000]])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $question->id, 'radius_m' => 5000]])->assertOk();
 
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'play_powerup', 'payload' => ['card_uid' => 'v1']])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'play_powerup', 'payload' => ['card_uid' => 'v1']])->assertOk();
 
         // The question is gone (no answer recorded) and the seeker can ask again.
         Sanctum::actingAs($ctx['seeker']);
-        $state = $this->getJson("/api/sessions/{$ctx['sessionId']}/state");
+        $state = $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state");
         $this->assertNull($state->json('pending_question'));
         $this->assertCount(0, $state->json('questions'));
         $this->assertContains('ask_question', $state->json('available_actions'));
@@ -194,18 +194,18 @@ class CurseAndPhotoTest extends TestCase
         $this->giveHiderCard($ctx['sessionId'], ['uid' => 'h1', 'type' => 'curse', 'curse_id' => $curse->id]);
 
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'play_curse', 'payload' => ['card_uid' => 'h1']])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'play_curse', 'payload' => ['card_uid' => 'h1']])->assertOk();
 
         // The seeker sees the dice spec and may roll.
         Sanctum::actingAs($ctx['seeker']);
-        $state = $this->getJson("/api/sessions/{$ctx['sessionId']}/state");
+        $state = $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state");
         $this->assertContains('roll_dice', $state->json('available_actions'));
         $uid = $state->json('curses.0.uid');
         $this->assertSame(2, $state->json('curses.0.dice.count'));
 
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'roll_dice', 'payload' => ['curse_uid' => $uid]])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'roll_dice', 'payload' => ['curse_uid' => $uid]])->assertOk();
 
-        $roll = $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('curses.0.last_roll');
+        $roll = $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('curses.0.last_roll');
         $this->assertCount(2, $roll['values']);
         $this->assertSame(array_sum($roll['values']), $roll['sum']);
         $this->assertIsBool($roll['success']);
@@ -222,14 +222,14 @@ class CurseAndPhotoTest extends TestCase
 
         $this->giveHiderCard($ctx['sessionId'], ['uid' => 'h1', 'type' => 'curse', 'curse_id' => $curse->id]);
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'play_curse', 'payload' => ['card_uid' => 'h1']])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'play_curse', 'payload' => ['card_uid' => 'h1']])->assertOk();
 
-        $played = $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('curses.0');
+        $played = $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('curses.0');
         $this->assertSame('active', $played['status']);
         $this->assertNotNull($played['expires_at']);
         $this->assertFalse($played['requires_proof']);
         // The seeker has nothing to upload for a purely-timed curse.
         Sanctum::actingAs($ctx['seeker']);
-        $this->assertNotContains('complete_curse', $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('available_actions'));
+        $this->assertNotContains('complete_curse', $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('available_actions'));
     }
 }

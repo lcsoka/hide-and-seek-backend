@@ -28,14 +28,14 @@ class CardOutcomesTest extends TestCase
     {
         $this->giveHiderCard($ctx['sessionId'], $card);
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => $type, 'payload' => ['card_uid' => $card['uid']] + $extra])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => $type, 'payload' => ['card_uid' => $card['uid']] + $extra])->assertOk();
     }
 
     private function state(array $ctx): array
     {
         Sanctum::actingAs($ctx['host']);
 
-        return $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json();
+        return $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json();
     }
 
     public function test_every_official_curse_plays_and_reflects_its_parameters(): void
@@ -78,7 +78,7 @@ class CardOutcomesTest extends TestCase
         $this->place($ctx, [47.50, 19.04], [47.55, 19.10]);
         $q = Question::create(['key' => 'radar.v', 'category' => 'radar', 'title' => ['en' => 'R'], 'prompt' => ['en' => '?'], 'reward_draw' => 1, 'reward_keep' => 1]);
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'radius_m' => 5000]])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'radius_m' => 5000]])->assertOk();
 
         Event::fake([GameEventBroadcast::class]);
         $this->play($ctx, ['uid' => 'v', 'type' => 'powerup', 'power' => 'veto'], 'play_powerup');
@@ -104,9 +104,9 @@ class CardOutcomesTest extends TestCase
         // A radar question rewards 1 draw normally; with the chalice it draws 2.
         $q = Question::create(['key' => 'radar.c', 'category' => 'radar', 'title' => ['en' => 'R'], 'prompt' => ['en' => '?'], 'reward_draw' => 1, 'reward_keep' => 1]);
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'radius_m' => 5000]])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'radius_m' => 5000]])->assertOk();
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question', 'payload' => ['answer' => 'yes']])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question', 'payload' => ['answer' => 'yes']])->assertOk();
 
         $this->assertCount(2, $this->state($ctx)['pending_draw']['cards']);
     }

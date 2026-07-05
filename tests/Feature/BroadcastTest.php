@@ -19,13 +19,13 @@ class BroadcastTest extends TestCase
 
         $host = User::factory()->create();
         Sanctum::actingAs($host);
-        $create = $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
+        $create = $this->postJson('/api/v1/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
         $sessionId = $create->json('id');
         $hostPlayerId = $create->json('players.0.id');
 
-        $this->postJson("/api/sessions/{$sessionId}/start");
-        $this->postJson("/api/sessions/{$sessionId}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $hostPlayerId]]);
-        $this->postJson("/api/sessions/{$sessionId}/actions", ['type' => 'confirm_hidden']);
+        $this->postJson("/api/v1/sessions/{$sessionId}/start");
+        $this->postJson("/api/v1/sessions/{$sessionId}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $hostPlayerId]]);
+        $this->postJson("/api/v1/sessions/{$sessionId}/actions", ['type' => 'confirm_hidden']);
 
         Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'RoundStarted' && $e->sessionId === $sessionId);
         Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'HidingStarted');
@@ -38,10 +38,10 @@ class BroadcastTest extends TestCase
 
         $host = User::factory()->create();
         Sanctum::actingAs($host);
-        $code = $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'small'])->json('join_code');
+        $code = $this->postJson('/api/v1/sessions', ['city' => 'budapest', 'game_size' => 'small'])->json('join_code');
 
         Sanctum::actingAs(User::factory()->create());
-        $playerId = $this->postJson("/api/sessions/{$code}/join", ['display_name' => 'Bo'])->json('player.id');
+        $playerId = $this->postJson("/api/v1/sessions/{$code}/join", ['display_name' => 'Bo'])->json('player.id');
 
         Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'PlayerJoined' && ($e->payload['player_id'] ?? null) === $playerId);
     }
@@ -57,7 +57,7 @@ class BroadcastTest extends TestCase
 
     public function test_broadcasting_auth_requires_authentication(): void
     {
-        $this->postJson('/api/broadcasting/auth')->assertUnauthorized();
+        $this->postJson('/api/v1/broadcasting/auth')->assertUnauthorized();
     }
 
     public function test_player_scoped_events_target_the_private_player_channel(): void
@@ -66,13 +66,13 @@ class BroadcastTest extends TestCase
 
         $host = User::factory()->create();
         Sanctum::actingAs($host);
-        $create = $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
+        $create = $this->postJson('/api/v1/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
         $sessionId = $create->json('id');
         $hostPlayerId = $create->json('players.0.id');
 
-        $this->postJson("/api/sessions/{$sessionId}/start");
-        $this->postJson("/api/sessions/{$sessionId}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $hostPlayerId]]);
-        $this->postJson("/api/sessions/{$sessionId}/actions", ['type' => 'choose_station', 'payload' => ['lat' => 47.4979, 'lng' => 19.0402]]);
+        $this->postJson("/api/v1/sessions/{$sessionId}/start");
+        $this->postJson("/api/v1/sessions/{$sessionId}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $hostPlayerId]]);
+        $this->postJson("/api/v1/sessions/{$sessionId}/actions", ['type' => 'choose_station', 'payload' => ['lat' => 47.4979, 'lng' => 19.0402]]);
 
         // The hider's zone goes only to the hider's private channel...
         Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'HidingZoneChosen'

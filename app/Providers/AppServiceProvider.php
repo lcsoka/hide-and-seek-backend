@@ -28,8 +28,8 @@ class AppServiceProvider extends ServiceProvider
         // The API returns resources directly (no "data" envelope), matching openapi.yaml.
         JsonResource::withoutWrapping();
 
-        // Token-authenticated channel auth at POST /api/broadcasting/auth.
-        Broadcast::routes(['middleware' => ['auth:sanctum'], 'prefix' => 'api']);
+        // Token-authenticated channel auth at POST /api/v1/broadcasting/auth (versioned with the REST API).
+        Broadcast::routes(['middleware' => ['auth:sanctum'], 'prefix' => 'api/v1']);
         require base_path('routes/channels.php');
 
         // Password-reset links point at the SPA's reset page (not a backend web route).

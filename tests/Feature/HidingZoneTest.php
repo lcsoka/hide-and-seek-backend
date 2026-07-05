@@ -20,7 +20,7 @@ class HidingZoneTest extends TestCase
     {
         $host = User::factory()->create();
         Sanctum::actingAs($host);
-        $create = $this->postJson('/api/sessions', [
+        $create = $this->postJson('/api/v1/sessions', [
             'city' => 'budapest', 'game_size' => 'small',
             'config' => ['rounds' => 1, 'hiding_zone_rule' => $rule],
         ]);
@@ -29,11 +29,11 @@ class HidingZoneTest extends TestCase
 
         $seeker = User::factory()->create();
         Sanctum::actingAs($seeker);
-        $seekerPlayerId = $this->postJson("/api/sessions/{$create->json('join_code')}/join", ['display_name' => 'Seeker'])->json('player.id');
+        $seekerPlayerId = $this->postJson("/api/v1/sessions/{$create->json('join_code')}/join", ['display_name' => 'Seeker'])->json('player.id');
 
         Sanctum::actingAs($host);
-        $this->postJson("/api/sessions/{$sessionId}/start");
-        $this->postJson("/api/sessions/{$sessionId}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $hostPlayerId]]);
+        $this->postJson("/api/v1/sessions/{$sessionId}/start");
+        $this->postJson("/api/v1/sessions/{$sessionId}/actions", ['type' => 'assign_hider', 'payload' => ['player_id' => $hostPlayerId]]);
 
         return compact('sessionId', 'hostPlayerId', 'seekerPlayerId', 'host', 'seeker');
     }
@@ -52,7 +52,7 @@ class HidingZoneTest extends TestCase
     {
         Sanctum::actingAs($ctx['host']);
 
-        return $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'choose_station', 'payload' => ['lat' => $lat, 'lng' => $lng]]);
+        return $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'choose_station', 'payload' => ['lat' => $lat, 'lng' => $lng]]);
     }
 
     private function setHider(array $ctx, float $lat, float $lng): void
@@ -64,7 +64,7 @@ class HidingZoneTest extends TestCase
     {
         Sanctum::actingAs($ctx['host']);
 
-        return $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'confirm_hidden']);
+        return $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'confirm_hidden']);
     }
 
     public function test_circle_zone_allows_confirm_inside(): void
@@ -118,11 +118,11 @@ class HidingZoneTest extends TestCase
         $this->chooseAt($ctx, 47.4979, 19.0402)->assertOk();
 
         Sanctum::actingAs($ctx['host']);
-        $this->getJson("/api/sessions/{$ctx['sessionId']}/state")
+        $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")
             ->assertOk()->assertJsonPath('hiding_zone.center.lat', 47.4979);
 
         Sanctum::actingAs($ctx['seeker']);
-        $this->getJson("/api/sessions/{$ctx['sessionId']}/state")
+        $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")
             ->assertOk()->assertJsonPath('hiding_zone', null);
     }
 }

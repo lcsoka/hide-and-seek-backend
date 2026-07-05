@@ -21,7 +21,7 @@ class AuthTest extends TestCase
     /** @return array{0: string, 1: int} [plainTextToken, userId] */
     private function guest(string $name = 'Guest'): array
     {
-        $res = $this->postJson('/api/auth/guest', ['display_name' => $name])->assertCreated();
+        $res = $this->postJson('/api/v1/auth/guest', ['display_name' => $name])->assertCreated();
 
         return [$res->json('token'), $res->json('user_id')];
     }
@@ -34,7 +34,7 @@ class AuthTest extends TestCase
         $session = Session::create(['join_code' => strtoupper(Str::random(6)), 'game_mode' => 'hide_and_seek', 'state' => 'lobby', 'status' => 'open', 'config' => [], 'state_data' => []]);
         Player::create(['session_id' => $session->id, 'user_id' => $userId, 'display_name' => 'Alice']);
 
-        $this->withToken($token)->postJson('/api/auth/register', ['email' => 'Alice@Example.com', 'password' => 'password123'])
+        $this->withToken($token)->postJson('/api/v1/auth/register', ['email' => 'Alice@Example.com', 'password' => 'password123'])
             ->assertCreated()
             ->assertJsonPath('id', $userId)
             ->assertJsonPath('email', 'alice@example.com') // lowercased
@@ -44,35 +44,35 @@ class AuthTest extends TestCase
         $this->assertDatabaseHas('players', ['user_id' => $userId, 'session_id' => $session->id]);
 
         // The original token still authenticates the (now registered) user.
-        $this->withToken($token)->getJson('/api/auth/me')->assertOk()->assertJsonPath('email', 'alice@example.com');
+        $this->withToken($token)->getJson('/api/v1/auth/me')->assertOk()->assertJsonPath('email', 'alice@example.com');
     }
 
     public function test_register_rejects_an_already_registered_account(): void
     {
         [$token] = $this->guest();
-        $this->withToken($token)->postJson('/api/auth/register', ['email' => 'a@example.com', 'password' => 'password123'])->assertCreated();
+        $this->withToken($token)->postJson('/api/v1/auth/register', ['email' => 'a@example.com', 'password' => 'password123'])->assertCreated();
 
-        $this->withToken($token)->postJson('/api/auth/register', ['email' => 'b@example.com', 'password' => 'password123'])->assertStatus(409);
+        $this->withToken($token)->postJson('/api/v1/auth/register', ['email' => 'b@example.com', 'password' => 'password123'])->assertStatus(409);
     }
 
     public function test_register_rejects_a_duplicate_email(): void
     {
         [$t1] = $this->guest();
-        $this->withToken($t1)->postJson('/api/auth/register', ['email' => 'dup@example.com', 'password' => 'password123'])->assertCreated();
+        $this->withToken($t1)->postJson('/api/v1/auth/register', ['email' => 'dup@example.com', 'password' => 'password123'])->assertCreated();
 
         [$t2] = $this->guest();
-        $this->withToken($t2)->postJson('/api/auth/register', ['email' => 'dup@example.com', 'password' => 'password123'])->assertStatus(422);
+        $this->withToken($t2)->postJson('/api/v1/auth/register', ['email' => 'dup@example.com', 'password' => 'password123'])->assertStatus(422);
     }
 
     public function test_login_returns_a_token_for_valid_credentials(): void
     {
         [$token] = $this->guest();
-        $this->withToken($token)->postJson('/api/auth/register', ['email' => 'bob@example.com', 'password' => 'password123'])->assertCreated();
+        $this->withToken($token)->postJson('/api/v1/auth/register', ['email' => 'bob@example.com', 'password' => 'password123'])->assertCreated();
 
-        $this->postJson('/api/auth/login', ['email' => 'BOB@example.com', 'password' => 'password123'])
+        $this->postJson('/api/v1/auth/login', ['email' => 'BOB@example.com', 'password' => 'password123'])
             ->assertOk()->assertJsonPath('email', 'bob@example.com')->assertJsonStructure(['token']);
 
-        $this->postJson('/api/auth/login', ['email' => 'bob@example.com', 'password' => 'wrong'])->assertStatus(422);
+        $this->postJson('/api/v1/auth/login', ['email' => 'bob@example.com', 'password' => 'wrong'])->assertStatus(422);
     }
 
     public function test_forgot_password_emails_a_reset_link(): void
@@ -80,7 +80,7 @@ class AuthTest extends TestCase
         Notification::fake();
         $user = User::factory()->create();
 
-        $this->postJson('/api/auth/forgot-password', ['email' => $user->email])->assertOk();
+        $this->postJson('/api/v1/auth/forgot-password', ['email' => $user->email])->assertOk();
 
         Notification::assertSentTo($user, ResetPassword::class);
     }
@@ -89,7 +89,7 @@ class AuthTest extends TestCase
     {
         Notification::fake();
 
-        $this->postJson('/api/auth/forgot-password', ['email' => 'nobody@example.com'])->assertOk();
+        $this->postJson('/api/v1/auth/forgot-password', ['email' => 'nobody@example.com'])->assertOk();
 
         Notification::assertNothingSent();
     }
@@ -99,18 +99,18 @@ class AuthTest extends TestCase
         $user = User::factory()->create(['password' => 'oldpassword']);
         $token = Password::createToken($user);
 
-        $this->postJson('/api/auth/reset-password', ['token' => $token, 'email' => $user->email, 'password' => 'newpassword123'])
+        $this->postJson('/api/v1/auth/reset-password', ['token' => $token, 'email' => $user->email, 'password' => 'newpassword123'])
             ->assertOk();
 
-        $this->postJson('/api/auth/login', ['email' => $user->email, 'password' => 'newpassword123'])->assertOk();
-        $this->postJson('/api/auth/login', ['email' => $user->email, 'password' => 'oldpassword'])->assertStatus(422);
+        $this->postJson('/api/v1/auth/login', ['email' => $user->email, 'password' => 'newpassword123'])->assertOk();
+        $this->postJson('/api/v1/auth/login', ['email' => $user->email, 'password' => 'oldpassword'])->assertStatus(422);
     }
 
     public function test_reset_password_rejects_an_invalid_token(): void
     {
         $user = User::factory()->create();
 
-        $this->postJson('/api/auth/reset-password', ['token' => 'bogus-token', 'email' => $user->email, 'password' => 'newpassword123'])
+        $this->postJson('/api/v1/auth/reset-password', ['token' => 'bogus-token', 'email' => $user->email, 'password' => 'newpassword123'])
             ->assertStatus(422);
     }
 
@@ -119,9 +119,9 @@ class AuthTest extends TestCase
         Storage::fake('public');
         [$token] = $this->guest('Old Name');
 
-        $this->withToken($token)->patchJson('/api/profile', ['name' => 'New Name'])->assertOk()->assertJsonPath('name', 'New Name');
+        $this->withToken($token)->patchJson('/api/v1/profile', ['name' => 'New Name'])->assertOk()->assertJsonPath('name', 'New Name');
 
-        $res = $this->withToken($token)->post('/api/profile/avatar', ['image' => UploadedFile::fake()->image('me.jpg')])->assertOk();
+        $res = $this->withToken($token)->post('/api/v1/profile/avatar', ['image' => UploadedFile::fake()->image('me.jpg')])->assertOk();
         $this->assertNotNull($res->json('avatar'));
         $this->assertNotEmpty(Storage::disk('public')->allFiles('avatars'));
     }
@@ -129,10 +129,10 @@ class AuthTest extends TestCase
     public function test_logout_revokes_the_token(): void
     {
         [$token] = $this->guest();
-        $this->withToken($token)->getJson('/api/auth/me')->assertOk();
+        $this->withToken($token)->getJson('/api/v1/auth/me')->assertOk();
         $this->assertDatabaseCount('personal_access_tokens', 1);
 
-        $this->withToken($token)->postJson('/api/auth/logout')->assertOk();
+        $this->withToken($token)->postJson('/api/v1/auth/logout')->assertOk();
 
         // The token row is deleted, so the bearer token no longer authenticates anything.
         $this->assertDatabaseCount('personal_access_tokens', 0);

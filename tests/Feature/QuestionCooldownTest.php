@@ -26,18 +26,18 @@ class QuestionCooldownTest extends TestCase
 
         // First radar resolves fine and starts the cooldown.
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $radar()->id, 'radius_m' => 1000]])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $radar()->id, 'radius_m' => 1000]])->assertOk();
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question', 'payload' => ['answer' => 'no']])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'answer_question', 'payload' => ['answer' => 'no']])->assertOk();
 
         // The state now reports radar cooling down.
         Sanctum::actingAs($ctx['seeker']);
-        $cooldowns = $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('question_cooldowns');
+        $cooldowns = $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('question_cooldowns');
         $this->assertArrayHasKey('radar', $cooldowns);
         $this->assertGreaterThan(0, $cooldowns['radar']);
 
         // Re-asking radar is rejected while it cools.
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $radar()->id, 'radius_m' => 1000]])
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $radar()->id, 'radius_m' => 1000]])
             ->assertStatus(422);
     }
 
@@ -54,7 +54,7 @@ class QuestionCooldownTest extends TestCase
             'title' => ['en' => 'Matching'], 'prompt' => ['en' => 'Q'], 'reward_draw' => 1, 'reward_keep' => 1,
         ]);
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $matching->id, 'ref_lat' => 47.5, 'ref_lng' => 19.0]])
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $matching->id, 'ref_lat' => 47.5, 'ref_lng' => 19.0]])
             ->assertOk();
     }
 

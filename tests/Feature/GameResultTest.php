@@ -17,10 +17,10 @@ class GameResultTest extends TestCase
     {
         $host = User::factory()->create();
         Sanctum::actingAs($host);
-        $create = $this->postJson('/api/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
+        $create = $this->postJson('/api/v1/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
         $id = $create->json('id');
         $hostPid = $create->json('players.0.id');
-        $this->postJson("/api/sessions/{$id}/start");
+        $this->postJson("/api/v1/sessions/{$id}/start");
 
         // Bank some hiding time for the host so the recorded result is meaningful.
         $session = Session::find($id);
@@ -29,7 +29,7 @@ class GameResultTest extends TestCase
         $session->state_data = $data;
         $session->save();
 
-        $this->postJson("/api/sessions/{$id}/actions", ['type' => 'end_game'])->assertOk()->assertJsonPath('state', 'finished');
+        $this->postJson("/api/v1/sessions/{$id}/actions", ['type' => 'end_game'])->assertOk()->assertJsonPath('state', 'finished');
 
         $this->assertDatabaseHas('game_results', [
             'user_id' => $host->id,
@@ -60,7 +60,7 @@ class GameResultTest extends TestCase
         GameResult::create(['user_id' => User::factory()->create()->id, 'display_name' => 'Y', 'hide_time_s' => 999, 'won' => true, 'players_count' => 2, 'played_at' => now()]);
 
         Sanctum::actingAs($user);
-        $this->getJson('/api/profile/stats')->assertOk()
+        $this->getJson('/api/v1/profile/stats')->assertOk()
             ->assertJsonPath('games_played', 2)
             ->assertJsonPath('wins', 1)
             ->assertJsonPath('total_hide_time_s', 180)

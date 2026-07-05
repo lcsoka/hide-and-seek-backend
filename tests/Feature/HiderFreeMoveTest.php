@@ -42,7 +42,7 @@ class HiderFreeMoveTest extends TestCase
 
         // The hider walks to a new spot inside the zone → the committed spot moves with them.
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/location", ['lat' => 47.5015, 'lng' => 19.0385])->assertNoContent();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/location", ['lat' => 47.5015, 'lng' => 19.0385])->assertNoContent();
         $spot = $this->committedSpot($ctx['sessionId']);
         $this->assertEqualsWithDelta(47.5015, $spot['lat'], 1e-6);
         $this->assertEqualsWithDelta(19.0385, $spot['lng'], 1e-6);
@@ -54,9 +54,9 @@ class HiderFreeMoveTest extends TestCase
         $this->setZone($ctx['sessionId']);
 
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/location", ['lat' => 47.5015, 'lng' => 19.0385])->assertNoContent();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/location", ['lat' => 47.5015, 'lng' => 19.0385])->assertNoContent();
         // A fix well outside the 400m zone is ignored — the spot stays at the last in-zone point.
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/location", ['lat' => 47.70, 'lng' => 19.40])->assertNoContent();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/location", ['lat' => 47.70, 'lng' => 19.40])->assertNoContent();
         $spot = $this->committedSpot($ctx['sessionId']);
         $this->assertEqualsWithDelta(47.5015, $spot['lat'], 1e-6);
     }
@@ -68,19 +68,19 @@ class HiderFreeMoveTest extends TestCase
 
         // Roam to a spot, then a seeker triggers the endgame.
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/location", ['lat' => 47.5015, 'lng' => 19.0385])->assertNoContent();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/location", ['lat' => 47.5015, 'lng' => 19.0385])->assertNoContent();
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'declare_endgame'])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'declare_endgame'])->assertOk();
         $this->assertSame('endgame', Session::find($ctx['sessionId'])->state);
 
         $locked = $this->committedSpot($ctx['sessionId']);
 
         // Further hider movement inside the zone no longer moves the (now locked) spot.
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/location", ['lat' => 47.4995, 'lng' => 19.0420])->assertNoContent();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/location", ['lat' => 47.4995, 'lng' => 19.0420])->assertNoContent();
         $this->assertEqualsWithDelta($locked['lat'], $this->committedSpot($ctx['sessionId'])['lat'], 1e-9);
 
         // The hider is reported as locked in their own state view.
-        $this->assertTrue($this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('hider_locked'));
+        $this->assertTrue($this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('hider_locked'));
     }
 }

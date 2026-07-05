@@ -31,7 +31,7 @@ class EveryCardGameplayTest extends TestCase
     private function play(array $ctx, string $type, array $payload): void
     {
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => $type, 'payload' => $payload])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => $type, 'payload' => $payload])->assertOk();
     }
 
     private function stateData(array $ctx): array
@@ -43,7 +43,7 @@ class EveryCardGameplayTest extends TestCase
     {
         Sanctum::actingAs($ctx['seeker']);
 
-        return $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('available_actions');
+        return $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('available_actions');
     }
 
     public function test_every_curse_drives_its_gameplay_consequence(): void
@@ -110,7 +110,7 @@ class EveryCardGameplayTest extends TestCase
             if ($power === 'veto') {
                 $q = Question::create(['key' => "radar.{$power}", 'category' => 'radar', 'title' => ['en' => 'R'], 'prompt' => ['en' => '?'], 'reward_draw' => 1, 'reward_keep' => 1]);
                 Sanctum::actingAs($ctx['seeker']);
-                $this->postJson("/api/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'radius_m' => 5000]])->assertOk();
+                $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'radius_m' => 5000]])->assertOk();
             }
             // Duplicate needs a target card already in hand.
             $extra = [];
@@ -153,7 +153,7 @@ class EveryCardGameplayTest extends TestCase
             $this->giveHiderCard($ctx['sessionId'], ['uid' => 't', 'type' => 'time_bonus', 'minutes' => $card->minutes]);
 
             Sanctum::actingAs($ctx['host']);
-            $banked = $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('time_bonus_s');
+            $banked = $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('time_bonus_s');
             $expected = $card->minutes['small'] * 60;
             $this->assertSame($expected, $banked, "card {$card->key} should bank its small-size value");
         }
@@ -163,7 +163,7 @@ class EveryCardGameplayTest extends TestCase
     {
         $ctx = $this->seek(); // small game
         $this->giveHiderCard($ctx['sessionId'], ['uid' => 't', 'type' => 'time_bonus', 'minutes' => ['small' => 2, 'medium' => 5, 'large' => 10]]);
-        $banked = fn () => $this->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('time_bonus_s');
+        $banked = fn () => $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('time_bonus_s');
         Sanctum::actingAs($ctx['host']);
 
         $this->assertSame(120, $banked(), 'small → 2 min');
@@ -186,8 +186,8 @@ class EveryCardGameplayTest extends TestCase
         $this->play($ctx, 'play_curse', ['card_uid' => 'c']);
 
         Sanctum::actingAs($ctx['seeker']);
-        $hu = collect($this->withHeader('Accept-Language', 'hu')->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('curses'))->firstWhere('curse_id', $labyrinth->id);
-        $en = collect($this->withHeader('Accept-Language', 'en')->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('curses'))->firstWhere('curse_id', $labyrinth->id);
+        $hu = collect($this->withHeader('Accept-Language', 'hu')->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('curses'))->firstWhere('curse_id', $labyrinth->id);
+        $en = collect($this->withHeader('Accept-Language', 'en')->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('curses'))->firstWhere('curse_id', $labyrinth->id);
         $this->assertSame('A labirintus', $hu['name']);
         $this->assertSame('The Labyrinth', $en['name']);
 
@@ -197,7 +197,7 @@ class EveryCardGameplayTest extends TestCase
         $this->giveHiderCard($ctx['sessionId'], ['uid' => 'h3', 'type' => 'time_bonus', 'minutes' => 5]);
 
         Sanctum::actingAs($ctx['host']);
-        $hand = collect($this->withHeader('Accept-Language', 'hu')->getJson("/api/sessions/{$ctx['sessionId']}/state")->json('hand'))->keyBy('uid');
+        $hand = collect($this->withHeader('Accept-Language', 'hu')->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('hand'))->keyBy('uid');
         $this->assertSame('A labirintus', $hand['h1']['name']);
         $this->assertSame('Vétó', $hand['h2']['name']);
         $this->assertSame('+5 perc időbónusz', $hand['h3']['name']);
