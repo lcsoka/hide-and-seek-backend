@@ -37,7 +37,7 @@ class ReplayBuilder
             'name' => $p->display_name,
             'role' => $p->role,
             'color' => $p->role === 'hider' ? '#e11d48' : $this->colorFor($p->id),
-            'avatar' => $p->user?->avatar,
+            'avatar' => $p->user?->avatar_thumb ?? $p->user?->avatar,
             'track' => $tracks[$p->id] ?? [],
             'last' => $p->last_lat !== null ? [(float) $p->last_lat, (float) $p->last_lng] : null,
         ])->values()->all();

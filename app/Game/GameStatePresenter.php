@@ -43,7 +43,7 @@ class GameStatePresenter
                 return [
                     'id' => $p->id,
                     'display_name' => $p->display_name,
-                    'avatar' => $p->user?->avatar, // identity, like the name — shown on the map marker
+                    'avatar' => $p->user?->avatar_thumb ?? $p->user?->avatar, // small thumb — shown on the map marker
                     'role' => $p->role,
                     'is_host' => $p->is_host,
                     'team_id' => $p->team_id,

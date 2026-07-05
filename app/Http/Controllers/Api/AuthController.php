@@ -9,11 +9,11 @@ use App\Http\Requests\RegisterRequest;
 use App\Http\Requests\UpdateProfileRequest;
 use App\Models\GameResult;
 use App\Models\User;
+use App\Support\AvatarProcessor;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
@@ -160,16 +160,20 @@ class AuthController extends Controller
         return response()->json($this->profile($user->refresh()));
     }
 
-    /** Upload/replace the profile avatar; returns the updated profile with the new URL. */
-    public function uploadAvatar(Request $request): JsonResponse
+    /**
+     * Upload/replace the profile avatar. The image is re-encoded to an optimized square WebP plus a
+     * small thumbnail (see AvatarProcessor); the previous files are removed. Returns the profile.
+     */
+    public function uploadAvatar(Request $request, AvatarProcessor $avatars): JsonResponse
     {
         $request->validate([
             'image' => ['required', 'file', 'mimes:jpeg,jpg,png,webp', 'max:5120'],
         ]);
 
         $user = $request->user();
-        $path = $request->file('image')->store('avatars', 'public');
-        $user->update(['avatar' => Storage::disk('public')->url($path)]);
+        $avatars->deleteByUrl($user->avatar, $user->avatar_thumb);
+        $images = $avatars->process($request->file('image'));
+        $user->update(['avatar' => $images['avatar'], 'avatar_thumb' => $images['thumb']]);
 
         return response()->json($this->profile($user->refresh()));
     }
@@ -181,7 +185,7 @@ class AuthController extends Controller
      * intact; the user's stats + custom curses/questions cascade-delete, tokens are revoked, and
      * the avatar file is removed. This is a hard delete — nothing is recoverable.
      */
-    public function deleteAccount(Request $request): JsonResponse
+    public function deleteAccount(Request $request, AvatarProcessor $avatars): JsonResponse
     {
         $user = $request->user();
 
@@ -193,10 +197,7 @@ class AuthController extends Controller
         }
 
         $user->players()->update(['display_name' => __('Deleted player')]);
-
-        if ($user->avatar && str_contains($user->avatar, '/storage/')) {
-            Storage::disk('public')->delete(Str::after($user->avatar, '/storage/'));
-        }
+        $avatars->deleteByUrl($user->avatar, $user->avatar_thumb);
 
         $user->tokens()->delete();
         $user->delete();
@@ -214,6 +215,7 @@ class AuthController extends Controller
             'name' => $user->name,
             'email' => $user->email,
             'avatar' => $user->avatar,
+            'avatar_thumb' => $user->avatar_thumb,
             'is_guest' => $user->isGuest(),
         ];
     }

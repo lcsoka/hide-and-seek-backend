@@ -121,9 +121,20 @@ class AuthTest extends TestCase
 
         $this->withToken($token)->patchJson('/api/v1/profile', ['name' => 'New Name'])->assertOk()->assertJsonPath('name', 'New Name');
 
-        $res = $this->withToken($token)->post('/api/v1/profile/avatar', ['image' => UploadedFile::fake()->image('me.jpg')])->assertOk();
+        $res = $this->withToken($token)->post('/api/v1/profile/avatar', ['image' => UploadedFile::fake()->image('me.jpg', 800, 600)])->assertOk();
         $this->assertNotNull($res->json('avatar'));
-        $this->assertNotEmpty(Storage::disk('public')->allFiles('avatars'));
+        $this->assertNotNull($res->json('avatar_thumb'));
+
+        // Re-encoded to a full + thumb WebP pair.
+        $files = Storage::disk('public')->allFiles('avatars');
+        $this->assertCount(2, $files);
+        foreach ($files as $f) {
+            $this->assertStringEndsWith('.webp', $f);
+        }
+
+        // A second upload replaces the pair rather than piling up files.
+        $this->withToken($token)->post('/api/v1/profile/avatar', ['image' => UploadedFile::fake()->image('me2.png', 400, 400)])->assertOk();
+        $this->assertCount(2, Storage::disk('public')->allFiles('avatars'));
     }
 
     public function test_logout_revokes_the_token(): void
