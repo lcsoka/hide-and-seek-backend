@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\FeedbackController;
 use App\Http\Controllers\Api\GeoController;
 use App\Http\Controllers\Api\LocationController;
 use App\Http\Controllers\Api\MediaController;
+use App\Http\Controllers\Api\PushController;
 use App\Http\Controllers\Api\SessionController;
 use App\Http\Middleware\EnsureDebugAccess;
 use Illuminate\Support\Facades\Route;
@@ -23,6 +24,8 @@ Route::prefix('v1')->group(function () {
     Route::post('/feedback', [FeedbackController::class, 'store']);
     Route::get('/questions', [CatalogController::class, 'questions']);
     Route::get('/curses', [CatalogController::class, 'curses']);
+    // Web Push: the VAPID public key the client needs to subscribe.
+    Route::get('/push/public-key', [PushController::class, 'publicKey']);
     // Cached server-side Overpass proxy — the web app's only path to OSM data.
     Route::post('/geo/overpass', [GeoController::class, 'overpass'])->middleware('throttle:240,1');
 
@@ -37,6 +40,10 @@ Route::prefix('v1')->group(function () {
         Route::post('/profile/avatar', [AuthController::class, 'uploadAvatar'])->middleware('throttle:20,1');
         // GDPR: permanently delete the account + personal data (right to erasure).
         Route::delete('/profile', [AuthController::class, 'deleteAccount']);
+
+        // Web Push subscriptions for this device.
+        Route::post('/push/subscribe', [PushController::class, 'subscribe']);
+        Route::post('/push/unsubscribe', [PushController::class, 'unsubscribe']);
 
         // User-generated content (a registered user's own custom curses + questions).
         Route::get('/my/content', [ContentController::class, 'index']);

@@ -51,6 +51,12 @@ class User extends Authenticatable implements FilamentUser
         return $this->hasMany(Question::class);
     }
 
+    /** This user's Web Push subscriptions (one per opted-in device). */
+    public function pushSubscriptions(): HasMany
+    {
+        return $this->hasMany(PushSubscription::class);
+    }
+
     /**
      * Who may reach the Filament admin panel: a registered user (has an email) who is either in
      * the FILAMENT_ADMIN_EMAILS allowlist (the can't-lock-yourself-out fallback) or has been

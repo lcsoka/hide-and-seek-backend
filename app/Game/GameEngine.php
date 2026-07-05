@@ -12,6 +12,7 @@ use App\Models\GameResult;
 use App\Models\Player;
 use App\Models\Session;
 use App\Models\User;
+use App\Support\PushNotifier;
 use Illuminate\Validation\ValidationException;
 
 class GameEngine
@@ -161,6 +162,7 @@ class GameEngine
                 $event['payload'] ?? [],
                 $event['visibility'] ?? ['scope' => 'everyone'],
             );
+            app(PushNotifier::class)->forGameEvent($session, $event['type'], $playerId);
         }
 
         foreach ($outcome->timers as $timer) {

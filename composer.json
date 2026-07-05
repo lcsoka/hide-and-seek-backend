@@ -12,6 +12,7 @@
         "laravel/reverb": "^1.10",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^3.0",
+        "minishlink/web-push": "^8.0",
         "sentry/sentry-laravel": "^4.26",
         "spatie/laravel-translatable": "^6.14"
     },

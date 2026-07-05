@@ -16,6 +16,7 @@ use App\Http\Resources\SessionResource;
 use App\Models\GameEvent;
 use App\Models\Question;
 use App\Models\Session;
+use App\Support\PushNotifier;
 use Illuminate\Http\JsonResponse;
 
 class SessionController extends Controller
@@ -56,6 +57,7 @@ class SessionController extends Controller
             'player_id' => $player->id,
             'display_name' => $player->display_name,
         ]);
+        app(PushNotifier::class)->forLobbyJoin($session, $player);
 
         return response()->json([
             'player' => new PlayerResource($player),
