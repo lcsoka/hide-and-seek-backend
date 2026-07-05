@@ -7,6 +7,14 @@
 # fix the issue, then run:  php8.4 artisan up
 #
 set -euo pipefail
+
+# Must run as the app owner (deploy), never root — root creates root-owned files in storage/
+# that then block the deploy user.
+if [ "$(id -u)" -eq 0 ]; then
+  echo "✗ Run as the 'deploy' user, not root:  sudo -u deploy ./deploy.sh" >&2
+  exit 1
+fi
+
 cd "$(dirname "$0")"
 PHP=/usr/bin/php8.4
 
