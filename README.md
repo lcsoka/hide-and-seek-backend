@@ -34,7 +34,7 @@ Built with **Laravel 13**, **Filament v5** (admin/ops panel), **Laravel Reverb**
 
 | | |
 |---|---|
-| Language / framework | PHP 8.3+, Laravel 13 |
+| Language / framework | PHP 8.4+, Laravel 13 |
 | Admin panel | Filament v5 |
 | Realtime | Laravel Reverb (Pusher protocol) |
 | API auth | Laravel Sanctum (token) |
@@ -45,7 +45,7 @@ Built with **Laravel 13**, **Filament v5** (admin/ops panel), **Laravel Reverb**
 
 ## Requirements
 
-- PHP **8.3+** with the usual Laravel extensions
+- PHP **8.4+** with the usual Laravel extensions (Laravel 13 + its Symfony components require 8.4.1+)
 - [Composer](https://getcomposer.org/)
 - Node.js **20+** and npm (to build the admin/Vite assets)
 - Optionally [Laravel Herd](https://herd.laravel.com/) to serve `http://hide-and-seek.test`
