@@ -30,6 +30,7 @@ class PushNotifier
             'QuestionAsked' => ['hider', 'push.question_asked'],
             'QuestionAnswered' => ['seekers', 'push.question_answered'],
             'CursePlayed' => ['seekers', 'push.curse_played'],
+            'FoundClaimed' => ['hider', 'push.found_claimed'],
             'RoundStarted' => ['all', 'push.round_started'],
             'GameEnded' => ['all', 'push.game_ended'],
             default => [null, null],
