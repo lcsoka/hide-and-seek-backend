@@ -1,5 +1,6 @@
 <x-filament-panels::page>
-    <div wire:poll.10s class="space-y-6">
+    {{-- Poll fast while a deploy streams its log; slow down to a status refresh when idle. --}}
+    <div wire:poll.{{ $this->isDeploying() ? '2s' : '15s' }} class="space-y-6">
 
         {{-- Version --}}
         @php($v = $this->version())
@@ -50,8 +51,20 @@
                         <span class="rounded-full px-2 py-0.5 text-xs font-medium" style="background:rgba(225,29,72,0.12);color:#e11d48">running…</span>
                     @endif
                 </div>
-                <pre class="overflow-auto rounded-lg p-3 text-xs" style="max-height:24rem;background:#0b1020;color:#e5e7eb;white-space:pre-wrap">{{ $log !== '' ? $log : 'Starting…' }}</pre>
+                <pre id="deploy-log" class="overflow-auto rounded-lg p-3 text-xs" style="max-height:24rem;background:#0b1020;color:#e5e7eb;white-space:pre-wrap">{{ $log !== '' ? $log : 'Starting…' }}</pre>
             </div>
         @endif
     </div>
+
+    {{-- Keep the log pinned to the newest line as it streams — unless the admin has scrolled up. --}}
+    @script
+    <script>
+        setInterval(() => {
+            const el = document.getElementById('deploy-log');
+            if (el && el.scrollHeight - el.scrollTop - el.clientHeight < 60) {
+                el.scrollTop = el.scrollHeight;
+            }
+        }, 1000);
+    </script>
+    @endscript
 </x-filament-panels::page>

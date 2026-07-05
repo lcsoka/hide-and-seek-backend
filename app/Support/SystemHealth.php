@@ -77,7 +77,9 @@ class SystemHealth
     private function reverb(): array
     {
         $port = (int) config('deploy.reverb_port', 8080);
-        $conn = @fsockopen('127.0.0.1', $port, $errno, $errstr, 1.0);
+        // Short timeout: on localhost a live socket answers in <10ms, and a fast poll during a
+        // deploy shouldn't stall a full second each time Reverb is momentarily down.
+        $conn = @fsockopen('127.0.0.1', $port, $errno, $errstr, 0.3);
         if ($conn !== false) {
             fclose($conn);
 
