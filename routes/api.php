@@ -54,6 +54,8 @@ Route::prefix('v1')->group(function () {
         Route::patch('/my/questions/{question}', [ContentController::class, 'updateQuestion']);
         Route::delete('/my/questions/{question}', [ContentController::class, 'destroyQuestion']);
 
+        // The user's still-live games, so they can rejoin after leaving.
+        Route::get('/my/sessions', [SessionController::class, 'mySessions']);
         Route::post('/sessions', [SessionController::class, 'store']);
         Route::post('/sessions/{code}/join', [SessionController::class, 'join']);
         Route::get('/sessions/{session}', [SessionController::class, 'show']);

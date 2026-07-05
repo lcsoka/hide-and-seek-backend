@@ -52,6 +52,13 @@ class SessionFactory
 
     public function join(Session $session, User $user, string $displayName, bool $isHost = false): Player
     {
+        // Idempotent by user: rejoining (a second device, or a reconnect) resumes the SAME player
+        // instead of spawning a duplicate. `wasRecentlyCreated` lets callers tell a join from a resume.
+        $existing = $session->players()->where('user_id', $user->id)->first();
+        if ($existing !== null) {
+            return $existing;
+        }
+
         return $session->players()->create([
             'user_id' => $user->id,
             'display_name' => $displayName,

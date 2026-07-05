@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Enums\GameSize;
+use App\Enums\SessionStatus;
 use App\Events\GameEventBroadcast;
 use App\Game\GameEngine;
 use App\Game\GameStatePresenter;
@@ -18,6 +19,7 @@ use App\Models\Question;
 use App\Models\Session;
 use App\Support\PushNotifier;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
 class SessionController extends Controller
 {
@@ -51,13 +53,15 @@ class SessionController extends Controller
         abort_if($session === null, 404, 'Game not found — check the code.');
         $player = $this->factory->join($session, $request->user(), $request->input('display_name'));
 
-        // Tell everyone already in the session (esp. the host's lobby) about the new player,
-        // so the roster updates live instead of needing a refresh.
-        GameEventBroadcast::record($session->id, 'PlayerJoined', [
-            'player_id' => $player->id,
-            'display_name' => $player->display_name,
-        ]);
-        app(PushNotifier::class)->forLobbyJoin($session, $player);
+        // Announce only a genuinely new player (not a resume from a second device) — so the roster
+        // updates live instead of needing a refresh, and the host isn't nudged about a rejoin.
+        if ($player->wasRecentlyCreated) {
+            GameEventBroadcast::record($session->id, 'PlayerJoined', [
+                'player_id' => $player->id,
+                'display_name' => $player->display_name,
+            ]);
+            app(PushNotifier::class)->forLobbyJoin($session, $player);
+        }
 
         return response()->json([
             'player' => new PlayerResource($player),
@@ -68,6 +72,35 @@ class SessionController extends Controller
     public function show(Session $session): SessionResource
     {
         return new SessionResource($session->load('players', 'teams'));
+    }
+
+    /** The signed-in user's still-live games (open/running) — so they can rejoin after leaving. */
+    public function mySessions(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        $sessions = Session::query()
+            ->whereIn('status', [SessionStatus::Open, SessionStatus::Running])
+            ->whereHas('players', fn ($q) => $q->where('user_id', $user->id))
+            ->with('players')
+            ->orderByDesc('last_activity_at')
+            ->get()
+            ->map(function (Session $session) use ($user) {
+                $me = $session->players->firstWhere('user_id', $user->id);
+
+                return [
+                    'id' => $session->id,
+                    'join_code' => $session->join_code,
+                    'city' => $session->config['city']['key'] ?? null,
+                    'state' => $session->state,
+                    'status' => $session->status,
+                    'is_host' => (bool) $me?->is_host,
+                    'player_id' => $me?->id,
+                    'players_count' => $session->players->count(),
+                ];
+            });
+
+        return response()->json($sessions);
     }
 
     public function start(Session $session, GameEngine $engine): JsonResponse
