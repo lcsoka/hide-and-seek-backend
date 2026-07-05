@@ -75,6 +75,8 @@ class GameStatePresenter
             'relocating' => $isHider ? (bool) ($session->state_data['relocating'] ?? false) : false,
             // Question categories a curse currently disables (shared — the seeker greys them out).
             'disabled_categories' => $this->disabledCategoriesView($session),
+            // Categories still cooling down after being asked → { category: seconds_remaining }.
+            'question_cooldowns' => $this->questionCooldowns($session),
             // A blocking curse is stopping the seekers from asking until they clear it.
             'questions_blocked' => $this->questionsBlocked($activeCurses),
             // The hider must pick categories for a 'choose' curse (e.g. The Drained Brain).
@@ -163,6 +165,21 @@ class GameStatePresenter
         }
 
         return array_values(array_unique($disabled));
+    }
+
+    /** Categories still on cooldown → { category: seconds_remaining }; expired entries are dropped. */
+    private function questionCooldowns(Session $session): array
+    {
+        $now = now()->timestamp;
+        $out = [];
+        foreach (($session->state_data['cooldowns'] ?? []) as $category => $until) {
+            $remaining = (int) $until - $now;
+            if ($remaining > 0) {
+                $out[$category] = $remaining;
+            }
+        }
+
+        return $out;
     }
 
     /** Players ranked by total banked hiding time (longest survivor leads). */

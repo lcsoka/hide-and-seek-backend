@@ -57,7 +57,10 @@ class HideAndSeekMode implements GameMode
             // A seeker must stay inside the hiding zone this long before the endgame
             // auto-starts — so briefly passing through early on never triggers it.
             'endgame_dwell_s' => 60,
-            'question_cooldown_s' => 300,
+            // Opt-in: a question category can't be re-asked until this many seconds after it was
+            // last answered (0 = off). `question_cooldowns` overrides it per category.
+            'question_cooldown_s' => 0,
+            'question_cooldowns' => [], // e.g. ['radar' => 300, 'matching' => 1800]
             'question_answer_time_s' => 600, // hider's window to answer a question (10 min)
             'amend_window_s' => 120, // after answering, the hider can fix a manual answer this long
 
@@ -515,8 +518,23 @@ class HideAndSeekMode implements GameMode
         if ($category !== null && in_array($category, $this->disabledCategories($data), true)) {
             return ValidationResult::fail('That question category is disabled by a curse.');
         }
+        if ($category !== null) {
+            $until = (int) (($data['cooldowns'][$category] ?? 0));
+            $remaining = $until - now()->timestamp;
+            if ($remaining > 0) {
+                return ValidationResult::fail("That question type is cooling down — try again in {$remaining}s.");
+            }
+        }
 
         return ValidationResult::pass();
+    }
+
+    /** Seconds a category is locked after being answered (per-category override, else the default). */
+    private function cooldownFor(Session $session, string $category): int
+    {
+        $overrides = (array) ($session->config['question_cooldowns'] ?? []);
+
+        return max(0, (int) ($overrides[$category] ?? $session->config['question_cooldown_s'] ?? 0));
     }
 
     /** The hider must choose exactly the curse-required number of (valid) categories to disable. */
@@ -920,6 +938,10 @@ class HideAndSeekMode implements GameMode
         $data['questions'][] = $resolved;
         $data['pending_question'] = null;
         $data['question_answer'] = null; // invalidate the deadline timer
+        // Start this category's cooldown so the seekers can't immediately re-ask the same type.
+        if (($cat = $pending['category'] ?? null) !== null && ($cd = $this->cooldownFor($session, $cat)) > 0) {
+            $data['cooldowns'][$cat] = now()->timestamp + $cd;
+        }
         $this->rotateSpotty($data); // Spotty Memory changes its disabled category after each question
 
         // Answering rewards the hider: draw `reward_draw` cards and keep `reward_keep`.
@@ -1387,7 +1409,7 @@ class HideAndSeekMode implements GameMode
             $data['hider_id'], $data['hiding_started_at'], $data['hiding_deadline'], $data['seeking_started_at'], $data['hand'],
             $data['questions'], $data['question_seq'], $data['curses_played'], $data['hider_position'], $data['relocating'], $data['endgame_dwell'],
             $data['pending_question'], $data['question_answer'], $data['thermometer'], $data['last_round'], $data['bonus_draws'],
-            $data['disabled_categories'], $data['spotty_category'], $data['pending_curse_choice'], $data['hand_limit'], $data['hiding_zone'],
+            $data['disabled_categories'], $data['spotty_category'], $data['pending_curse_choice'], $data['hand_limit'], $data['hiding_zone'], $data['cooldowns'],
             $data['on_transit'], $data['transit_log'], $data['found_claim'],
         );
 
