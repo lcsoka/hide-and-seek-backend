@@ -71,6 +71,8 @@ class GameStatePresenter
             // Only the hider sees their own hiding zone, hand, draw, and banked time.
             'hiding_zone' => $isHider ? ($session->state_data['hiding_zone'] ?? null) : null,
             'zone_locked' => $isHider ? $this->zoneLocked($session) : false,
+            // The hider roams their zone during 'seeking'; the endgame locks them to their spot.
+            'hider_locked' => $isHider && $session->state === 'endgame',
             // The hider played 'move' and must re-confirm their new spot.
             'relocating' => $isHider ? (bool) ($session->state_data['relocating'] ?? false) : false,
             // Question categories a curse currently disables (shared — the seeker greys them out).

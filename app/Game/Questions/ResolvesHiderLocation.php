@@ -5,10 +5,10 @@ namespace App\Game\Questions;
 use App\Models\Session;
 
 /**
- * The hider's committed hiding point. Snapshotted at confirm_hidden so every question
- * is answered against the SAME fixed spot — otherwise the hider's live GPS drifting
- * within their zone would make earlier answers contradict the deduction (and let them
- * appear to "move out of" the deduced area). Falls back to live GPS pre-snapshot.
+ * The hider's committed hiding point. During seeking it tracks the hider's live position within
+ * their zone (frozen while a question is pending, so each answer is consistent with the ask), and
+ * the endgame locks it. Questions and the catch are both judged against this point. Falls back to
+ * live GPS before any spot is recorded.
  */
 trait ResolvesHiderLocation
 {

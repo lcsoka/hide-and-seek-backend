@@ -333,9 +333,8 @@ class HideAndSeekMode implements GameMode
 
     private function confirmHidden(Session $session, array $data): ActionOutcome
     {
-        // Snapshot the hider's committed spot. Every question is answered against THIS
-        // fixed point, so the deduction stays consistent even if the hider's live GPS
-        // drifts within their zone afterwards.
+        // The hider's starting spot. During seeking this point tracks the hider live within their
+        // zone (see updateHiderSpot); the endgame then locks it wherever they stand.
         $hider = $session->players()->find($data['hider_id'] ?? null);
         if ($hider !== null && $hider->last_lat !== null && $hider->last_lng !== null) {
             $data['hider_position'] = ['lat' => (float) $hider->last_lat, 'lng' => (float) $hider->last_lng];
@@ -406,7 +405,15 @@ class HideAndSeekMode implements GameMode
      */
     public function onLocationReported(Session $session, Player $player): ?ActionOutcome
     {
-        if ($session->state !== 'seeking' || $player->role !== 'seeker') {
+        if ($session->state !== 'seeking') {
+            return null;
+        }
+        // The hider roams freely inside their zone during the run — their committed spot tracks
+        // them until the endgame locks it (see updateHiderSpot).
+        if ($player->role === 'hider') {
+            return $this->updateHiderSpot($session, $player);
+        }
+        if ($player->role !== 'seeker') {
             return null;
         }
         $zone = $session->state_data['hiding_zone'] ?? null;
@@ -433,6 +440,37 @@ class HideAndSeekMode implements GameMode
         }
 
         return null;
+    }
+
+    /**
+     * While seeking, the hider may move anywhere inside their zone; their committed spot (the point
+     * questions are answered against AND the point seekers must reach to catch them) tracks their live
+     * position. Only in-zone fixes count — a fix outside the zone (GPS drift / rule-break) is ignored so
+     * the spot can't be dragged out — and the spot is frozen while a question awaits an answer, so each
+     * answer stays consistent with where the hider was when it was asked. The endgame stops all updates
+     * (onLocationReported returns early unless state is 'seeking'), locking the spot where they stand.
+     */
+    private function updateHiderSpot(Session $session, Player $player): ?ActionOutcome
+    {
+        if ($player->last_lat === null || $player->last_lng === null) {
+            return null;
+        }
+        if (($session->state_data['pending_question'] ?? null) !== null) {
+            return null;
+        }
+        $zone = $session->state_data['hiding_zone'] ?? null;
+        $center = $zone['center'] ?? null;
+        if ($center === null) {
+            return null;
+        }
+        if (Geo::distanceMeters((float) $player->last_lat, (float) $player->last_lng, (float) $center['lat'], (float) $center['lng']) > (float) ($zone['radius_m'] ?? 0)) {
+            return null;
+        }
+
+        $data = $session->state_data;
+        $data['hider_position'] = ['lat' => (float) $player->last_lat, 'lng' => (float) $player->last_lng];
+
+        return new ActionOutcome($data);
     }
 
     /**
