@@ -47,7 +47,8 @@ Built with **Laravel 13**, **Filament v5** (admin/ops panel), **Laravel Reverb**
 
 ## Requirements
 
-- PHP **8.4+** with the usual Laravel extensions (Laravel 13 + its Symfony components require 8.4.1+)
+- PHP **8.4+** with the usual Laravel extensions (Laravel 13 + its Symfony components require 8.4.1+),
+  plus **`ext-gmp`** (required by web push / VAPID — on Ubuntu: `apt-get install php8.4-gmp`)
 - [Composer](https://getcomposer.org/)
 - Node.js **20+** and npm (to build the admin/Vite assets)
 - Optionally [Laravel Herd](https://herd.laravel.com/) to serve `http://hide-and-seek.test`
