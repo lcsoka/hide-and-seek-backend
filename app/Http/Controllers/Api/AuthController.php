@@ -175,6 +175,36 @@ class AuthController extends Controller
     }
 
     /**
+     * GDPR erasure — permanently delete the authenticated user's account and personal data.
+     * A registered account must re-confirm its password. Game participation is anonymised (the
+     * FK nulls players.user_id on delete and the alias is scrubbed) so co-players' history stays
+     * intact; the user's stats + custom curses/questions cascade-delete, tokens are revoked, and
+     * the avatar file is removed. This is a hard delete — nothing is recoverable.
+     */
+    public function deleteAccount(Request $request): JsonResponse
+    {
+        $user = $request->user();
+
+        if ($user->password !== null) {
+            $request->validate(['password' => ['required', 'string']]);
+            if (! Hash::check($request->input('password'), $user->password)) {
+                throw ValidationException::withMessages(['password' => __('auth.password')]);
+            }
+        }
+
+        $user->players()->update(['display_name' => __('Deleted player')]);
+
+        if ($user->avatar && str_contains($user->avatar, '/storage/')) {
+            Storage::disk('public')->delete(Str::after($user->avatar, '/storage/'));
+        }
+
+        $user->tokens()->delete();
+        $user->delete();
+
+        return response()->json(['message' => 'Account deleted.']);
+    }
+
+    /**
      * @return array<string, mixed>
      */
     private function profile(User $user): array

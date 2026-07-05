@@ -35,6 +35,8 @@ Route::prefix('v1')->group(function () {
         Route::get('/profile/stats', [AuthController::class, 'stats']);
         Route::patch('/profile', [AuthController::class, 'updateProfile']);
         Route::post('/profile/avatar', [AuthController::class, 'uploadAvatar'])->middleware('throttle:20,1');
+        // GDPR: permanently delete the account + personal data (right to erasure).
+        Route::delete('/profile', [AuthController::class, 'deleteAccount']);
 
         // User-generated content (a registered user's own custom curses + questions).
         Route::get('/my/content', [ContentController::class, 'index']);
