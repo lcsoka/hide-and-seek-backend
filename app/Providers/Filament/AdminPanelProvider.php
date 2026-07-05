@@ -27,6 +27,7 @@ class AdminPanelProvider extends PanelProvider
             ->id('admin')
             ->path('admin')
             ->viteTheme('resources/css/filament/admin/theme.css')
+            ->favicon(asset('favicon.svg'))
             ->login()
             // Match the web app's rose accent (rose-600 #e11d48) across the whole panel.
             ->colors([
