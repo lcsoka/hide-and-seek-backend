@@ -1,10 +1,12 @@
 <?php
 
+use App\Exceptions\QuestionTruthNotReady;
 use App\Http\Middleware\SetLocale;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
+use Sentry\Laravel\Integration;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -25,6 +27,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*'),
         );
+        // Expected transient retry signal when Overpass is momentarily down — the underlying
+        // failures are already logged, so keep this out of the logs + Sentry.
+        $exceptions->dontReport(QuestionTruthNotReady::class);
         // Report unhandled exceptions to Sentry (no-op unless SENTRY_LARAVEL_DSN is set).
-        \Sentry\Laravel\Integration::handles($exceptions);
+        Integration::handles($exceptions);
     })->create();

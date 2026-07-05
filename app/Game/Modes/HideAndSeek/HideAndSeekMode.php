@@ -4,6 +4,7 @@ namespace App\Game\Modes\HideAndSeek;
 
 use App\Enums\GameSize;
 use App\Enums\QuestionCategory;
+use App\Exceptions\QuestionTruthNotReady;
 use App\Game\Contracts\GameMode;
 use App\Game\Geo\MapDataSource;
 use App\Game\Questions\DeferredQuestionEvaluator;
@@ -820,8 +821,9 @@ class HideAndSeekMode implements GameMode
 
         $truth = $this->evaluateTruth($session, $pending);
         if ($truth === null) {
-            // Overpass was unavailable / no data — let the queued job retry (backoff).
-            throw new \RuntimeException("Could not compute truth for question seq {$seq} yet.");
+            // Overpass was unavailable / no data — let the queued job retry (backoff). Expected +
+            // already logged, so it's excluded from error reporting (see bootstrap/app.php).
+            throw new QuestionTruthNotReady("Could not compute truth for question seq {$seq} yet.");
         }
 
         $data['pending_question']['truth'] = $truth;
