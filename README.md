@@ -8,6 +8,8 @@ contract that every client (web today, native later) consumes.
 Built with **Laravel 13**, **Filament v5** (admin/ops panel), **Laravel Reverb** (WebSockets) and
 **Sanctum** (API auth).
 
+**Live:** the game runs at **[hideandseek.hu](https://hideandseek.hu)**; this backend serves the API at **[api.hideandseek.hu](https://api.hideandseek.hu)** (admin panel at `/admin`).
+
 > The web client lives in a separate repository: **[hide-and-seek-web](https://github.com/lcsoka/hide-and-seek-web)**.
 
 ---
