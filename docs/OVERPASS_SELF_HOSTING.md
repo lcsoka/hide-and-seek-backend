@@ -9,6 +9,21 @@ The Docker setup is scripted in [`deploy/overpass/`](../deploy/overpass/): a `do
 an `.env.example`, and a `setup.sh` that does the whole install. You copy that folder to a small
 droplet and run one command.
 
+## 0. Test it locally first (recommended)
+
+Before spending on a droplet, prove the exact stack works on your Mac. `setup-local.sh` reuses the
+same `docker-compose.yml` bound to localhost and (if you don't have Docker) installs Colima — a
+headless Docker runtime — via Homebrew:
+
+    cd deploy/overpass
+    ./setup-local.sh          # ~2-3 min smoke test on a tiny Andorra extract — proves the whole pipeline
+    ./setup-local.sh full     # the real Hungary import (~30-90 min), identical to production
+    ./setup-local.sh down     # tear it down
+
+A green smoke run confirms the image, the PBF→bz2 preprocess, the import and the query path all work.
+To try it end to end with the app, set `OVERPASS_ENDPOINT="http://127.0.0.1:8080/api/interpreter"` in
+`backend/.env`, run `php artisan config:clear`, and ask a question.
+
 ## 1. Create the droplet
 
 The one thing that matters most: it must be in the **same region AND same VPC** as the backend
