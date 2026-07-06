@@ -24,6 +24,10 @@ A green smoke run confirms the image, the PBF→bz2 preprocess, the import and t
 To try it end to end with the app, set `OVERPASS_ENDPOINT="http://127.0.0.1:8080/api/interpreter"` in
 `backend/.env`, run `php artisan config:clear`, and ask a question.
 
+The Colima VM has no swap, and Hungary's `update_database` peaks above 4 GB, so `full` reboots the VM
+to an **8 GB** one automatically (the smoke test stays on 4 GB). Override with `COLIMA_MEMORY=<GB>` if
+your Mac is tight on RAM. (On the droplet this is a non-issue — `setup.sh` adds swap.)
+
 ## 1. Create the droplet
 
 The one thing that matters most: it must be in the **same region AND same VPC** as the backend

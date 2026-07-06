@@ -65,9 +65,24 @@ grant_query_access() {
   docker exec overpass chmod o+x /db
 }
 
+# Start (or restart) the Colima VM with the given amount of RAM (GB). On Apple Silicon use the native
+# vz backend + Rosetta so the amd64 wiktorn/overpass-api image runs fast; fall back to a plain start if
+# those flags aren't supported. Colima remembers the sizing for later plain `colima start`s.
+start_colima() {
+  local mem="$1"
+  step "Starting the Docker runtime (Colima VM, ${mem}GB RAM)"
+  local args=(--cpu "${COLIMA_CPU:-2}" --memory "$mem" --disk "${COLIMA_DISK:-40}")
+  [ "$(uname -m)" = "arm64" ] && args+=(--vm-type vz --vz-rosetta)
+  colima start "${args[@]}" || colima start || err "Could not start Colima."
+  docker info >/dev/null 2>&1 || err "Docker still not reachable after starting Colima."
+}
+
+# Ensure a Docker daemon is up with at least ${1} GB of VM RAM. The Colima VM has NO swap, so the
+# Hungary import's peak memory must fit in RAM or the kernel OOM-kills update_database — hence 'full'
+# asks for a bigger VM than the tiny smoke test. Override with COLIMA_MEMORY=<GB>.
 ensure_docker() {
-  if docker info >/dev/null 2>&1; then return 0; fi   # a daemon is already up (Colima or Docker Desktop)
-  [ "$(uname -s)" = "Darwin" ] || err "This helper targets macOS. On a Linux droplet use ./setup.sh."
+  local need_mem="${COLIMA_MEMORY:-${1:-4}}"
+  [ "$(uname -s)" = "Darwin" ] || { docker info >/dev/null 2>&1 || err "Docker not running; on Linux use ./setup.sh."; return 0; }
   command -v brew >/dev/null 2>&1 || err "Homebrew is required — install it from https://brew.sh then re-run."
 
   if ! command -v colima >/dev/null 2>&1 || ! command -v docker >/dev/null 2>&1; then
@@ -75,13 +90,16 @@ ensure_docker() {
     brew install colima docker docker-compose
   fi
 
-  step "Starting the Docker runtime (Colima VM)"
-  # Give the VM room for the OSM import. On Apple Silicon use the native vz backend + Rosetta so the
-  # amd64 wiktorn/overpass-api image runs fast; fall back to plain start if those flags aren't supported.
-  local args=(--cpu 2 --memory "${COLIMA_MEMORY:-4}" --disk "${COLIMA_DISK:-40}")
-  [ "$(uname -m)" = "arm64" ] && args+=(--vm-type vz --vz-rosetta)
-  colima start "${args[@]}" || colima start || err "Could not start Colima."
-  docker info >/dev/null 2>&1 || err "Docker still not reachable after starting Colima."
+  if docker info >/dev/null 2>&1; then
+    # Already running — make sure the VM is big enough for this import, else reboot it larger.
+    local have; have="$(colima ssh -- free -m 2>/dev/null | awk '/^Mem:/{printf "%d", ($2/1024)+0.5}')"
+    if [ -n "$have" ] && [ "$have" -lt "$need_mem" ]; then
+      step "Rebooting the Docker VM with more RAM (${have}GB → ${need_mem}GB) — the import OOMs otherwise"
+      colima stop && start_colima "$need_mem"
+    fi
+    return 0
+  fi
+  start_colima "$need_mem"
 }
 
 write_env() {
@@ -128,7 +146,9 @@ do_verify() {
 
 bring_up() {
   local mode="$1"; set_region "$mode"
-  ensure_docker
+  # Andorra fits in a tiny VM; Hungary's import peaks well above 4GB and the VM has no swap.
+  local mem=4; [ "$mode" = "full" ] && mem=8
+  ensure_docker "$mem"
   write_env
   step "Resetting any previous local instance"
   compose down -v --remove-orphans 2>/dev/null || true
