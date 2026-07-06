@@ -995,13 +995,13 @@ class HideAndSeekMode implements GameMode
             $keepN++;
             $data['bonus_draws']--;
         }
-        // The hand can't grow past its limit, so cap what may be kept at the headroom.
-        $keepN = min($keepN, $this->handHeadroom($data));
         if ($drawN > 0) {
             $drawn = $this->drawFromDeck($data, $drawN);
             if ($auto) {
-                $data['hand'] = array_merge($data['hand'] ?? [], array_slice($drawn, 0, $keepN));
+                // Keep the reward, then trim to the hand limit (drops the oldest — the reward survives).
+                $data['hand'] = $this->trimHand(array_merge($data['hand'] ?? [], array_slice($drawn, 0, $keepN)), $data);
             } else {
+                // Offer the full reward; the limit is enforced when the hider commits their choice.
                 $data['pending_draw'] = ['cards' => $drawn, 'keep' => min($keepN, count($drawn))];
             }
         }
@@ -1231,7 +1231,8 @@ class HideAndSeekMode implements GameMode
             $draw = ['discard_1_draw_2' => 2, 'discard_2_draw_3' => 3, 'draw_1_expand_1' => 1][$power] ?? 0;
             if ($draw > 0) {
                 $cards = $this->drawFromDeck($data, $draw);
-                $data['pending_draw'] = ['cards' => $cards, 'keep' => min(count($cards), $this->handHeadroom($data))];
+                // Keep all drawn cards; the hand limit is enforced (oldest-first) when kept.
+                $data['pending_draw'] = ['cards' => $cards, 'keep' => count($cards)];
             }
             // 'move' lets the hider relocate: drop the committed spot AND the old hiding zone
             // (questions fall back to live GPS meanwhile) so the hider picks a fresh station and
@@ -1255,10 +1256,10 @@ class HideAndSeekMode implements GameMode
 
         $keepUids = (array) ($action->payload['uids'] ?? []);
         $kept = array_values(array_filter($draw['cards'] ?? [], fn ($c) => in_array($c['uid'] ?? null, $keepUids, true)));
-        // Never exceed the hand limit, even if the draw's `keep` is stale.
-        $kept = array_slice($kept, 0, min((int) ($draw['keep'] ?? 0), $this->handHeadroom($data)));
-
-        $data['hand'] = array_merge($data['hand'] ?? [], $kept);
+        // Honour the reward count, then trim the WHOLE hand to its limit (oldest dropped) — so a full
+        // hand no longer means "keep 0"; the freshly-kept reward always survives.
+        $kept = array_slice($kept, 0, (int) ($draw['keep'] ?? 0));
+        $data['hand'] = $this->trimHand(array_merge($data['hand'] ?? [], $kept), $data);
         $data['pending_draw'] = null;
 
         return new ActionOutcome($data, null, [$this->event('CardsKept', ['count' => count($kept)])]);
@@ -1270,10 +1271,12 @@ class HideAndSeekMode implements GameMode
         return (int) ($data['hand_limit'] ?? config('game.hand_limit', 6));
     }
 
-    /** How many more cards the hider may hold before hitting their limit. */
-    private function handHeadroom(array $data): int
+    /** Trim a hand to the current limit, dropping the OLDEST cards (freshly-kept reward is newest). */
+    private function trimHand(array $hand, array $data): array
     {
-        return max(0, $this->handLimit($data) - count($data['hand'] ?? []));
+        $limit = $this->handLimit($data);
+
+        return count($hand) > $limit ? array_slice($hand, -$limit) : $hand;
     }
 
     /** The hider drops a card from their hand to make room (manage the hand limit). */

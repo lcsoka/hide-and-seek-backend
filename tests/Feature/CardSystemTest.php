@@ -84,7 +84,7 @@ class CardSystemTest extends TestCase
         $this->assertEqualsCanonicalizing(['radar', 'matching', 'photo'], $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('disabled_categories'));
     }
 
-    public function test_hand_limit_caps_keeping_and_expand_and_discard_manage_it(): void
+    public function test_a_full_hand_keeps_the_reward_and_trims_the_oldest(): void
     {
         $this->seed(CardSeeder::class); // a non-empty deck so the expand's draw yields a card
         $ctx = $this->startSeeking();
@@ -98,21 +98,28 @@ class CardSystemTest extends TestCase
         Sanctum::actingAs($ctx['host']);
         $this->assertSame(6, $this->getJson("/api/v1/sessions/{$sid}/state")->json('hand_limit'));
 
-        // A full hand: answering still draws, but nothing can be kept (headroom 0).
+        // A full hand still lets the hider KEEP the reward (keep 1) — no longer capped to 0.
         $q = Question::create(['key' => 'radar.hl', 'category' => 'radar', 'title' => ['en' => 'R'], 'prompt' => ['en' => '?'], 'reward_draw' => 2, 'reward_keep' => 1]);
         Sanctum::actingAs($ctx['seeker']);
         $this->postJson("/api/v1/sessions/{$sid}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'radius_m' => 5000]])->assertOk();
         Sanctum::actingAs($ctx['host']);
         $this->postJson("/api/v1/sessions/{$sid}/actions", ['type' => 'answer_question', 'payload' => []])->assertOk();
-        $this->assertSame(0, $this->getJson("/api/v1/sessions/{$sid}/state")->json('pending_draw.keep'));
-        $this->postJson("/api/v1/sessions/{$sid}/actions", ['type' => 'keep_cards', 'payload' => ['uids' => []]])->assertOk();
-        $this->assertCount(6, $this->getJson("/api/v1/sessions/{$sid}/state")->json('hand'));
+        $st = $this->getJson("/api/v1/sessions/{$sid}/state");
+        $this->assertSame(1, $st->json('pending_draw.keep'));
+        $keepUid = $st->json('pending_draw.cards.0.uid');
 
-        // Discard frees a slot.
-        $this->postJson("/api/v1/sessions/{$sid}/actions", ['type' => 'discard_card', 'payload' => ['card_uid' => 'f1']])->assertOk();
+        // Keeping the reward trims the hand back to the limit — the oldest (f1) is dropped, reward survives.
+        $this->postJson("/api/v1/sessions/{$sid}/actions", ['type' => 'keep_cards', 'payload' => ['uids' => [$keepUid]]])->assertOk();
+        $handUids = array_column($this->getJson("/api/v1/sessions/{$sid}/state")->json('hand'), 'uid');
+        $this->assertCount(6, $handUids);
+        $this->assertContains($keepUid, $handUids);
+        $this->assertNotContains('f1', $handUids);
+
+        // Discard still frees a slot.
+        $this->postJson("/api/v1/sessions/{$sid}/actions", ['type' => 'discard_card', 'payload' => ['card_uid' => 'f2']])->assertOk();
         $this->assertCount(5, $this->getJson("/api/v1/sessions/{$sid}/state")->json('hand'));
 
-        // 'draw_1_expand_1' raises the limit to 7 and its drawn card now fits.
+        // 'draw_1_expand_1' raises the limit to 7.
         $this->giveHiderCard($sid, ['uid' => 'ex', 'type' => 'powerup', 'power' => 'draw_1_expand_1']);
         $this->postJson("/api/v1/sessions/{$sid}/actions", ['type' => 'play_powerup', 'payload' => ['card_uid' => 'ex']])->assertOk();
         $st = $this->getJson("/api/v1/sessions/{$sid}/state");
