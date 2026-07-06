@@ -83,5 +83,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/token', [DebugController::class, 'mintToken']);
         Route::post('/state', [DebugController::class, 'forceState']);
         Route::post('/timer/{key}/expire', [DebugController::class, 'expireTimer']);
+        Route::get('/cards', [DebugController::class, 'cards']);
+        Route::post('/give-card', [DebugController::class, 'giveCard']);
     });
 });

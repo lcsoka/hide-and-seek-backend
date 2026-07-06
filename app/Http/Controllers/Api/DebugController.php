@@ -7,10 +7,12 @@ use App\Game\GameStatePresenter;
 use App\Game\Support\Action;
 use App\Http\Controllers\Controller;
 use App\Models\ActionLog;
+use App\Models\Card;
 use App\Models\Session;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 
 /**
  * Developer/debug API (gated by EnsureDebugAccess). Lets one person exercise the
@@ -119,6 +121,37 @@ class DebugController extends Controller
     public function expireTimer(Session $session, string $key): JsonResponse
     {
         $this->engine->fireTimer($session, $key, $session->state_data[$key] ?? null);
+
+        return response()->json($this->godView($session->refresh()));
+    }
+
+    /** Every grantable card (official + this host's custom) for the dev card-tester. */
+    public function cards(Session $session): JsonResponse
+    {
+        $hostUserId = $session->state_data['host_user_id'] ?? null;
+        $cards = Card::query()->where('is_active', true)
+            ->where(fn ($q) => $q->whereNull('user_id')->orWhere('user_id', $hostUserId))
+            ->orderBy('type')->orderBy('sort')
+            ->get()
+            ->map(fn (Card $c) => ['id' => $c->id, 'type' => $c->type, 'name' => $c->name, 'power' => $c->power]);
+
+        return response()->json($cards);
+    }
+
+    /** Drop any card straight into the hider's hand so every card can be played/tested. */
+    public function giveCard(Request $request, Session $session): JsonResponse
+    {
+        $card = Card::findOrFail($request->validate(['card_id' => ['required', 'string']])['card_id']);
+
+        $descriptor = match ($card->type) {
+            'powerup' => ['type' => 'powerup', 'power' => $card->power],
+            'time_bonus' => ['type' => 'time_bonus', 'minutes' => $card->minutes],
+            default => ['type' => 'curse', 'curse_id' => $card->id],
+        };
+
+        $stateData = $session->state_data ?? [];
+        $stateData['hand'][] = $descriptor + ['uid' => (string) Str::uuid()];
+        $session->update(['state_data' => $stateData]);
 
         return response()->json($this->godView($session->refresh()));
     }
