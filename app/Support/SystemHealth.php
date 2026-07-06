@@ -4,6 +4,7 @@ namespace App\Support;
 
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
 use Symfony\Component\Process\Process;
@@ -27,6 +28,7 @@ class SystemHealth
             $this->reverb(),
             $this->queue(),
             $this->scheduler(),
+            $this->overpass(),
         ];
     }
 
@@ -101,6 +103,33 @@ class SystemHealth
         [$ok, $detail] = $this->heartbeat('health:scheduler', 'ran', 'no scheduler heartbeat');
 
         return $this->svc('scheduler', 'Scheduler (cron)', $ok, $detail);
+    }
+
+    /**
+     * Live probe of the primary Overpass endpoint (a tiny count query), cached 3 min so the polling
+     * dashboard doesn't hammer it. Answers the "is my (self-hosted) Overpass reachable?" question.
+     */
+    private function overpass(): array
+    {
+        $r = Cache::remember('health:overpass', now()->addMinutes(3), function () {
+            $endpoint = (string) config('game.overpass.endpoint');
+            try {
+                $t = microtime(true);
+                $res = Http::timeout(8)
+                    ->withHeaders(['User-Agent' => (string) config('game.overpass.user_agent', 'HideAndSeek/1.0')])
+                    ->get($endpoint, ['data' => '[out:json][timeout:5];node(47.49,19.03,47.50,19.04);out count;']);
+                $ms = (int) round((microtime(true) - $t) * 1000);
+                $ok = $res->successful() && str_contains($res->body(), 'elements');
+
+                return ['ok' => $ok, 'detail' => $ok
+                    ? (parse_url($endpoint, PHP_URL_HOST) ?: 'endpoint').' · '.$ms.'ms'
+                    : 'HTTP '.$res->status()];
+            } catch (\Throwable $e) {
+                return ['ok' => false, 'detail' => $this->err($e)];
+            }
+        });
+
+        return $this->svc('overpass', 'Overpass (OSM)', (bool) $r['ok'], (string) $r['detail']);
     }
 
     /** @return array{0: bool, 1: string} */

@@ -23,9 +23,11 @@ class SystemHealthTest extends TestCase
 
     public function test_services_report_db_and_cache_up(): void
     {
+        // Seed the Overpass probe cache so services() doesn't make a live network call.
+        Cache::put('health:overpass', ['ok' => true, 'detail' => 'seeded'], 300);
         $services = $this->services();
 
-        $this->assertCount(6, $services);
+        $this->assertCount(7, $services);
         foreach ($services as $s) {
             $this->assertArrayHasKey('label', $s);
             $this->assertArrayHasKey('ok', $s);
@@ -33,6 +35,15 @@ class SystemHealthTest extends TestCase
         }
         $this->assertTrue($services['database']['ok']);
         $this->assertTrue($services['cache']['ok']);
+    }
+
+    public function test_overpass_uses_the_cached_probe(): void
+    {
+        Cache::put('health:overpass', ['ok' => false, 'detail' => 'HTTP 504'], 300);
+        $this->assertFalse($this->services()['overpass']['ok']);
+
+        Cache::put('health:overpass', ['ok' => true, 'detail' => 'localhost · 12ms'], 300);
+        $this->assertTrue($this->services()['overpass']['ok']);
     }
 
     public function test_queue_and_scheduler_reflect_heartbeat_freshness(): void
