@@ -76,6 +76,30 @@ class SystemHealthTest extends TestCase
         $this->assertSame('abc1234', $v['current']);
     }
 
+    public function test_deploy_logs_are_per_file_newest_first_and_selectable_by_name(): void
+    {
+        $dir = sys_get_temp_dir().'/hns-deploy-'.uniqid();
+        config(['deploy.log_dir' => $dir]);
+        mkdir($dir, 0775, true);
+        file_put_contents("$dir/deploy-2026-07-06_100000.log", "old deploy\nline2\n");
+        file_put_contents("$dir/deploy-2026-07-06_120000.log", "new deploy\nDone.\n");
+        touch("$dir/deploy-2026-07-06_100000.log", now()->subHour()->timestamp);
+        touch("$dir/deploy-2026-07-06_120000.log", now()->timestamp);
+
+        try {
+            $logs = $this->health()->deployLogs();
+            $this->assertCount(2, $logs);
+            $this->assertSame('deploy-2026-07-06_120000.log', $logs[0]['name']); // newest first
+
+            $this->assertStringContainsString('old deploy', $this->health()->deployLog('deploy-2026-07-06_100000.log'));
+            $this->assertStringContainsString('Done.', $this->health()->deployLog(null)); // newest by default
+            $this->assertStringContainsString('Done.', $this->health()->deployLog('../../.env')); // traversal → newest
+        } finally {
+            array_map('unlink', glob("$dir/*") ?: []);
+            @rmdir($dir);
+        }
+    }
+
     public function test_deploy_is_disabled_by_default(): void
     {
         config(['deploy.enabled' => false]);

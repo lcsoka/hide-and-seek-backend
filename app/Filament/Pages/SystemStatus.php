@@ -19,6 +19,9 @@ class SystemStatus extends Page
 
     protected string $view = 'filament.pages.system-status';
 
+    /** Which past deploy's log to show (basename); null = the newest / the one currently running. */
+    public ?string $selectedDeploy = null;
+
     public static function getNavigationLabel(): string
     {
         return 'System';
@@ -61,9 +64,16 @@ class SystemStatus extends Page
         return $this->health()->deployEnabled();
     }
 
+    /** @return array<int, array{name: string, at: int, label: string}> */
+    public function deployLogs(): array
+    {
+        return $this->health()->deployLogs();
+    }
+
     public function deployLog(): string
     {
-        return $this->health()->deployLog();
+        // While a deploy runs, always follow the live (newest) log even if an old one was selected.
+        return $this->health()->deployLog($this->isDeploying() ? null : $this->selectedDeploy);
     }
 
     protected function getHeaderActions(): array

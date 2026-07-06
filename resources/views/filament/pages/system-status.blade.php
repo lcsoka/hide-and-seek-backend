@@ -41,14 +41,24 @@
             @endforeach
         </div>
 
-        {{-- Deploy log --}}
+        {{-- Deploy log (one file per deploy; pick a past one, or watch the running one live). --}}
+        @php($deploys = $this->deployLogs())
         @php($log = $this->deployLog())
-        @if ($log !== '' || $this->isDeploying())
+        @if ($deploys !== [] || $this->isDeploying())
             <div class="rounded-xl p-4" style="border:1px solid rgba(120,120,120,0.15)">
-                <div class="mb-2 flex items-center gap-2 text-sm font-semibold">
+                <div class="mb-2 flex flex-wrap items-center gap-2 text-sm font-semibold">
                     Deploy log
                     @if ($this->isDeploying())
                         <span class="rounded-full px-2 py-0.5 text-xs font-medium" style="background:rgba(225,29,72,0.12);color:#e11d48">running…</span>
+                    @endif
+                    @if ($deploys !== [])
+                        <select wire:model.live="selectedDeploy" @disabled($this->isDeploying())
+                                class="ml-auto rounded-lg px-2 py-1 text-xs" style="border:1px solid rgba(120,120,120,0.25);background:transparent">
+                            <option value="">Latest</option>
+                            @foreach ($deploys as $d)
+                                <option value="{{ $d['name'] }}">{{ $d['label'] }}</option>
+                            @endforeach
+                        </select>
                     @endif
                 </div>
                 <pre id="deploy-log" class="overflow-auto rounded-lg p-3 text-xs" style="max-height:24rem;background:#0b1020;color:#e5e7eb;white-space:pre-wrap">{{ $log !== '' ? $log : 'Starting…' }}</pre>

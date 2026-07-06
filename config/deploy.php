@@ -6,7 +6,9 @@ return [
     'enabled' => env('ADMIN_DEPLOY_ENABLED', false),
 
     'script' => base_path('deploy.sh'),
-    'log' => storage_path('logs/deploy.log'),
+    // Each admin-triggered deploy writes its own timestamped log here (deploy-<Y-m-d_His>.log),
+    // so the System page can show one deploy at a time instead of one ever-growing file.
+    'log_dir' => storage_path('logs/deploy'),
 
     // Read-only version check (git ls-remote reuses the server's deploy key).
     'git_remote' => env('DEPLOY_GIT_REMOTE', 'origin'),

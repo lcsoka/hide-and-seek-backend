@@ -201,7 +201,7 @@ class SystemHealth
         return (bool) Cache::get('deploy:running');
     }
 
-    /** Kick off deploy.sh fully detached so it outlives this web request; the log is tailed by the page. */
+    /** Kick off deploy.sh fully detached so it outlives this web request, logging to its OWN file. */
     public function deploy(): void
     {
         if (! $this->deployEnabled() || $this->isDeploying()) {
@@ -209,21 +209,53 @@ class SystemHealth
         }
         Cache::put('deploy:running', now()->timestamp, now()->addMinutes(15));
 
+        $dir = (string) config('deploy.log_dir');
+        if (! is_dir($dir)) {
+            @mkdir($dir, 0775, true);
+        }
+        $logFile = $dir.'/deploy-'.now()->format('Y-m-d_His').'.log';
+        @touch($logFile); // exists immediately so the page shows THIS deploy from the first poll
+
         $cmd = sprintf(
             'PATH=/usr/local/bin:/usr/bin:/bin setsid nohup bash %s >> %s 2>&1 < /dev/null &',
             escapeshellarg((string) config('deploy.script')),
-            escapeshellarg((string) config('deploy.log')),
+            escapeshellarg($logFile),
         );
         Process::fromShellCommandline($cmd, base_path())->run();
     }
 
-    public function deployLog(int $lines = 300): string
+    /**
+     * Past deploys, newest first: [{name, at, label}]. `name` is the log file's basename.
+     *
+     * @return array<int, array{name: string, at: int, label: string}>
+     */
+    public function deployLogs(): array
     {
-        $log = (string) config('deploy.log');
-        if (! is_file($log)) {
+        $files = glob((string) config('deploy.log_dir').'/deploy-*.log') ?: [];
+        $items = array_map(fn (string $f) => [
+            'name' => basename($f),
+            'at' => (int) @filemtime($f),
+            'label' => date('Y-m-d H:i:s', (int) @filemtime($f)),
+        ], $files);
+        usort($items, fn ($a, $b) => $b['at'] <=> $a['at']);
+
+        return $items;
+    }
+
+    /** The tail of one deploy's log (by basename), or the newest deploy when $name is null/unknown. */
+    public function deployLog(?string $name = null, int $lines = 800): string
+    {
+        $dir = (string) config('deploy.log_dir');
+        $safe = $name !== null ? basename($name) : null;
+        $file = ($safe !== null && str_starts_with($safe, 'deploy-') && str_ends_with($safe, '.log') && is_file($dir.'/'.$safe))
+            ? $dir.'/'.$safe
+            : ($this->deployLogs()[0]['name'] ?? null);
+
+        if ($file === null) {
             return '';
         }
-        $all = @file($log, FILE_IGNORE_NEW_LINES) ?: [];
+        $path = str_contains($file, '/') ? $file : $dir.'/'.$file;
+        $all = @file($path, FILE_IGNORE_NEW_LINES) ?: [];
 
         return implode("\n", array_slice($all, -$lines));
     }
