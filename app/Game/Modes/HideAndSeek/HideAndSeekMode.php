@@ -86,7 +86,9 @@ class HideAndSeekMode implements GameMode
 
     public function availableActions(Session $session, Player $player): array
     {
-        $pending = ($session->state_data['pending_question'] ?? null) !== null;
+        // A stale pending question (its window elapsed without resolving) no longer counts as pending,
+        // so the seeker can ask again — asking voids the stuck one. See isPendingStale().
+        $pending = ($session->state_data['pending_question'] ?? null) !== null && ! $this->isPendingStale($session->state_data ?? []);
 
         $actions = match ($session->state) {
             'lobby' => $player->is_host ? ['start'] : [],
@@ -545,10 +547,22 @@ class HideAndSeekMode implements GameMode
     }
 
     /** A question may be asked only with no pending question, no blocking curse, and an enabled category. */
+    /** A pending question whose answer window elapsed >60s ago without resolving — its resolve timer
+     *  never fired, so it must not deadlock the game by blocking every future ask. */
+    private function isPendingStale(array $data): bool
+    {
+        $pending = $data['pending_question'] ?? null;
+
+        return $pending !== null && isset($pending['deadline']) && ($pending['deadline'] + 60) < now()->timestamp;
+    }
+
     private function validateAsk(Session $session, ?string $category): ValidationResult
     {
         $data = $session->state_data ?? [];
-        if (($data['pending_question'] ?? null) !== null) {
+        // A pending question blocks new ones — UNLESS it's stale (its answer window fully elapsed
+        // without resolving, e.g. the resolve timer never fired), which would otherwise deadlock the
+        // game. A stale one is voided by askQuestion as it's replaced.
+        if (($data['pending_question'] ?? null) !== null && ! $this->isPendingStale($data)) {
             return ValidationResult::fail('A question is already awaiting an answer.');
         }
         if ($this->hasBlockingCurse($data)) {
@@ -757,6 +771,12 @@ class HideAndSeekMode implements GameMode
         $window = $question?->answer_time_s ?? (int) ($session->config['question_answer_time_s'] ?? 600);
         $seq = ($data['question_seq'] ?? 0) + 1;
 
+        // Self-heal: if the previous question got stuck (its resolve timer never fired), void it as we
+        // replace it, so clients drop the stale "awaiting answer" state instead of deadlocking.
+        $voidEvents = $this->isPendingStale($data)
+            ? [$this->event('QuestionVoided', ['seq' => $data['pending_question']['seq'] ?? null, 'category' => $data['pending_question']['category'] ?? null])]
+            : [];
+
         // Deferred (thermometer): capture the seeker's start position; resolve later.
         // Overpass-backed categories (matching/measuring/tentacles) compute truth in a
         // queued job so the ask returns immediately. Radar is pure geometry → inline.
@@ -795,13 +815,13 @@ class HideAndSeekMode implements GameMode
         return new ActionOutcome(
             $data,
             null,
-            [$this->event('QuestionAsked', [
+            array_merge($voidEvents, [$this->event('QuestionAsked', [
                 'seq' => $seq,
                 'question_id' => $question?->id,
                 'category' => $question?->category->value,
                 'asked_by' => $asker->id,
                 'deadline' => $data['pending_question']['deadline'],
-            ])],
+            ])]),
             [['op' => 'set', 'key' => 'question_answer', 'delay' => $window]],
             $jobs,
         );
