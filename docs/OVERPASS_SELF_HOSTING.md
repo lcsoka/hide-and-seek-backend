@@ -11,11 +11,40 @@ droplet and run one command.
 
 ## 1. Create the droplet
 
-- Ubuntu 24.04, **4 GB / 2 vCPU / 80 GB SSD**, in the **same VPC** as the backend droplet, your SSH key.
-- Hostname `overpass-hu`. Note its **public** IPv4 (to SSH in) — `setup.sh` finds the private one itself.
+The one thing that matters most: it must be in the **same region AND same VPC** as the backend
+droplet, or they can't talk over the private network.
 
-Sizing: the Hungary DB is ~8–12 GB; the import needs ~15 GB transient headroom (hence 80 GB), and
-`setup.sh` adds 4 GB swap automatically so the import won't OOM. ~$24/mo; VPC traffic is free.
+### Option A — DigitalOcean control panel
+
+1. **Create → Droplets.**
+2. **Region:** the **same region** as your backend droplet (e.g. Frankfurt / `fra1`). A VPC is
+   region-scoped, so a different region means no private connectivity.
+3. **Datacenter / VPC Network** (under *Advanced options* or *VPC Network*): pick the **same VPC**
+   your backend droplet is on — this is what lets the two reach each other over private IPs.
+4. **Image:** Ubuntu **24.04 (LTS) x64**.
+5. **Size:** *Basic → Regular/Premium* → **4 GB RAM / 2 vCPUs / 80 GB SSD** (~$24/mo).
+6. **Authentication:** **SSH key** — the same key you use for the backend droplet.
+7. **Hostname:** `overpass-hu`.
+8. **Create Droplet.** Note its **public IPv4** (to SSH in). The **private IPv4** is auto-detected by
+   `setup.sh`, but you can see it under the droplet's *Networking* tab if you need it for the firewall.
+
+### Option B — `doctl` CLI
+
+    # 1. find the backend droplet's region + VPC (match these):
+    doctl compute droplet list --format Name,Region,VPCUUID
+    # 2. your SSH key id:
+    doctl compute ssh-key list
+    # 3. create the overpass droplet in that same region + VPC:
+    doctl compute droplet create overpass-hu \
+      --region <region> --vpc-uuid <vpc-uuid> \
+      --image ubuntu-24-04-x64 --size s-2vcpu-4gb \
+      --ssh-keys <ssh-key-id> --wait
+    # 4. its IPs (public to SSH in, private for OVERPASS_ENDPOINT):
+    doctl compute droplet get overpass-hu --format Name,PublicIPv4,PrivateIPv4
+
+**Sizing rationale:** the Hungary DB is ~8–12 GB; the import needs ~15 GB transient headroom (hence
+80 GB), and `setup.sh` adds 4 GB swap automatically so the import won't OOM on 4 GB. VPC traffic is
+free, so the only cost is the ~$24/mo droplet (or ~$12/mo at 2 GB with `OVERPASS_META=no`).
 
 ## 2. Lock it down (firewall)
 
