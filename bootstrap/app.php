@@ -21,7 +21,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->api(append: [SetLocale::class]);
         // Keep the admin panel usable while the app is in maintenance mode (e.g. during a deploy),
         // so the ops page can still trigger + watch the deploy. The public API/site stay 503'd.
-        $middleware->preventRequestsDuringMaintenance(except: ['admin', 'admin/*', 'livewire/*']);
+        // Livewire v3 serves its update route under a hashed prefix (`livewire-<hash>/update`), so
+        // `livewire-*` is what actually matches it — `livewire/*` never did (the deploy-log poll 503'd).
+        $middleware->preventRequestsDuringMaintenance(except: ['admin', 'admin/*', 'livewire/*', 'livewire-*']);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
