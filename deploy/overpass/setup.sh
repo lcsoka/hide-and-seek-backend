@@ -56,6 +56,16 @@ fi
 step "Starting Overpass (first run imports Hungary — this takes ~30-90 min)"
 docker compose up -d
 
+# 6) The image serves /api/interpreter as the 'nginx' user, but the dispatcher (user 'overpass') puts
+#    its socket under /db — overpass's home, created mode 700 — so external queries would fail with
+#    "Permission denied /db/db/osm3s_osm_base". Make the home traversable so the query user can reach
+#    the socket. It's stored in the volume, so it persists across restarts/reboots.
+step "Granting the query process access to the DB socket"
+i=0; until docker compose exec -T overpass test -d /db 2>/dev/null; do
+  i=$((i + 1)); [ "$i" -gt 60 ] && break; sleep 1
+done
+docker compose exec -T overpass chmod o+x /db || true
+
 BIND_IP="$(grep -E '^OVERPASS_BIND_IP=' .env | cut -d= -f2)"
 cat <<DONE
 

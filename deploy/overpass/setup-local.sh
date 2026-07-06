@@ -51,6 +51,20 @@ compose() {
   if docker compose version >/dev/null 2>&1; then docker compose "$@"; else docker-compose "$@"; fi
 }
 
+# The image serves /api/interpreter via nginx + fcgiwrap running as the 'nginx' user, but the
+# dispatcher (user 'overpass') puts its socket under /db — overpass's home, created mode 700 — so
+# external queries fail with "Permission denied /db/db/osm3s_osm_base". Make the home traversable so
+# the query user can reach the socket. It lives in the volume, so it persists across restarts; this
+# re-applies it on each fresh import.
+grant_query_access() {
+  local i=0
+  until docker exec overpass test -d /db 2>/dev/null; do
+    i=$((i + 1)); [ "$i" -gt 60 ] && { warn "Container not ready — could not chmod /db"; return 1; }
+    sleep 1
+  done
+  docker exec overpass chmod o+x /db
+}
+
 ensure_docker() {
   if docker info >/dev/null 2>&1; then return 0; fi   # a daemon is already up (Colima or Docker Desktop)
   [ "$(uname -s)" = "Darwin" ] || err "This helper targets macOS. On a Linux droplet use ./setup.sh."
@@ -121,6 +135,9 @@ bring_up() {
   step "Starting Overpass — importing ${REGION_LABEL}"
   compose up -d
 
+  step "Granting the query process access to the DB socket (chmod o+x /db)"
+  grant_query_access
+
   if [ "$mode" = "full" ]; then
     cat <<DONE
 
@@ -154,7 +171,7 @@ DONE
 case "${1:-smoke}" in
   smoke)  bring_up smoke ;;
   full)   bring_up full ;;
-  verify) do_verify ;;
+  verify) grant_query_access; do_verify ;;
   logs)   compose logs -f overpass ;;
   status) compose ps; probe && ok "Dispatcher is answering." || warn "Not ready yet (importing or down)." ;;
   down)   step "Stopping and removing the local Overpass instance + its data"

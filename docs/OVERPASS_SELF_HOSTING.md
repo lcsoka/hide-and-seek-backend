@@ -117,9 +117,10 @@ game and ask a radar/matching question; it should resolve with no 504s.
 ## 6. Keep it fresh / rebuild
 
 Diffs auto-apply hourly (`OVERPASS_DIFF_URL` + `OVERPASS_UPDATE_SLEEP` in the compose). To rebuild
-from scratch:
+from scratch, wipe the volume and re-run the installer (it re-imports **and** re-applies the socket
+permission fix below):
 
-    docker compose down && docker volume rm overpass_overpass-db && docker compose up -d
+    docker compose down -v && ./setup.sh
 
 **Co-locate variant** (skip the second droplet — give the backend droplet ≥4 GB RAM + swap so both
 fit): in
@@ -132,6 +133,10 @@ fit): in
   (`docker compose ps`), the Cloud Firewall allows 8080 from the backend droplet, and `ufw` allows
   the VPC CIDR.
 - **Import OOM / disk fills:** `setup.sh` adds 4 GB swap; ensure ~10 GB disk free during the build.
+- **`Permission denied /db/db/osm3s_osm_base` on queries:** the image runs nginx (the query user)
+  as a different user than the dispatcher, which keeps its socket under `/db` (mode 700). `setup.sh`
+  fixes this by making `/db` traversable (`chmod o+x /db`), and it persists in the volume. If you ever
+  recreate the volume by hand, re-run `./setup.sh` or `docker compose exec overpass chmod o+x /db`.
 - **Stale data:** `docker compose logs overpass | grep -i update`.
 
 ## Next steps (app side, later)
