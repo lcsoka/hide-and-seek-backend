@@ -43,8 +43,9 @@ droplet, or they can't talk over the private network.
 3. **Datacenter / VPC Network** (under *Advanced options* or *VPC Network*): pick the **same VPC**
    your backend droplet is on — this is what lets the two reach each other over private IPs.
 4. **Image:** Ubuntu **24.04 (LTS) x64**.
-5. **Size:** *Basic* → **2 GB RAM / 1 vCPU / 50 GB SSD** (~$12/mo) is plenty for Hungary — see the
-   sizing note below. Bump to 4 GB (~$24/mo) only if you expect real query concurrency.
+5. **Size:** *Basic* → **2 GB RAM / 1 vCPU / 50 GB SSD** (~$12/mo) runs Hungary fine once imported.
+   The one-time *import* peaks at ~5 GB, which `setup.sh` absorbs with swap (slower on 2 GB). For a
+   fast import, temporarily pick **4 GB** and resize down to 2 GB afterward — see the sizing note.
 6. **Authentication:** **SSH key** — the same key you use for the backend droplet.
 7. **Hostname:** `overpass-hu`.
 8. **Create Droplet.** Note its **public IPv4** (to SSH in). The **private IPv4** is auto-detected by
@@ -65,12 +66,15 @@ droplet, or they can't talk over the private network.
     doctl compute droplet get overpass-hu --format Name,PublicIPv4,PrivateIPv4
 
 **Sizing rationale (RAM):** the [official Overpass install guide][overpass-install] states the minimum
-is *"1 GB of RAM and sufficient swap space for a small extract or a development system"* — and Hungary
-is a small extract (Geofabrik's `.osm.pbf` is ~300 MB). So 1 GB is the documented floor; a **2 GB**
-droplet with the **4 GB swap `setup.sh` adds automatically** imports comfortably without OOM. Only the
-big public planet instances need 32 GB — that figure does **not** apply to a single country. Bump to
-4 GB only if you expect concurrent query load. **Disk:** the built Hungary DB is a few GB
-(smaller with `OVERPASS_META=no`); the 50 GB SSD on the $12/mo tier leaves ample import headroom. VPC
+is *"1 GB of RAM and sufficient swap space for a small extract or a development system"*. That's true
+for **serving** — the DB is mmap'd, so queries need little RAM — but the **one-time import** is the real
+spike: measured peak ~5 GB (a 4 GB box with no swap OOM-kills `update_database`; 8 GB imports fine). So:
+- **Serving:** 2 GB is plenty. The 32 GB the public planet instances use does **not** apply to one country.
+- **Importing:** `setup.sh` sizes swap so total virtual memory reaches ~8.5 GB (e.g. ~7 GB swap on a
+  2 GB droplet) — enough that it **can't OOM**. On 2 GB the import just leans on swap and runs slower;
+  for a fast import provision **4 GB** and resize back to 2 GB after (DigitalOcean's CPU/RAM resize is
+  reversible and takes minutes). **Disk:** the built Hungary DB is ~6 GB (smaller with `OVERPASS_META=no`)
+  plus the swapfile; the 50 GB SSD leaves ample headroom. VPC
 traffic is free, so the running cost is just the ~$12/mo droplet.
 
 [overpass-install]: https://wiki.openstreetmap.org/wiki/Overpass_API/Installation
@@ -138,7 +142,9 @@ fit): in
 - **Backend can't reach it (hang/refused):** check the container is bound to the private IP
   (`docker compose ps`), the Cloud Firewall allows 8080 from the backend droplet, and `ufw` allows
   the VPC CIDR.
-- **Import OOM / disk fills:** `setup.sh` adds 4 GB swap; ensure ~10 GB disk free during the build.
+- **Import OOM / disk fills:** the import peaks ~5 GB; `setup.sh` sizes swap to ~8.5 GB total so it
+  can't OOM. Ensure ~15 GB disk free during the build (DB + swapfile). On a 2 GB droplet the import
+  leans on swap and is slower — provision 4 GB for the import if you want it fast, then resize down.
 - **`Permission denied /db/db/osm3s_osm_base` on queries:** the image runs nginx (the query user)
   as a different user than the dispatcher, which keeps its socket under `/db` (mode 700). `setup.sh`
   fixes this by making `/db` traversable (`chmod o+x /db`), and it persists in the volume. If you ever

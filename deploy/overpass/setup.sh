@@ -34,11 +34,18 @@ else
   exit 1
 fi
 
-# 3) Swap — the OSM import is memory-hungry; add 4G if RAM is small and there's no swap yet.
-if [ "$(free -m | awk '/^Mem:/{print $2}')" -lt 6000 ] && ! swapon --show | grep -q .; then
-  step "Adding 4G swap for the import"
-  fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
-  grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >>/etc/fstab
+# 3) Swap — Hungary's update_database peaks around ~5 GB (measured: a 4 GB box with NO swap gets
+#    OOM-killed; an 8 GB box imports fine). Size swap so total virtual memory reaches ~8.5 GB, so even
+#    the small 2 GB droplet can't OOM during the one-time import. Serving afterwards is light (the DB is
+#    mmap'd), so a 2 GB droplet is plenty once imported — you can even resize RAM back down.
+if ! swapon --show | grep -q .; then
+  RAM_MB="$(free -m | awk '/^Mem:/{print $2}')"
+  if [ "$RAM_MB" -lt 8000 ]; then
+    SWAP_GB=$(( (8700 - RAM_MB) / 1024 + 1 ))
+    step "Adding ${SWAP_GB}G swap so the ~5 GB import peak can't OOM (RAM: ${RAM_MB} MB)"
+    fallocate -l "${SWAP_GB}G" /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+    grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >>/etc/fstab
+  fi
 fi
 
 # 4) Docker — install the official engine + compose plugin if missing.
