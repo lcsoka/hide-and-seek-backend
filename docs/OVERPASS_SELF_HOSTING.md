@@ -18,6 +18,8 @@ headless Docker runtime — via Homebrew:
     cd deploy/overpass
     ./setup-local.sh          # ~2-3 min smoke test on a tiny Andorra extract — proves the whole pipeline
     ./setup-local.sh full     # the real Hungary import (~30-90 min), identical to production
+    ./setup-local.sh progress # live phase view of a running import (convert → build → ready)
+    ./setup-local.sh logs     # follow the raw container logs
     ./setup-local.sh down     # tear it down
 
 A green smoke run confirms the image, the PBF→bz2 preprocess, the import and the query path all work.

@@ -194,7 +194,28 @@ case "${1:-smoke}" in
   verify) grant_query_access; do_verify ;;
   logs)   compose logs -f overpass ;;
   status) compose ps; probe && ok "Dispatcher is answering." || warn "Not ready yet (importing or down)." ;;
+  progress)
+    # Live phase view of the import (Ctrl-C to exit — does NOT stop the import).
+    start=$SECONDS
+    printf 'Following the import (Ctrl-C to exit; the import keeps running)…\n'
+    while true; do
+      set -- $(docker exec overpass sh -c 'printf "%s %s %s" \
+        "$(stat -c %s /db/planet.osm.pbf 2>/dev/null || echo 0)" \
+        "$(stat -c %s /db/planet.osm.bz2 2>/dev/null || echo 0)" \
+        "$(du -sm /db/db 2>/dev/null | cut -f1)"' 2>/dev/null)
+      pbf="${1:-0}"; bz2="${2:-0}"; db="${3:-0}"
+      rdy=$(curl -sfG --max-time 8 "$ENDPOINT" --data-urlencode \
+        'data=[out:json][timeout:5];node(47.49,19.03,47.51,19.06)[railway=station];out;' 2>/dev/null | grep -c '"id"' || true)
+      if   [ "${rdy:-0}" -gt 0 ]; then phase="READY — ${rdy} stations in the probe"
+      elif [ "$pbf" -gt 0 ] && [ "$bz2" -gt 0 ]; then phase="1/3 converting PBF -> bz2"
+      elif [ "$bz2" -gt 0 ]; then phase="2/3 building DB (update_database)"
+      else phase="0/3 downloading / preparing"; fi
+      el=$((SECONDS - start))
+      printf '\r[%02d:%02d] %-38s bz2=%sMB db=%sMB    ' $((el/60)) $((el%60)) "$phase" "$((bz2/1048576))" "$db"
+      [ "${rdy:-0}" -gt 0 ] && { printf '\n'; ok "Import complete — queryable."; break; }
+      sleep 3
+    done ;;
   down)   step "Stopping and removing the local Overpass instance + its data"
           compose down -v --remove-orphans; ok "Removed." ;;
-  *)      err "Usage: ./setup-local.sh [smoke|full|verify|logs|status|down]" ;;
+  *)      err "Usage: ./setup-local.sh [smoke|full|verify|progress|logs|status|down]" ;;
 esac
