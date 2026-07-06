@@ -15,7 +15,11 @@ services:
       # "init" imports from the planet extract on the FIRST run; later restarts detect the existing
       # /db volume and just start the dispatcher (no re-import), so it's safe to leave set.
       OVERPASS_MODE: "init"
-      OVERPASS_PLANET_URL: "${OVERPASS_PLANET_URL:-https://download.geofabrik.de/europe/hungary-latest.osm.bz2}"
+      OVERPASS_PLANET_URL: "${OVERPASS_PLANET_URL:-https://download.geofabrik.de/europe/hungary-latest.osm.pbf}"
+      # Geofabrik dropped .osm.bz2 (Hungary is .pbf-only now), so import the .pbf and convert it to
+      # Overpass's native bz2 first (osmium ships in the image). Drop this line if you point
+      # OVERPASS_PLANET_URL at a real .osm.bz2.
+      OVERPASS_PLANET_PREPROCESS: "mv /db/planet.osm.bz2 /db/planet.osm.pbf && osmium cat -o /db/planet.osm.bz2 /db/planet.osm.pbf && rm /db/planet.osm.pbf"
       OVERPASS_DIFF_URL: "${OVERPASS_DIFF_URL:-https://download.geofabrik.de/europe/hungary-updates/}"
       OVERPASS_RULES_LOAD: "10"
       OVERPASS_UPDATE_SLEEP: "3600" # apply Geofabrik's Hungary diffs hourly
