@@ -85,5 +85,6 @@ Route::prefix('v1')->group(function () {
         Route::post('/timer/{key}/expire', [DebugController::class, 'expireTimer']);
         Route::get('/cards', [DebugController::class, 'cards']);
         Route::post('/give-card', [DebugController::class, 'giveCard']);
+        Route::post('/eval-question', [DebugController::class, 'evalQuestion']);
     });
 });

@@ -2,12 +2,17 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Enums\QuestionCategory;
 use App\Game\GameEngine;
 use App\Game\GameStatePresenter;
+use App\Game\Geo\MapDataSource;
+use App\Game\Questions\QuestionEvaluatorRegistry;
 use App\Game\Support\Action;
 use App\Http\Controllers\Controller;
 use App\Models\ActionLog;
 use App\Models\Card;
+use App\Models\Player;
+use App\Models\Question;
 use App\Models\Session;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
@@ -154,6 +159,65 @@ class DebugController extends Controller
         $session->update(['state_data' => $stateData]);
 
         return response()->json($this->godView($session->refresh()));
+    }
+
+    /**
+     * Evaluate one geo question at an arbitrary hider/seeker pair against the configured Overpass,
+     * WITHOUT touching the live game — for the dev question harness. Returns the answer plus the
+     * geometry to draw: the matched entity, the seeker's query radius, and (for tentacles) the full
+     * candidate set within the radius. Uses unsaved models so it has no side effects on the session.
+     */
+    public function evalQuestion(
+        Request $request,
+        Session $session,
+        QuestionEvaluatorRegistry $registry,
+        MapDataSource $map,
+    ): JsonResponse {
+        $data = $request->validate([
+            'question_id' => ['required', 'string'],
+            'hider_lat' => ['required', 'numeric', 'between:-90,90'],
+            'hider_lng' => ['required', 'numeric', 'between:-180,180'],
+            'seeker_lat' => ['required', 'numeric', 'between:-90,90'],
+            'seeker_lng' => ['required', 'numeric', 'between:-180,180'],
+            'radius_m' => ['nullable', 'numeric', 'min:1'], // radar (no fixed radius) / override a tentacle radius
+        ]);
+
+        $question = Question::findOrFail($data['question_id']);
+        $category = $question->category;
+        $feature = $question->parameters['feature'] ?? null;
+        $radiusM = $data['radius_m'] ?? ($question->parameters['radius_m'] ?? null);
+
+        $mock = new Session(['state_data' => ['hider_position' => ['lat' => (float) $data['hider_lat'], 'lng' => (float) $data['hider_lng']]]]);
+        $asker = new Player(['last_lat' => (float) $data['seeker_lat'], 'last_lng' => (float) $data['seeker_lng']]);
+        $payload = $radiusM !== null ? ['radius_m' => (float) $radiusM] : [];
+
+        $result = $registry->for($category)?->evaluate($mock, $asker, $question, $payload);
+
+        // Tentacles: also fetch the whole candidate set the seeker's radius covers, so the map can show
+        // every tentacle plus which one the hider matched. Other categories return their entity inline.
+        $candidates = [];
+        if ($category === QuestionCategory::Tentacles && is_string($feature) && $radiusM !== null) {
+            $candidates = array_map(
+                fn ($f) => ['name' => $f->name, 'lat' => $f->lat, 'lng' => $f->lng],
+                $map->within($feature, (float) $data['seeker_lat'], (float) $data['seeker_lng'], (float) $radiusM),
+            );
+        }
+
+        return response()->json([
+            'category' => $category->value,
+            'key' => $question->key,
+            'evaluated' => $result !== null,
+            'answer' => $result['answer'] ?? null,
+            'feature' => is_string($feature) ? $feature : null,
+            'radius_m' => $radiusM !== null ? (int) $radiusM : null,
+            'seeker' => ['lat' => (float) $data['seeker_lat'], 'lng' => (float) $data['seeker_lng']],
+            'hider' => ['lat' => (float) $data['hider_lat'], 'lng' => (float) $data['hider_lng']],
+            'matched' => isset($result['feature_lat'], $result['feature_lng'])
+                ? ['name' => $result['feature_name'] ?? null, 'lat' => $result['feature_lat'], 'lng' => $result['feature_lng']]
+                : null,
+            'hider_nearest' => $result['hider_nearest'] ?? null, // matching only
+            'candidates' => $candidates,
+        ]);
     }
 
     /**

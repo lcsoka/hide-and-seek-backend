@@ -2,6 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Game\Geo\ArrayMapDataSource;
+use App\Game\Geo\GeoFeature;
+use App\Game\Geo\MapDataSource;
+use App\Models\Question;
 use App\Models\Session;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
@@ -85,6 +89,55 @@ class DebugApiTest extends TestCase
 
         $this->debug()->postJson("/api/v1/sessions/{$session->id}/debug/state", ['state' => 'seeking'])
             ->assertOk()->assertJsonPath('state', 'seeking');
+    }
+
+    public function test_eval_question_returns_a_tentacles_answer_with_candidates(): void
+    {
+        $session = $this->makeSession();
+        $question = Question::create([
+            'key' => 'tentacles.museums_2_km', 'category' => 'tentacles',
+            'title' => ['en' => 'Q'], 'prompt' => ['en' => 'Q'],
+            'parameters' => ['feature' => 'museum', 'radius_m' => 2000],
+        ]);
+        // Two museums within 2 km of the seeker; the hider matches the nearer one.
+        $this->app->instance(MapDataSource::class, new ArrayMapDataSource([
+            new GeoFeature('m/1', 'museum', 47.5020, 19.0020, 'Museum One'),
+            new GeoFeature('m/2', 'museum', 47.5060, 19.0080, 'Museum Two'),
+        ]));
+
+        $this->debug()->postJson("/api/v1/sessions/{$session->id}/debug/eval-question", [
+            'question_id' => $question->id,
+            'seeker_lat' => 47.5000, 'seeker_lng' => 19.0000,
+            'hider_lat' => 47.5055, 'hider_lng' => 19.0075,
+        ])->assertOk()
+            ->assertJsonPath('category', 'tentacles')
+            ->assertJsonPath('answer', 'in_range')
+            ->assertJsonPath('matched.name', 'Museum Two') // the candidate nearest the hider
+            ->assertJsonCount(2, 'candidates');
+    }
+
+    public function test_eval_question_reveals_both_places_for_matching(): void
+    {
+        $session = $this->makeSession();
+        $question = Question::create([
+            'key' => 'matching.museum', 'category' => 'matching',
+            'title' => ['en' => 'Q'], 'prompt' => ['en' => 'Q'],
+            'parameters' => ['feature' => 'museum'],
+        ]);
+        // Distinct nearest museums for hider vs seeker → "no".
+        $this->app->instance(MapDataSource::class, new ArrayMapDataSource([
+            new GeoFeature('m/s', 'museum', 47.5001, 19.0001, 'Seeker Museum'),
+            new GeoFeature('m/h', 'museum', 47.6001, 19.2001, 'Hider Museum'),
+        ]));
+
+        $this->debug()->postJson("/api/v1/sessions/{$session->id}/debug/eval-question", [
+            'question_id' => $question->id,
+            'seeker_lat' => 47.5000, 'seeker_lng' => 19.0000,
+            'hider_lat' => 47.6000, 'hider_lng' => 19.2000,
+        ])->assertOk()
+            ->assertJsonPath('answer', 'no')
+            ->assertJsonPath('matched.name', 'Seeker Museum')
+            ->assertJsonPath('hider_nearest.name', 'Hider Museum');
     }
 
     public function test_mint_token_lets_a_dev_spectate_a_players_view(): void
