@@ -1,0 +1,27 @@
+# Self-hosted Overpass (Hungary). Config comes from the .env in this directory (see .env.example).
+# Brought up by ./setup.sh. See ../../docs/OVERPASS_SELF_HOSTING.md.
+services:
+  overpass:
+    image: wiktorn/overpass-api:latest
+    container_name: overpass
+    restart: unless-stopped
+    ports:
+      # Bind to the private VPC interface ONLY (OVERPASS_BIND_IP), never 0.0.0.0 — the backend
+      # droplet reaches it over the VPC; it is never exposed publicly. setup.sh fills this in.
+      - "${OVERPASS_BIND_IP}:8080:80"
+    environment:
+      # META=no keeps the DB small (no per-object OSM metadata — the questions don't need it).
+      OVERPASS_META: "${OVERPASS_META:-no}"
+      # "init" imports from the planet extract on the FIRST run; later restarts detect the existing
+      # /db volume and just start the dispatcher (no re-import), so it's safe to leave set.
+      OVERPASS_MODE: "init"
+      OVERPASS_PLANET_URL: "${OVERPASS_PLANET_URL:-https://download.geofabrik.de/europe/hungary-latest.osm.bz2}"
+      OVERPASS_DIFF_URL: "${OVERPASS_DIFF_URL:-https://download.geofabrik.de/europe/hungary-updates/}"
+      OVERPASS_RULES_LOAD: "10"
+      OVERPASS_UPDATE_SLEEP: "3600" # apply Geofabrik's Hungary diffs hourly
+    volumes:
+      - overpass-db:/db
+    shm_size: "1g"
+
+volumes:
+  overpass-db:

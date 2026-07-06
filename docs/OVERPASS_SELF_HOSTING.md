@@ -1,114 +1,87 @@
 # Self-Hosting Overpass (Hungary) on DigitalOcean
 
-Replaces the flaky public Overpass API (the source of the 504s and "422 → stuck game"
-reports) with your own instance holding just Hungary's OSM data. It uses the **same query
-language**, so the app change is a single env var, and it covers **every** question type
-(radar, thermometer, matching, measuring, network geometry) — which Google Places cannot.
+Replaces the flaky public Overpass API (the source of the 504s and "422 → stuck game" reports)
+with your own instance holding just Hungary's OSM data. It uses the **same query language**, so
+the app change is a single env var, and it covers **every** question type (radar, thermometer,
+matching, measuring, network geometry) — which Google Places cannot.
 
-## 1. Architecture
+The Docker setup is scripted in [`deploy/overpass/`](../deploy/overpass/): a `docker-compose.yml`,
+an `.env.example`, and a `setup.sh` that does the whole install. You copy that folder to a small
+droplet and run one command.
 
-Separate small Droplet running `wiktorn/overpass-api` with the Hungary OSM extract, reached
-by the backend droplet **only over the private VPC network** — never exposed publicly.
+## 1. Create the droplet
 
-## 2. Sizing (Hungary extract)
+- Ubuntu 24.04, **4 GB / 2 vCPU / 80 GB SSD**, in the **same VPC** as the backend droplet, your SSH key.
+- Hostname `overpass-hu`. Note its **public** IPv4 (to SSH in) — `setup.sh` finds the private one itself.
 
-- RAM: 4 GB (2 GB works with OVERPASS_META=no) — Overpass mmaps the DB.
-- Disk: 80 GB SSD — Hungary DB ~8-12 GB + ~15 GB transient headroom during import.
-- vCPU: 2. Droplet ~= $24/mo. Same region as the backend droplet (shared VPC).
+Sizing: the Hungary DB is ~8–12 GB; the import needs ~15 GB transient headroom (hence 80 GB), and
+`setup.sh` adds 4 GB swap automatically so the import won't OOM. ~$24/mo; VPC traffic is free.
 
-## 3. Create the Droplet
+## 2. Lock it down (firewall)
 
-Ubuntu 24.04, 4 GB / 2 vCPU / 80 GB, SAME VPC as the backend droplet, your SSH key,
-hostname overpass-hu. Note its PUBLIC IPv4 (to SSH) and PRIVATE IPv4 (OVERPASS_PRIVATE_IP).
+DigitalOcean Cloud Firewall on `overpass-hu`:
+- Inbound TCP **22** from your admin IP only.
+- Inbound TCP **8080** from the **backend droplet only** (not All IPv4).
 
-## 4. Lock it down (firewall)
-
-DigitalOcean Cloud Firewall on overpass-hu:
-- Inbound TCP 22 from your admin IP only.
-- Inbound TCP 8080 from the BACKEND droplet only (not All IPv4).
-Host ufw as defence-in-depth:
+Host `ufw` as defence-in-depth (replace the CIDR with your VPC's):
 
     ufw allow OpenSSH
-    ufw allow from 10.114.0.0/20 to any port 8080 proto tcp   # your VPC CIDR
+    ufw allow from 10.114.0.0/20 to any port 8080 proto tcp
     ufw --force enable
 
-## 5. Install Docker
+## 3. Deploy (one command)
 
-    apt-get update && apt-get install -y ca-certificates curl
-    install -m 0755 -d /etc/apt/keyrings
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-    chmod a+r /etc/apt/keyrings/docker.asc
-    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" > /etc/apt/sources.list.d/docker.list
-    apt-get update && apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+Copy this folder to the droplet and run the installer as root — it auto-detects the private VPC IP
+(binds Overpass to it, never `0.0.0.0`), adds swap, installs Docker, and starts the import:
 
-## 6. Compose file  (/opt/overpass/docker-compose.yml)
+    # from your machine (or scp from the backend droplet, which already has the repo):
+    scp -r deploy/overpass root@<overpass-public-ip>:/opt/overpass
+    ssh root@<overpass-public-ip>
+    cd /opt/overpass && ./setup.sh
 
-Replace OVERPASS_PRIVATE_IP with the droplet's PRIVATE IP:
+The first import runs in the background (~30–90 min). Follow it with `docker compose logs -f overpass`.
 
-    services:
-      overpass:
-        image: wiktorn/overpass-api:latest
-        container_name: overpass
-        restart: unless-stopped
-        ports:
-          - "OVERPASS_PRIVATE_IP:8080:80"      # bind to the PRIVATE interface only
-        environment:
-          OVERPASS_META: "no"
-          OVERPASS_MODE: "init"
-          OVERPASS_PLANET_URL: "https://download.geofabrik.de/europe/hungary-latest.osm.bz2"
-          OVERPASS_DIFF_URL: "https://download.geofabrik.de/europe/hungary-updates/"
-          OVERPASS_RULES_LOAD: "10"
-          OVERPASS_UPDATE_SLEEP: "3600"
-        volumes:
-          - overpass-db:/db
-        shm_size: "1g"
-    volumes:
-      overpass-db:
+## 4. Verify
 
-## 7. First import (one-time, ~30-90 min)
+Once it settles into the idle dispatcher loop:
 
-    docker compose up -d
-    docker compose logs -f overpass      # wait until it settles into the idle dispatcher loop
-    df -h /var/lib/docker                # watch free space during the build
+    ./verify.sh                       # on the overpass droplet
+    ./verify.sh <overpass-private-ip> # from the backend droplet
 
-## 8. Verify (run from the BACKEND droplet)
+`✅` = a Budapest station query returned data. `❌` = still importing, or a firewall/bind issue.
 
-    curl -s "http://OVERPASS_PRIVATE_IP:8080/api/interpreter?data=[out:json];node(47.49,19.03,47.51,19.06)[railway=station];out;" | head -c 400
+## 5. Point the app at it
 
-JSON with "elements" = success. Hang / refused = firewall or bind address (see below).
+`setup.sh` prints the exact value. On the **backend droplet's** `.env`:
 
-## 9. Point the app at it (backend droplet .env)
+    OVERPASS_ENDPOINT="http://<overpass-private-ip>:8080/api/interpreter"
 
-    OVERPASS_ENDPOINT="http://OVERPASS_PRIVATE_IP:8080/api/interpreter"
+    php artisan config:clear && php artisan config:cache && sudo supervisorctl restart hns-worker
 
-    php artisan config:clear && php artisan config:cache
-    sudo supervisorctl restart hns-worker
+The app's `config/game.php` already keeps a **public mirror as a fallback**, so this makes the
+self-hosted box the primary and the public API the backup automatically — no extra config. Start a
+game and ask a radar/matching question; it should resolve with no 504s.
 
-Then start a game and ask a radar/matching question — should resolve with no 504s.
+## 6. Keep it fresh / rebuild
 
-## 10. Keep it fresh
+Diffs auto-apply hourly (`OVERPASS_DIFF_URL` + `OVERPASS_UPDATE_SLEEP` in the compose). To rebuild
+from scratch:
 
-OVERPASS_DIFF_URL + OVERPASS_UPDATE_SLEEP auto-apply Geofabrik's Hungary diffs hourly.
-Full rebuild: `docker compose down && docker volume rm overpass_overpass-db && docker compose up -d`.
+    docker compose down && docker volume rm overpass_overpass-db && docker compose up -d
 
-Co-locate variant (same droplet, needs >=8 GB RAM): bind 127.0.0.1:8080:80 and set
-OVERPASS_ENDPOINT=http://127.0.0.1:8080/api/interpreter.
+**Co-locate variant** (skip the second droplet — needs the backend droplet at ≥8 GB RAM): in
+`.env` set `OVERPASS_BIND_IP=127.0.0.1`, run `setup.sh` there, and use
+`OVERPASS_ENDPOINT=http://127.0.0.1:8080/api/interpreter`.
 
-## 11. Troubleshooting
+## 7. Troubleshooting
 
-- Backend curl hangs/refused: check container bound to PRIVATE IP, Cloud Firewall allows 8080
-  from the backend droplet, ufw allows the VPC CIDR.
-- Import OOM: use 4 GB for the import, or add 4 GB swap.
-- Disk fills during import: ensure ~20 GB free.
-- Stale data: `docker compose logs overpass | grep -i update`.
-
-## 12. Cost
-
-~$24/mo (4 GB) or ~$12/mo (2 GB, META=no). VPC traffic free. Cheaper and more capable than
-Google Places for this query model.
+- **Backend can't reach it (hang/refused):** check the container is bound to the private IP
+  (`docker compose ps`), the Cloud Firewall allows 8080 from the backend droplet, and `ufw` allows
+  the VPC CIDR.
+- **Import OOM / disk fills:** `setup.sh` adds swap; ensure ~20 GB free during the build.
+- **Stale data:** `docker compose logs overpass | grep -i update`.
 
 ## Next steps (app side, later)
 
-1. Confirm OVERPASS_ENDPOINT is the single switch (optional public fallback).
-2. Add an Overpass health tile to the admin System page.
-3. Auto-void a pending question that never resolves (the "422 -> stuck game" self-heal).
+1. Add an Overpass health tile to the admin **System** page.
+2. Auto-void a pending question that never resolves (the "422 → stuck game" self-heal).
