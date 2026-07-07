@@ -113,6 +113,27 @@ class QuestionSeeder extends Seeder
                 "A keresőtől {$radius} távolságon belüli összes {$this->hu($s)} közül melyik a legközelebbi hozzád?",
                 $this->tentacleParams($s, $radius, $meters));
         }
+
+        $this->deactivateUnanswerable();
+    }
+
+    /**
+     * Hide from the picker the questions we can't reliably auto-answer on OSM in Hungary — the rows
+     * stay (custom copies, admin re-enable) but `is_active=false`. Manual-only subjects have no OSM
+     * geometry; body_of_water/mountain are unreliable (`natural=water/peak` matches tiny fountains
+     * and hillocks, not the Danube / real mountains); járás containment is spotty (admin_level=7 is
+     * mapped as sparse court districts). Line-feature questions (transit line, street) await the
+     * nearest-line engine.
+     */
+    private function deactivateUnanswerable(): void
+    {
+        Question::whereIn('key', [
+            'matching.transit_line', 'matching.street_or_path', 'matching.landmass',
+            'matching.2nd_administrative_division', 'matching.mountain',
+            'measuring.high_speed_train_line', 'measuring.sea_level', 'measuring.coastline',
+            'measuring.body_of_water', 'measuring.mountain',
+            'tentacles.metro_lines_25_km',
+        ])->where('is_custom', false)->update(['is_active' => false]);
     }
 
     private function hu(string $subject): string
