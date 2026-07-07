@@ -113,6 +113,9 @@ class SessionController extends Controller
 
     public function state(Session $session): JsonResponse
     {
+        // Resolve any elapsed-but-unfired timers (e.g. a pending question past the hider's
+        // answer window) so the game never hangs on a dead queue worker.
+        $session = $this->engine->catchUpTimers($session);
         $player = $this->engine->playerFor($session, request()->user());
 
         return response()->json($this->presenter->present($session, $player));

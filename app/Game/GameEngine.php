@@ -62,6 +62,22 @@ class GameEngine
     }
 
     /**
+     * Fire any timers whose deadline has already elapsed but that never fired (a dead queue
+     * worker). Called on the read path so an expired pending question / stuck phase resolves
+     * itself even with no worker running. Guarded, so it's a no-op once nothing is overdue.
+     */
+    public function catchUpTimers(Session $session): Session
+    {
+        $mode = $this->modes->make($session->game_mode->value);
+        foreach ($mode->overdueTimers($session) as $key => $guard) {
+            $this->fireTimer($session, $key, $guard);
+            $session = $session->fresh() ?? $session;
+        }
+
+        return $session;
+    }
+
+    /**
      * Let the mode react to a player's freshly-reported position (e.g. proximity
      * triggers). A no-op when the mode returns null.
      */

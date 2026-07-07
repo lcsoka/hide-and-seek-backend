@@ -295,6 +295,31 @@ class HideAndSeekMode implements GameMode
         return new ActionOutcome($data);
     }
 
+    /**
+     * Deadlines that have already elapsed but whose queued timer never fired — surfaced so a
+     * read/action resolves them lazily (a pending question clears itself when the hider's
+     * window ends; a stuck hiding phase advances) instead of the game hanging on a dead queue.
+     *
+     * @return array<string, int|null>
+     */
+    public function overdueTimers(Session $session): array
+    {
+        $data = $session->state_data ?? [];
+        $now = now()->timestamp;
+        $due = [];
+
+        $deadline = $data['pending_question']['deadline'] ?? null;
+        if ($deadline !== null && $deadline < $now) {
+            $due['question_answer'] = $data['question_answer'] ?? null;
+        }
+
+        if ($session->state === 'hiding' && ($data['hiding_deadline'] ?? null) !== null && $data['hiding_deadline'] < $now) {
+            $due['hiding_deadline'] = null;
+        }
+
+        return $due;
+    }
+
     public function locationVisibility(Session $session, Player $viewer): LocationFilter
     {
         $allIds = $session->players->pluck('id')->all();

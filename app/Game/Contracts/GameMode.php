@@ -44,6 +44,14 @@ interface GameMode
     public function onTimerExpired(Session $session, string $timerKey): ActionOutcome;
 
     /**
+     * Timers whose deadline has already passed but that never fired (e.g. the queued job
+     * didn't run) — so a read/action can resolve them lazily instead of the game hanging.
+     *
+     * @return array<string, int|null>  timerKey => guard (matched against state_data)
+     */
+    public function overdueTimers(Session $session): array;
+
+    /**
      * A player just reported a new position. Return an outcome to apply (e.g. proximity
      * triggers), or null for no change. Called after the position is persisted.
      */
