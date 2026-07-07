@@ -986,14 +986,21 @@ class HideAndSeekMode implements GameMode
             return new ActionOutcome($data);
         }
 
-        // Prefer the pre-computed truth, then the hider's explicit manual answer (so the
-        // manual path never blocks), then a last inline compute (bounded; usually the
-        // job already filled it). The /state read path never reaches here.
+        // Matching + measuring are SERVER-AUTHORITATIVE (anti-cheat): the map decides, so prefer
+        // the computed truth — pre-computed by the job, or inline here if the job never ran (e.g.
+        // no queue worker) — over any manual answer. A manual answer for these only counts when
+        // Overpass is genuinely unreachable, so the hider can't skew the cut with a wrong guess.
+        // Other categories keep the fast manual-first path (radar/thermometer are pure geometry;
+        // photo/tentacles need the hider's own input).
         $manual = is_array($hiderAnswer) ? $hiderAnswer : ['answer' => $hiderAnswer];
         $hasManual = ($manual['answer'] ?? null) !== null;
-        $answer = $pending['truth']
+        $authoritative = in_array($pending['category'] ?? null, ['matching', 'measuring'], true);
+        // The server-computed answer: the job's pre-computed truth, or (for authoritative
+        // categories) an inline compute if the job never ran.
+        $computed = $pending['truth'] ?? ($authoritative ? $this->evaluateTruth($session, $pending) : null);
+        $answer = $computed
             ?? ($hasManual ? $manual : null)
-            ?? $this->evaluateTruth($session, $pending);
+            ?? (! $authoritative ? $this->evaluateTruth($session, $pending) : null);
 
         // Undeterminable (e.g. throttled Overpass + no manual answer) → void, don't record blank.
         if (($answer['answer'] ?? null) === null) {
@@ -1022,9 +1029,9 @@ class HideAndSeekMode implements GameMode
         // The seeker's resolve-time position (thermometer B) — their own location.
         $asker = $session->players()->find($pending['asked_by'] ?? null);
 
-        // True when the hider's own input set the answer (no server truth) — only these are
-        // amendable, so the server-computed (anti-cheat) answers can't be overridden.
-        $manualAnswer = ($pending['truth'] ?? null) === null && $hasManual;
+        // True only when the hider's own input actually set the recorded answer (no server-computed
+        // answer available) — only these are amendable, so anti-cheat answers can't be overridden.
+        $manualAnswer = $computed === null && $hasManual;
 
         $resolved = $pending + [
             'answer' => $answer,
