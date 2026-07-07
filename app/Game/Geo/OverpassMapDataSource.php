@@ -38,19 +38,18 @@ final class OverpassMapDataSource implements MapDataSource
 
     public function within(string $type, float $lat, float $lng, float $radiusM): array
     {
-        $tag = config("game.overpass.features.{$type}");
-        if (! is_string($tag) || ! str_contains($tag, '=')) {
+        $filter = $this->filterFor(config("game.overpass.features.{$type}"));
+        if ($filter === null) {
             return [];
         }
 
-        [$key, $value] = explode('=', $tag, 2);
         $radius = (int) $radiusM;
         $cacheKey = sprintf('overpass:%s:%d:%.3f:%.3f', $type, $radius, $lat, $lng);
         $staleKey = "stale:{$cacheKey}";
 
         $elements = Cache::get($cacheKey);
         if ($elements === null) {
-            $elements = $this->fetch($key, $value, $radius, $lat, $lng);
+            $elements = $this->fetch($filter, $radius, $lat, $lng);
             if ($elements !== null) {
                 // Cache the success (fresh 6h + a longer-lived stale copy for outages).
                 Cache::put($cacheKey, $elements, now()->addHours(6));
@@ -126,12 +125,33 @@ final class OverpassMapDataSource implements MapDataSource
      *
      * @return array<int, array<string, mixed>>|null
      */
-    private function fetch(string $key, string $value, int $radius, float $lat, float $lng): ?array
+    /**
+     * A feature's config value is either "key=value" (built into `["key"="value"]`) or a raw
+     * Overpass filter fragment starting with `[` (e.g. `[aeroway=aerodrome][icao]` to require a
+     * real, registered airport instead of any grass strip). Returns null for an unusable value.
+     */
+    private function filterFor(mixed $tag): ?string
+    {
+        if (! is_string($tag)) {
+            return null;
+        }
+        if (str_starts_with($tag, '[')) {
+            return $tag;
+        }
+        if (! str_contains($tag, '=')) {
+            return null;
+        }
+        [$key, $value] = explode('=', $tag, 2);
+
+        return "[\"{$key}\"=\"{$value}\"]";
+    }
+
+    private function fetch(string $filter, int $radius, float $lat, float $lng): ?array
     {
         $ql = '[out:json][timeout:15];('
-            ."node[\"{$key}\"=\"{$value}\"](around:{$radius},{$lat},{$lng});"
-            ."way[\"{$key}\"=\"{$value}\"](around:{$radius},{$lat},{$lng});"
-            ."relation[\"{$key}\"=\"{$value}\"](around:{$radius},{$lat},{$lng});"
+            ."node{$filter}(around:{$radius},{$lat},{$lng});"
+            ."way{$filter}(around:{$radius},{$lat},{$lng});"
+            ."relation{$filter}(around:{$radius},{$lat},{$lng});"
             .');out center;';
 
         // One attempt per mirror (no per-endpoint retry): question truth runs in ComputeQuestionTruth

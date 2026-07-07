@@ -62,7 +62,9 @@ return [
         'user_agent' => env('OVERPASS_USER_AGENT', 'HideAndSeek/1.0 (+https://hide-and-seek.test)'),
         'search_radius_m' => 50_000,
         'features' => [
-            'airport' => 'aeroway=aerodrome',
+            // Registered airports only (ICAO code) — excludes informal grass airstrips, so the
+            // "nearest airport" reads as a real airport. Compound filters (leading `[`) are honoured.
+            'airport' => '[aeroway=aerodrome][icao]',
             'rail_station' => 'railway=station',
             'tram_stop' => 'railway=tram_stop',
             'subway_station' => 'station=subway',

@@ -128,11 +128,20 @@ class QuestionSeeder extends Seeder
     private function deactivateUnanswerable(): void
     {
         Question::whereIn('key', [
+            // No OSM geometry / not computable on our engine yet.
             'matching.transit_line', 'matching.street_or_path', 'matching.landmass',
-            'matching.2nd_administrative_division', 'matching.mountain',
             'measuring.high_speed_train_line', 'measuring.sea_level', 'measuring.coastline',
-            'measuring.body_of_water', 'measuring.mountain',
             'tentacles.metro_lines_25_km',
+            // Unreliable tags (match tiny fountains / hillocks, not the Danube / real mountains).
+            'measuring.body_of_water', 'matching.mountain', 'measuring.mountain',
+            // Sparse or absent across most supported cities (0 in 5+ of the 10 cities, or Budapest-only):
+            // aquarium, golf, amusement park, foreign consulate, and district (admin_level 9 = Budapest only).
+            'matching.aquarium', 'measuring.aquarium', 'tentacles.aquariums_25_km',
+            'matching.golf_course', 'measuring.golf_course',
+            'matching.amusement_park', 'measuring.amusement_park', 'tentacles.amusement_parks_25_km',
+            'matching.foreign_consulate', 'measuring.foreign_consulate',
+            'matching.2nd_administrative_division', // járás (admin_level 7) — sparse court districts in HU OSM
+            'matching.4th_administrative_division', // kerület (admin_level 9) — Budapest only
         ])->where('is_custom', false)->update(['is_active' => false]);
     }
 
