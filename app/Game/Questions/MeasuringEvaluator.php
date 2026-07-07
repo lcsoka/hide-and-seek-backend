@@ -98,6 +98,9 @@ class MeasuringEvaluator implements QuestionEvaluator
             'feature_name' => null,
             'feature_lat' => $askerHit->lat,   // the seeker's nearest border point (the reference)
             'feature_lng' => $askerHit->lng,
+            // The hider's OWN nearest border point, so their map can show what's closest to them
+            // (hider-only, like the matching hider_nearest — never sent to the seekers).
+            'hider_nearest' => ['name' => null, 'lat' => $hiderHit->lat, 'lng' => $hiderHit->lng],
             'boundary_level' => $boundaryLevel,
         ];
     }

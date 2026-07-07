@@ -108,6 +108,9 @@ class RegionQuestionTest extends TestCase
         $r1 = $measuring->evaluate($s1, $a1, $q, []);
         $this->assertSame('closer', $r1['answer']);
         $this->assertEqualsWithDelta(48.0, $r1['feature_lat'], 1e-9); // seeker's nearest border point
+        // The hider's OWN nearest border point is exposed too (hider-only, for their map).
+        $this->assertEqualsWithDelta(48.0, $r1['hider_nearest']['lat'], 1e-9);
+        $this->assertEqualsWithDelta(19.20, $r1['hider_nearest']['lng'], 1e-9);
 
         // Hider further south than the seeker → further.
         [$s2, $a2] = $this->pair(47.30, 19.20, 47.50, 19.00);
