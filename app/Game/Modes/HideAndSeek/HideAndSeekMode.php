@@ -817,8 +817,10 @@ class HideAndSeekMode implements GameMode
             : [];
 
         // Deferred (thermometer): capture the seeker's start position; resolve later.
-        // Overpass-backed categories (matching/measuring/tentacles) compute truth in a
-        // queued job so the ask returns immediately. Radar is pure geometry → inline.
+        // Overpass-backed categories (matching/measuring/tentacles) compute truth inline so the
+        // hider immediately sees their OWN nearest place on the map (and can answer knowingly),
+        // even with no queue worker; a queued job is the fallback if Overpass is down right now.
+        // Radar is pure geometry → inline.
         $truth = null;
         $jobs = [];
         if ($evaluator instanceof DeferredQuestionEvaluator) {
@@ -829,11 +831,20 @@ class HideAndSeekMode implements GameMode
                 // Auto-computable when there's OSM geometry to resolve: a point feature, an admin
                 // area (same-division matching) or a boundary line (border measuring). Subjects with
                 // none of these (sea level, coastline, high-speed rail, transit line, ...) aren't —
-                // the hider answers those manually, so skip the job rather than retry it forever.
+                // the hider answers those manually, so skip both compute paths.
                 if (($payload['feature'] ?? null) !== null
                     || ($payload['admin_level'] ?? null) !== null
                     || ($payload['boundary_level'] ?? null) !== null) {
-                    $jobs[] = new ComputeQuestionTruth($session->id, $seq);
+                    // Try inline first (fast, cached Overpass); on any failure fall back to the
+                    // retrying job so the ask still returns and truth fills in when Overpass recovers.
+                    try {
+                        $truth = $evaluator->evaluate($session, $asker, $question, $payload);
+                    } catch (\Throwable) {
+                        $truth = null;
+                    }
+                    if ($truth === null) {
+                        $jobs[] = new ComputeQuestionTruth($session->id, $seq);
+                    }
                 }
             } else {
                 $truth = $evaluator->evaluate($session, $asker, $question, $payload);

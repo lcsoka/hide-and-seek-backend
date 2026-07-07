@@ -192,7 +192,7 @@ class OsmQuestionTest extends TestCase
         Event::assertDispatched(GameEventBroadcast::class, fn ($e) => $e->type === 'QuestionAnswered' && ($e->payload['answer'] ?? null) === 'out_of_range');
     }
 
-    public function test_overpass_questions_defer_truth_to_a_queued_job(): void
+    public function test_overpass_matching_computes_truth_inline_at_ask(): void
     {
         Event::fake([GameEventBroadcast::class]);
         $ctx = $this->setUpSeeking();
@@ -204,19 +204,38 @@ class OsmQuestionTest extends TestCase
             'title' => ['en' => 'Q'], 'prompt' => ['en' => 'Q'], 'reward_draw' => 3, 'reward_keep' => 1,
         ]);
 
-        // Asking does NOT compute truth inline (Overpass is slow) — it queues a job.
+        // With map data available, asking computes the truth INLINE — so the hider immediately
+        // sees their own nearest place and can answer knowingly, with no queued job / worker.
+        Sanctum::actingAs($ctx['seeker']);
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'feature' => 'museum']])->assertOk();
+
+        Queue::assertNotPushed(ComputeQuestionTruth::class);
+        $truth = Session::find($ctx['sessionId'])->state_data['pending_question']['truth'] ?? null;
+        $this->assertSame('yes', $truth['answer'] ?? null);
+        $this->assertNotNull($truth['hider_nearest'] ?? null); // the hider's own nearest is available to draw on their map
+    }
+
+    public function test_matching_falls_back_to_the_job_when_map_data_is_unavailable(): void
+    {
+        Event::fake([GameEventBroadcast::class]);
+        $ctx = $this->setUpSeeking();
+        $this->placeBoth($ctx, [47.50, 19.00], [47.60, 19.20]);
+        $this->bindMuseums(); // no features → inline compute yields null (Overpass "down")
+
+        $q = Question::create([
+            'key' => 'matching.museum', 'category' => 'matching',
+            'title' => ['en' => 'Q'], 'prompt' => ['en' => 'Q'], 'reward_draw' => 3, 'reward_keep' => 1,
+        ]);
+
+        // Inline compute can't resolve it now → the retrying job is queued as a fallback.
         Sanctum::actingAs($ctx['seeker']);
         $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id, 'feature' => 'museum']])->assertOk();
 
         Queue::assertPushed(ComputeQuestionTruth::class);
         $this->assertNull(Session::find($ctx['sessionId'])->state_data['pending_question']['truth']);
-
-        // Running the job fills in the authoritative truth.
-        (new ComputeQuestionTruth($ctx['sessionId'], 1))->handle(app(HideAndSeekMode::class));
-        $this->assertSame('yes', Session::find($ctx['sessionId'])->state_data['pending_question']['truth']['answer'] ?? null);
     }
 
-    public function test_admin_matching_defers_truth_and_computes_it_via_the_job(): void
+    public function test_admin_matching_computes_truth_inline_at_ask(): void
     {
         Event::fake([GameEventBroadcast::class]);
         $ctx = $this->setUpSeeking();
@@ -231,12 +250,12 @@ class OsmQuestionTest extends TestCase
             'title' => ['en' => 'Q'], 'prompt' => ['en' => 'Q'], 'parameters' => ['admin_level' => 6],
         ]);
 
-        // No point feature, but admin_level → the truth job IS queued (it used to be skipped).
+        // Same-division matching resolves against the (synchronous) region source, so the truth is
+        // computed inline at ask — no queued job needed.
         Sanctum::actingAs($ctx['seeker']);
         $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id]])->assertOk();
-        Queue::assertPushed(ComputeQuestionTruth::class);
 
-        (new ComputeQuestionTruth($ctx['sessionId'], 1))->handle(app(HideAndSeekMode::class));
+        Queue::assertNotPushed(ComputeQuestionTruth::class);
         $this->assertSame('no', Session::find($ctx['sessionId'])->state_data['pending_question']['truth']['answer'] ?? null);
     }
 
