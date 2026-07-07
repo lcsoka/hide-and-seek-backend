@@ -130,9 +130,14 @@ class QuestionSeeder extends Seeder
         return isset($this->featureKeys[$subject]) ? ['feature' => $this->featureKeys[$subject]] : null;
     }
 
-    /** Matching subject params: a point feature, or an admin level for "same division?" questions. */
+    /** Matching subject params: a point feature, an admin level, or a derived-attribute compare. */
     private function matchingParams(string $subject): ?array
     {
+        // "Same length of station name?" — compare the nearest station's NAME length, not identity.
+        if ($subject === "Station Name's Length") {
+            return ['feature' => 'rail_station', 'match' => 'name_length'];
+        }
+
         return isset($this->adminLevels[$subject])
             ? ['admin_level' => $this->adminLevels[$subject]]
             : $this->featureParams($subject);

@@ -47,6 +47,26 @@ class MatchingEvaluator implements QuestionEvaluator
         // "same?" knowingly). Stripped before the answer reaches the seeker-visible history.
         $hiderNearestInfo = ['name' => $hiderNearest->name, 'lat' => $hiderNearest->lat, 'lng' => $hiderNearest->lng];
 
+        // "Station Name's Length": compare the NAME length of each side's nearest feature, not identity.
+        if (($question->parameters['match'] ?? null) === 'name_length') {
+            if ($asker->last_lat === null || $asker->last_lng === null) {
+                return null;
+            }
+            $askerNearest = $this->map->nearest($feature, (float) $asker->last_lat, (float) $asker->last_lng);
+            if ($askerNearest === null) {
+                return null;
+            }
+            $same = mb_strlen((string) $hiderNearest->name) === mb_strlen((string) $askerNearest->name);
+
+            return [
+                'answer' => $same ? 'yes' : 'no',
+                'feature_name' => $askerNearest->name,
+                'feature_lat' => $askerNearest->lat,
+                'feature_lng' => $askerNearest->lng,
+                'hider_nearest' => $hiderNearestInfo,
+            ];
+        }
+
         // The seeker's confirmed reference place, if they picked one.
         $refLat = $payload['ref_lat'] ?? null;
         $refLng = $payload['ref_lng'] ?? null;
