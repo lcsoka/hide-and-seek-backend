@@ -766,6 +766,7 @@ class HideAndSeekMode implements GameMode
             $payload['feature'] = $payload['feature'] ?? ($question->parameters['feature'] ?? null);
             $payload['radius_m'] = $payload['radius_m'] ?? ($question->parameters['radius_m'] ?? null);
             $payload['admin_level'] = $payload['admin_level'] ?? ($question->parameters['admin_level'] ?? null);
+            $payload['boundary_level'] = $payload['boundary_level'] ?? ($question->parameters['boundary_level'] ?? null);
         }
 
         $window = $question?->answer_time_s ?? (int) ($session->config['question_answer_time_s'] ?? 600);
@@ -787,11 +788,13 @@ class HideAndSeekMode implements GameMode
             $payload['start_lng'] = $asker->last_lng;
         } elseif ($evaluator !== null) {
             if (in_array($question->category->value, ['matching', 'measuring', 'tentacles'], true)) {
-                // Only worth a truth job when there's an OSM point feature to resolve.
-                // Subjects with no feature (e.g. "international border", "sea level",
-                // "coastline") aren't auto-computable — the hider answers them manually,
-                // so skip the job rather than have it fail and retry forever.
-                if (($payload['feature'] ?? null) !== null) {
+                // Auto-computable when there's OSM geometry to resolve: a point feature, an admin
+                // area (same-division matching) or a boundary line (border measuring). Subjects with
+                // none of these (sea level, coastline, high-speed rail, transit line, ...) aren't —
+                // the hider answers those manually, so skip the job rather than retry it forever.
+                if (($payload['feature'] ?? null) !== null
+                    || ($payload['admin_level'] ?? null) !== null
+                    || ($payload['boundary_level'] ?? null) !== null) {
                     $jobs[] = new ComputeQuestionTruth($session->id, $seq);
                 }
             } else {

@@ -4,8 +4,11 @@ namespace Tests\Feature;
 
 use App\Events\GameEventBroadcast;
 use App\Game\Geo\ArrayMapDataSource;
+use App\Game\Geo\ArrayRegionSource;
+use App\Game\Geo\GeoArea;
 use App\Game\Geo\GeoFeature;
 use App\Game\Geo\MapDataSource;
+use App\Game\Geo\RegionSource;
 use App\Game\Modes\HideAndSeek\HideAndSeekMode;
 use App\Jobs\ComputeQuestionTruth;
 use App\Models\Player;
@@ -211,6 +214,30 @@ class OsmQuestionTest extends TestCase
         // Running the job fills in the authoritative truth.
         (new ComputeQuestionTruth($ctx['sessionId'], 1))->handle(app(HideAndSeekMode::class));
         $this->assertSame('yes', Session::find($ctx['sessionId'])->state_data['pending_question']['truth']['answer'] ?? null);
+    }
+
+    public function test_admin_matching_defers_truth_and_computes_it_via_the_job(): void
+    {
+        Event::fake([GameEventBroadcast::class]);
+        $ctx = $this->setUpSeeking();
+        $this->placeBoth($ctx, [47.50, 19.00], [47.60, 19.20]); // hider south, seeker north
+        // Different containing area for the two points → answer "no".
+        $this->app->instance(RegionSource::class, new ArrayRegionSource(
+            areaFn: fn (float $lat, float $lng, int $level): GeoArea => new GeoArea($lat > 47.55 ? 'north' : 'south', $level),
+        ));
+
+        $q = Question::create([
+            'key' => 'matching.1st_administrative_division', 'category' => 'matching',
+            'title' => ['en' => 'Q'], 'prompt' => ['en' => 'Q'], 'parameters' => ['admin_level' => 6],
+        ]);
+
+        // No point feature, but admin_level → the truth job IS queued (it used to be skipped).
+        Sanctum::actingAs($ctx['seeker']);
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'ask_question', 'payload' => ['question_id' => $q->id]])->assertOk();
+        Queue::assertPushed(ComputeQuestionTruth::class);
+
+        (new ComputeQuestionTruth($ctx['sessionId'], 1))->handle(app(HideAndSeekMode::class));
+        $this->assertSame('no', Session::find($ctx['sessionId'])->state_data['pending_question']['truth']['answer'] ?? null);
     }
 
     public function test_thermometer_reports_hotter_when_seeker_moves_closer(): void
