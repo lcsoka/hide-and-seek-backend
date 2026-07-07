@@ -90,8 +90,13 @@ class EveryCardGameplayTest extends TestCase
                 if (! empty($effect['blocks_asking'])) {
                     $actions = $this->seekerActions($ctx);
                     $this->assertNotContains('ask_question', $actions, "{$key} should block asking");
-                    // Dice curses clear by rolling; the rest by marking done (with a photo if required).
-                    $clear = ! empty($effect['dice']) ? 'roll_dice' : 'complete_curse';
+                    // Dice curses clear by rolling, the hangman by solving its word, the rest by
+                    // marking done (with a photo if required).
+                    $clear = match (true) {
+                        ! empty($effect['dice']) => 'roll_dice',
+                        ! empty($effect['hangman']) => 'hangman_guess',
+                        default => 'complete_curse',
+                    };
                     $this->assertContains($clear, $actions, "{$key} should be clearable via {$clear}");
                 }
             }
