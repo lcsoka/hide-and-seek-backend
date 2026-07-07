@@ -62,9 +62,16 @@ return [
         'user_agent' => env('OVERPASS_USER_AGENT', 'HideAndSeek/1.0 (+https://hide-and-seek.test)'),
         'search_radius_m' => 50_000,
         'features' => [
-            // Registered airports only (ICAO code) — excludes informal grass airstrips, so the
-            // "nearest airport" reads as a real airport. Compound filters (leading `[`) are honoured.
-            'airport' => '[aeroway=aerodrome][icao]',
+            // Airport is TIERED (priority list of tiers; the first tier with any hit within range
+            // wins). Tier 1 = a real, recognisable airport (scheduled service / classified type),
+            // so "nearest airport" is Ferihegy in Budapest — not a nearby glider strip. Tier 2 =
+            // any registered aerodrome (ICAO), a fallback so cities without a real airport (Szeged,
+            // Miskolc, Kecskemét…) can still answer. Each tier is a list of unioned filters.
+            // NB: keys with a colon (aerodrome:type) MUST be quoted or Overpass rejects the query.
+            'airport' => [
+                ['["aeroway"="aerodrome"]["iata"]', '["aeroway"="aerodrome"]["aerodrome:type"~"international|regional|public"]'],
+                ['["aeroway"="aerodrome"]["icao"]'],
+            ],
             'rail_station' => 'railway=station',
             'tram_stop' => 'railway=tram_stop',
             'subway_station' => 'station=subway',

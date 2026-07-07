@@ -38,8 +38,8 @@ final class OverpassMapDataSource implements MapDataSource
 
     public function within(string $type, float $lat, float $lng, float $radiusM): array
     {
-        $filter = $this->filterFor(config("game.overpass.features.{$type}"));
-        if ($filter === null) {
+        $tiers = $this->tiersFor(config("game.overpass.features.{$type}"));
+        if ($tiers === []) {
             return [];
         }
 
@@ -49,7 +49,7 @@ final class OverpassMapDataSource implements MapDataSource
 
         $elements = Cache::get($cacheKey);
         if ($elements === null) {
-            $elements = $this->fetch($filter, $radius, $lat, $lng);
+            $elements = $this->fetchTiered($tiers, $radius, $lat, $lng);
             if ($elements !== null) {
                 // Cache the success (fresh 6h + a longer-lived stale copy for outages).
                 Cache::put($cacheKey, $elements, now()->addHours(6));
@@ -146,13 +146,84 @@ final class OverpassMapDataSource implements MapDataSource
         return "[\"{$key}\"=\"{$value}\"]";
     }
 
-    private function fetch(string $filter, int $radius, float $lat, float $lng): ?array
+    /**
+     * Normalise a feature's config into an ordered list of tiers, each tier a list of Overpass
+     * filter fragments. A plain string (or a compound `[...]` filter) is one tier of one filter;
+     * a list of lists is an explicit priority ladder (e.g. airport: real airports, then any
+     * registered aerodrome). Unusable entries are dropped.
+     *
+     * @return array<int, array<int, string>>
+     */
+    private function tiersFor(mixed $config): array
     {
-        $ql = '[out:json][timeout:15];('
-            ."node{$filter}(around:{$radius},{$lat},{$lng});"
-            ."way{$filter}(around:{$radius},{$lat},{$lng});"
-            ."relation{$filter}(around:{$radius},{$lat},{$lng});"
-            .');out center;';
+        if ($config === null) {
+            return [];
+        }
+        // A single filter (string) → one tier, one filter.
+        if (! is_array($config)) {
+            $filter = $this->filterFor($config);
+
+            return $filter === null ? [] : [[$filter]];
+        }
+
+        $tiers = [];
+        foreach ($config as $tier) {
+            $filters = [];
+            foreach ((array) $tier as $tag) {
+                if (($filter = $this->filterFor($tag)) !== null) {
+                    $filters[] = $filter;
+                }
+            }
+            if ($filters !== []) {
+                $tiers[] = $filters;
+            }
+        }
+
+        return $tiers;
+    }
+
+    /**
+     * Query the tiers in priority order, returning the first tier that has any feature within
+     * range. Returns null only on a genuine Overpass outage (so the caller can fall back to a
+     * stale cache) — an empty array means every tier was genuinely empty here.
+     *
+     * @param  array<int, array<int, string>>  $tiers
+     * @return array<int, array<string, mixed>>|null
+     */
+    private function fetchTiered(array $tiers, int $radius, float $lat, float $lng): ?array
+    {
+        foreach ($tiers as $filters) {
+            $elements = $this->fetchUnion($filters, $radius, $lat, $lng);
+            if ($elements === null) {
+                return null; // outage — don't silently drop to a lower tier
+            }
+            if ($elements !== []) {
+                return $elements; // first non-empty tier wins
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * One Overpass query unioning every filter in a tier (node/way/relation each). Returns the
+     * elements, or null if the mirror failed so tiering can distinguish empty from an outage.
+     *
+     * @param  array<int, string>  $filters
+     * @return array<int, array<string, mixed>>|null
+     */
+    private function fetchUnion(array $filters, int $radius, float $lat, float $lng): ?array
+    {
+        $clauses = '';
+        foreach ($filters as $filter) {
+            $clauses .= "node{$filter}(around:{$radius},{$lat},{$lng});"
+                ."way{$filter}(around:{$radius},{$lat},{$lng});"
+                ."relation{$filter}(around:{$radius},{$lat},{$lng});";
+        }
+        if ($clauses === '') {
+            return [];
+        }
+        $ql = "[out:json][timeout:15];({$clauses});out center;";
 
         // One attempt per mirror (no per-endpoint retry): question truth runs in ComputeQuestionTruth
         // which already retries with backoff at the job level, and the synchronous callers (hiding-zone
