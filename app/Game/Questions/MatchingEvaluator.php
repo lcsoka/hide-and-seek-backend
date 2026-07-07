@@ -4,6 +4,7 @@ namespace App\Game\Questions;
 
 use App\Enums\QuestionCategory;
 use App\Game\Geo\MapDataSource;
+use App\Game\Geo\RegionSource;
 use App\Game\Support\Geo;
 use App\Models\Player;
 use App\Models\Question;
@@ -22,7 +23,10 @@ class MatchingEvaluator implements QuestionEvaluator
     /** A hider feature within this distance of the seeker's place counts as "the same place". */
     private const SAME_PLACE_M = 150.0;
 
-    public function __construct(private readonly MapDataSource $map) {}
+    public function __construct(
+        private readonly MapDataSource $map,
+        private readonly RegionSource $regions,
+    ) {}
 
     public function category(): QuestionCategory
     {
@@ -34,7 +38,16 @@ class MatchingEvaluator implements QuestionEvaluator
         $feature = $payload['feature'] ?? ($question->parameters['feature'] ?? null);
         $hiderPoint = $this->hiderPoint($session);
 
-        if (! is_string($feature) || $hiderPoint === null) {
+        if ($hiderPoint === null) {
+            return null;
+        }
+
+        // "Same administrative division?" — do the hider and seeker fall in the same area at this level?
+        if (isset($question->parameters['admin_level'])) {
+            return $this->evaluateAdmin($asker, (int) $question->parameters['admin_level'], $hiderPoint);
+        }
+
+        if (! is_string($feature)) {
             return null;
         }
 
@@ -98,6 +111,33 @@ class MatchingEvaluator implements QuestionEvaluator
             'feature_lat' => $askerNearest->lat,
             'feature_lng' => $askerNearest->lng,
             'hider_nearest' => $hiderNearestInfo,
+        ];
+    }
+
+    /**
+     * "Are you in the same {megye/járás/település/kerület} as me?" — compare the administrative
+     * area (of the given admin_level) that contains each side; the seeker's area name is revealed,
+     * the hider's is hider-only. The client draws the area polygon from ask.admin_level + the answer.
+     *
+     * @param  array{0: float, 1: float}  $hiderPoint
+     * @return array<string, mixed>|null
+     */
+    private function evaluateAdmin(Player $asker, int $adminLevel, array $hiderPoint): ?array
+    {
+        if ($asker->last_lat === null || $asker->last_lng === null) {
+            return null;
+        }
+        $hiderArea = $this->regions->areaContaining($hiderPoint[0], $hiderPoint[1], $adminLevel);
+        $askerArea = $this->regions->areaContaining((float) $asker->last_lat, (float) $asker->last_lng, $adminLevel);
+        if ($hiderArea === null || $askerArea === null) {
+            return null; // no coverage — fall back to a manual answer
+        }
+
+        return [
+            'answer' => $hiderArea->id === $askerArea->id ? 'yes' : 'no',
+            'feature_name' => $askerArea->name,     // the seeker's own area (the one revealed)
+            'admin_level' => $adminLevel,
+            'hider_nearest' => ['name' => $hiderArea->name, 'lat' => null, 'lng' => null],
         ];
     }
 }

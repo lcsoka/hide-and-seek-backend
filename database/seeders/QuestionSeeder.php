@@ -78,7 +78,7 @@ class QuestionSeeder extends Seeder
                 "Measuring — {$s}", "Mérés — {$this->hu($s)}",
                 "Compared to me, are you closer to or further from the nearest {$s}?",
                 "Hozzám képest közelebb vagy távolabb van a legközelebbi {$this->hu($s)}?",
-                $this->featureParams($s));
+                $this->measuringParams($s));
         }
 
         $this->seed(QuestionCategory::Radar, 'radar', 2, 1, 'Radar', 'Radar',
@@ -128,6 +128,17 @@ class QuestionSeeder extends Seeder
     private function featureParams(string $subject): ?array
     {
         return isset($this->featureKeys[$subject]) ? ['feature' => $this->featureKeys[$subject]] : null;
+    }
+
+    /** Measuring subject params: distance to a border (admin_level line), else to a point feature. */
+    private function measuringParams(string $subject): ?array
+    {
+        return match ($subject) {
+            'International Border' => ['boundary_level' => 2],
+            '1st Administrative Division Border' => ['boundary_level' => 6], // megye / county line
+            '2nd Administrative Division Border' => ['boundary_level' => 7], // járás / district line
+            default => $this->featureParams($subject),
+        };
     }
 
     /** Matching subject params: a point feature, an admin level, or a derived-attribute compare. */

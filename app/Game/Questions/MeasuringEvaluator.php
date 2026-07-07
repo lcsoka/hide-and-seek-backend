@@ -4,6 +4,7 @@ namespace App\Game\Questions;
 
 use App\Enums\QuestionCategory;
 use App\Game\Geo\MapDataSource;
+use App\Game\Geo\RegionSource;
 use App\Game\Support\Geo;
 use App\Models\Player;
 use App\Models\Question;
@@ -20,7 +21,10 @@ class MeasuringEvaluator implements QuestionEvaluator
 {
     use ResolvesHiderLocation;
 
-    public function __construct(private readonly MapDataSource $map) {}
+    public function __construct(
+        private readonly MapDataSource $map,
+        private readonly RegionSource $regions,
+    ) {}
 
     public function category(): QuestionCategory
     {
@@ -32,8 +36,17 @@ class MeasuringEvaluator implements QuestionEvaluator
         $feature = $payload['feature'] ?? ($question->parameters['feature'] ?? null);
         $hiderPoint = $this->hiderPoint($session);
 
-        if (! is_string($feature) || $hiderPoint === null
-            || $asker->last_lat === null || $asker->last_lng === null) {
+        if ($hiderPoint === null || $asker->last_lat === null || $asker->last_lng === null) {
+            return null;
+        }
+
+        // "Are you closer to the {international/megye/járás} border than me?" — compare each side's
+        // distance to the nearest administrative boundary line of the given level.
+        if (isset($question->parameters['boundary_level'])) {
+            return $this->evaluateBorder($asker, (int) $question->parameters['boundary_level'], $hiderPoint);
+        }
+
+        if (! is_string($feature)) {
             return null;
         }
 
@@ -61,6 +74,31 @@ class MeasuringEvaluator implements QuestionEvaluator
             'feature_name' => $refName,
             'feature_lat' => $refLat,
             'feature_lng' => $refLng,
+        ];
+    }
+
+    /**
+     * "Are you closer to the {international/county/district} border than me?" — compare each side's
+     * distance to the nearest boundary line of the given admin_level. The seeker's nearest border
+     * point is revealed as the reference (a pin + line, like the feature case).
+     *
+     * @param  array{0: float, 1: float}  $hiderPoint
+     * @return array<string, mixed>|null
+     */
+    private function evaluateBorder(Player $asker, int $boundaryLevel, array $hiderPoint): ?array
+    {
+        $hiderHit = $this->regions->nearestBoundary($hiderPoint[0], $hiderPoint[1], $boundaryLevel);
+        $askerHit = $this->regions->nearestBoundary((float) $asker->last_lat, (float) $asker->last_lng, $boundaryLevel);
+        if ($hiderHit === null || $askerHit === null) {
+            return null; // no coverage — fall back to a manual answer
+        }
+
+        return [
+            'answer' => $hiderHit->distanceM <= $askerHit->distanceM ? 'closer' : 'further',
+            'feature_name' => null,
+            'feature_lat' => $askerHit->lat,   // the seeker's nearest border point (the reference)
+            'feature_lng' => $askerHit->lng,
+            'boundary_level' => $boundaryLevel,
         ];
     }
 }

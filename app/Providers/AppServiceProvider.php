@@ -4,6 +4,8 @@ namespace App\Providers;
 
 use App\Game\Geo\MapDataSource;
 use App\Game\Geo\OverpassMapDataSource;
+use App\Game\Geo\OverpassRegionSource;
+use App\Game\Geo\RegionSource;
 use Illuminate\Auth\Notifications\ResetPassword;
 use Illuminate\Http\Resources\Json\JsonResource;
 use Illuminate\Support\Facades\Broadcast;
@@ -18,6 +20,8 @@ class AppServiceProvider extends ServiceProvider
     {
         // Live OSM backend for the geo evaluators (swap to PostGIS later, or a fake in tests).
         $this->app->bind(MapDataSource::class, OverpassMapDataSource::class);
+        // Area containment + distance-to-boundary (admin-division matching, border measuring).
+        $this->app->bind(RegionSource::class, OverpassRegionSource::class);
     }
 
     /**
