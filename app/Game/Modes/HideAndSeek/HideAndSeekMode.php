@@ -171,6 +171,9 @@ class HideAndSeekMode implements GameMode
             'confirm_hidden' => $this->validateWithinHidingZone($session, $player),
             'choose_disabled_categories' => $this->validateChooseDisabled($session, $action),
             'play_curse' => $this->validatePlayCurse($session, $action),
+            'hangman_guess' => (isset($action->payload['curse_uid'], $action->payload['letter']))
+                ? ValidationResult::pass()
+                : ValidationResult::fail('hangman_guess requires a curse_uid and a letter.'),
             default => ValidationResult::pass(),
         };
     }
@@ -230,6 +233,7 @@ class HideAndSeekMode implements GameMode
             'amend_answer' => $this->amendAnswer($session, $action, $data),
             'complete_curse' => $this->completeCurse($player, $action, $data),
             'roll_dice' => $this->rollDice($action, $data),
+            'hangman_guess' => $this->hangmanGuess($action, $data),
             'declare_endgame' => new ActionOutcome($data, 'endgame', [$this->event('EndgameTriggered', ['by' => $player->id])]),
             'claim_found' => $this->claimFound($player, $data),
             'confirm_caught' => $this->endRound($session, $this->withoutFoundClaim($data), $data['found_claim']['by'] ?? null, surrendered: false),
@@ -634,7 +638,9 @@ class HideAndSeekMode implements GameMode
         $active = $this->activeCurseInstances($data);
         // A blocking curse locks questions until the seekers clear it.
         $blocked = (bool) array_filter($active, fn ($c) => ! empty($c['blocks_asking']));
-        $canComplete = (bool) array_filter($active, fn ($c) => (! empty($c['requires_proof']) || ! empty($c['blocks_asking'])) && empty($c['dice']));
+        // A hangman curse is cleared by solving the puzzle (hangman_guess), not a plain complete.
+        $canComplete = (bool) array_filter($active, fn ($c) => (! empty($c['requires_proof']) || ! empty($c['blocks_asking'])) && empty($c['dice']) && empty($c['hangman']));
+        $canGuessHangman = (bool) array_filter($active, fn ($c) => ! empty($c['hangman']));
         $canRoll = (bool) array_filter($active, fn ($c) => ! empty($c['dice']));
 
         // Public-transport board/alight (the journey log). The thermometer must be WALKED:
@@ -646,6 +652,7 @@ class HideAndSeekMode implements GameMode
             $pending || $blocked ? ['declare_endgame'] : array_merge($asks, ['declare_endgame']),
             [$onTransit ? 'alight_transit' : 'board_transit'],
             $canComplete ? ['complete_curse'] : [],
+            $canGuessHangman ? ['hangman_guess'] : [],
             $canRoll ? ['roll_dice'] : [],
         );
     }
@@ -1087,6 +1094,12 @@ class HideAndSeekMode implements GameMode
             'completed_at' => null,
         ];
 
+        // The Hidden Gallows: a word puzzle the seekers must solve to lift the asking block. The
+        // chosen word stays server-side; the presenter only ever exposes a masked view.
+        if (! empty($effect['hangman'])) {
+            $instance['hangman'] = Hangman::newState();
+        }
+
         // bonus_draws: a hider self-buff (no seeker task) → grant the draws + resolve at once.
         if ($bonus = (int) ($effect['bonus_draws']['count'] ?? 0)) {
             $data['bonus_draws'] = ($data['bonus_draws'] ?? 0) + $bonus;
@@ -1166,6 +1179,57 @@ class HideAndSeekMode implements GameMode
 
                 return new ActionOutcome($data, null, [$this->event('DiceRolled', ['uid' => $uid, 'values' => $values, 'sum' => $sum, 'success' => $success])]);
             }
+        }
+
+        return new ActionOutcome($data);
+    }
+
+    /**
+     * A seeker guesses a letter in the Hidden Gallows word puzzle. A hit reveals the letter (and
+     * clears the curse when the word is complete); a miss counts toward the limit, after which the
+     * puzzle resets with a fresh word — so a bad run only delays, never dead-ends, the seekers.
+     */
+    private function hangmanGuess(Action $action, array $data): ActionOutcome
+    {
+        $uid = $action->payload['curse_uid'] ?? null;
+        $letter = Hangman::fold((string) ($action->payload['letter'] ?? ''));
+        if ($letter === '' || ! in_array($letter, Hangman::ALPHABET, true)) {
+            return new ActionOutcome($data);
+        }
+
+        foreach ($data['curses_played'] ?? [] as $i => $curse) {
+            if (($curse['uid'] ?? null) !== $uid
+                || ($curse['status'] ?? 'active') !== 'active'
+                || empty($curse['hangman'])) {
+                continue;
+            }
+
+            $hm = $curse['hangman'];
+            // A letter already tried is a no-op (guarding double-taps / replays).
+            if (in_array($letter, $hm['guessed'] ?? [], true) || in_array($letter, $hm['wrong'] ?? [], true)) {
+                return new ActionOutcome($data);
+            }
+
+            if (Hangman::wordContains($hm['word'], $letter)) {
+                $hm['guessed'][] = $letter;
+                if (Hangman::isSolved($hm['word'], $hm['guessed'])) {
+                    $data['curses_played'][$i]['hangman'] = $hm;
+                    $data['curses_played'][$i]['status'] = 'completed';
+                    $data['curses_played'][$i]['completed_at'] = now()->timestamp;
+
+                    return new ActionOutcome($data, null, [$this->event('HangmanSolved', ['uid' => $uid, 'word' => $hm['word']])]);
+                }
+            } else {
+                $hm['wrong'][] = $letter;
+                // Out of guesses → a fresh word, progress wiped (the asking block persists).
+                if (count($hm['wrong']) >= (int) ($hm['max_wrong'] ?? Hangman::MAX_WRONG)) {
+                    $hm = Hangman::newState();
+                }
+            }
+
+            $data['curses_played'][$i]['hangman'] = $hm;
+
+            return new ActionOutcome($data, null, [$this->event('HangmanGuessed', ['uid' => $uid, 'letter' => $letter])]);
         }
 
         return new ActionOutcome($data);

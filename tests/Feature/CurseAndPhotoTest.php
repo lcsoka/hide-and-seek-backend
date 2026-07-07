@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Events\GameEventBroadcast;
+use App\Game\Modes\HideAndSeek\Hangman;
 use App\Models\Card;
 use App\Models\Question;
 use App\Models\Session;
@@ -209,6 +210,56 @@ class CurseAndPhotoTest extends TestCase
         $this->assertCount(2, $roll['values']);
         $this->assertSame(array_sum($roll['values']), $roll['sum']);
         $this->assertIsBool($roll['success']);
+    }
+
+    public function test_the_hidden_hangman_blocks_asking_until_the_word_is_solved(): void
+    {
+        Event::fake([GameEventBroadcast::class]);
+        $ctx = $this->setUpSeeking();
+        $curse = Card::create([
+            'key' => 'hangman_curse', 'name' => ['en' => 'The Hidden Hangman'], 'description' => ['en' => 'Solve the word.'],
+            'effect' => ['blocks_asking' => true, 'hangman' => true], 'is_active' => true,
+        ]);
+        $this->giveHiderCard($ctx['sessionId'], ['uid' => 'h1', 'type' => 'curse', 'curse_id' => $curse->id]);
+
+        Sanctum::actingAs($ctx['host']);
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'play_curse', 'payload' => ['card_uid' => 'h1']])->assertOk();
+
+        // The seeker is blocked from asking and offered the puzzle — not a plain "mark done".
+        Sanctum::actingAs($ctx['seeker']);
+        $state = $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state");
+        $this->assertTrue($state->json('questions_blocked'));
+        $this->assertContains('hangman_guess', $state->json('available_actions'));
+        $this->assertNotContains('ask_question', $state->json('available_actions'));
+        $this->assertNotContains('complete_curse', $state->json('available_actions'));
+
+        $uid = $state->json('curses.0.uid');
+        $hangman = $state->json('curses.0.hangman');
+        // The raw word never reaches the client: only a fully-blank masked view at the start.
+        $this->assertArrayNotHasKey('word', $hangman);
+        $this->assertSame([], array_filter($hangman['mask'], fn ($m) => $m !== null));
+
+        // The word lives server-side only — read it there to drive the puzzle.
+        $word = Session::find($ctx['sessionId'])->state_data['curses_played'][0]['hangman']['word'];
+        $folded = collect(mb_str_split($word))->map(fn ($c) => Hangman::fold($c))->unique()->values();
+
+        // A wrong guess counts a miss and reveals nothing.
+        $wrong = collect(Hangman::ALPHABET)->first(fn ($l) => ! $folded->contains($l));
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'hangman_guess', 'payload' => ['curse_uid' => $uid, 'letter' => $wrong]])->assertOk();
+        $mid = $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state");
+        $this->assertSame([$wrong], $mid->json('curses.0.hangman.wrong'));
+        $this->assertTrue($mid->json('questions_blocked'));
+
+        // Guessing every letter solves it and lifts the block.
+        foreach ($folded as $letter) {
+            $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'hangman_guess', 'payload' => ['curse_uid' => $uid, 'letter' => $letter]])->assertOk();
+        }
+
+        $after = $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state");
+        $this->assertTrue($after->json('curses.0.hangman.solved'));
+        $this->assertSame('completed', $after->json('curses.0.status'));
+        $this->assertFalse($after->json('questions_blocked'));
+        $this->assertContains('ask_question', $after->json('available_actions'));
     }
 
     public function test_a_timed_curse_carries_an_expiry(): void

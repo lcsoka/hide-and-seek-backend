@@ -3,6 +3,7 @@
 namespace App\Game;
 
 use App\Game\Contracts\GameMode;
+use App\Game\Modes\HideAndSeek\Hangman;
 use App\Game\Modes\HideAndSeek\HideAndSeekMode;
 use App\Game\Support\Geo;
 use App\Models\Card;
@@ -473,6 +474,15 @@ class GameStatePresenter
                 'status' => $status,
                 'proof_url' => $c['proof_url'] ?? null,
                 'hint_photo_url' => $c['hint_photo_url'] ?? null,
+                // The Hidden Gallows puzzle — only the masked view (the raw word never leaves the server).
+                'hangman' => isset($c['hangman']) ? [
+                    'mask' => Hangman::mask($c['hangman']['word'], $c['hangman']['guessed'] ?? []),
+                    'guessed' => $c['hangman']['guessed'] ?? [],
+                    'wrong' => $c['hangman']['wrong'] ?? [],
+                    'max_wrong' => $c['hangman']['max_wrong'] ?? Hangman::MAX_WRONG,
+                    'alphabet' => Hangman::ALPHABET,
+                    'solved' => $status === 'completed',
+                ] : null,
             ];
         })->all();
     }
