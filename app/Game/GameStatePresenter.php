@@ -431,6 +431,8 @@ class GameStatePresenter
                 'name' => $model?->name, 'cost' => $model?->cost, 'description' => $model?->description,
                 // The hider must attach a photo (e.g. a Street View shot) when casting this curse.
                 'needs_photo' => (bool) ($model?->effect['hider_photo'] ?? false),
+                // The hider must type a word (the Hidden Hangman) for the seekers to guess.
+                'needs_word' => (bool) ($model?->effect['hangman'] ?? false),
             ];
         }, $cards);
     }

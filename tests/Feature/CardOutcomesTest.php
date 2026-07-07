@@ -47,6 +47,9 @@ class CardOutcomesTest extends TestCase
 
         foreach ($curses->values() as $i => $curse) {
             $extra = ! empty($curse->effect['hider_photo']) ? ['photo_url' => 'https://example.com/streetview.jpg'] : [];
+            if (! empty($curse->effect['hangman'])) {
+                $extra['word'] = 'VILLAMOS'; // the Hidden Hangman needs a word from the hider
+            }
             $this->play($ctx, ['uid' => "c{$i}", 'type' => 'curse', 'curse_id' => $curse->id], 'play_curse', $extra);
 
             $active = collect($this->state($ctx)['curses'])->firstWhere('curse_id', $curse->id);

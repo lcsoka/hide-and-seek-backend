@@ -11,10 +11,15 @@ namespace App\Game\Modes\HideAndSeek;
  */
 final class Hangman
 {
-    /** Wrong guesses allowed before the puzzle resets with a fresh word (never a dead end). */
+    /** Wrong guesses allowed before the gallows fills and the guesses reset (the word stays). */
     public const MAX_WRONG = 6;
 
-    /** Hide-and-seek / geography / transit themed words (kept recognisable, 5–10 letters). */
+    /** Length bounds for a hider-supplied word (keeps it solvable + typo-resistant). */
+    public const MIN_LENGTH = 4;
+
+    public const MAX_LENGTH = 16;
+
+    /** Fallback pool if no word is supplied (e.g. dev harness) — the hider normally sets the word. */
     private const WORDS = [
         'VILLAMOS', 'AUTÓBUSZ', 'ÁLLOMÁS', 'TÉRKÉP', 'BÚJÓCSKA', 'REJTEKHELY',
         'NYOMOZÓ', 'IRÁNYTŰ', 'VONAT', 'METRÓ', 'KERÜLET', 'FOLYÓ', 'SZIGET',
@@ -35,15 +40,39 @@ final class Hangman
         'M', 'N', 'O', 'P', 'R', 'S', 'T', 'U', 'V', 'Y', 'Z',
     ];
 
-    /** A fresh puzzle instance (stored on the curse: the full word stays server-side). */
-    public static function newState(): array
+    /**
+     * A fresh puzzle instance (stored on the curse: the full word stays server-side). Uses the
+     * hider's word when they supplied a valid one, else a random fallback from the pool.
+     */
+    public static function newState(?string $word = null): array
     {
         return [
-            'word' => self::WORDS[array_rand(self::WORDS)],
+            'word' => ($word !== null ? self::sanitize($word) : null) ?? self::WORDS[array_rand(self::WORDS)],
             'guessed' => [],
             'wrong' => [],
             'max_wrong' => self::MAX_WRONG,
         ];
+    }
+
+    /**
+     * Validate + normalise a hider-supplied word: uppercased, Hungarian letters only (no spaces,
+     * digits or punctuation), within the length bounds. Returns null if it isn't usable.
+     */
+    public static function sanitize(string $word): ?string
+    {
+        $word = mb_strtoupper(trim($word));
+        if (! preg_match('/^[A-ZÁÉÍÓÖŐÚÜŰ]+$/u', $word)) {
+            return null;
+        }
+        $length = mb_strlen($word);
+
+        return ($length >= self::MIN_LENGTH && $length <= self::MAX_LENGTH) ? $word : null;
+    }
+
+    /** Whether a hider-supplied word is a valid hangman word. */
+    public static function isValid(string $word): bool
+    {
+        return self::sanitize($word) !== null;
     }
 
     /** Uppercase + strip the Hungarian accent from a single guessed letter. */

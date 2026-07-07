@@ -58,6 +58,9 @@ class EveryCardGameplayTest extends TestCase
             if (! empty($effect['hider_photo'])) {
                 $playPayload['photo_url'] = 'https://example.com/streetview.jpg';
             }
+            if (! empty($effect['hangman'])) {
+                $playPayload['word'] = 'VILLAMOS'; // the Hidden Hangman needs a word from the hider
+            }
             $this->play($ctx, 'play_curse', $playPayload);
 
             $sd = $this->stateData($ctx);

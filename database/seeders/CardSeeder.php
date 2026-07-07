@@ -101,8 +101,9 @@ class CardSeeder extends Seeder
             // The hider sends a Street View screenshot; seekers must find it in real life
             // before they can ask again, clearing it with a photo of where they end up.
             'the_unguided_tourist' => ['hider_photo' => true, 'requires_proof' => true, 'blocks_asking' => true],
-            // An in-app hangman: seekers reveal a masked word letter-by-letter to lift the block.
-            'the_hidden_hangman' => ['blocks_asking' => true, 'hangman' => true],
+            // In-app hangman: the hider sets a word the seekers reveal letter-by-letter to lift the
+            // block; duration_s caps it so an impossible/typo'd word can't block forever.
+            'the_hidden_hangman' => ['blocks_asking' => true, 'hangman' => true, 'duration_s' => 300],
             // Timed effects (representative midpoints of the official ranges).
             'the_jammed_door' => ['duration_s' => 3600, 'dice' => ['count' => 2, 'sides' => 6, 'target' => 7]], // roll 7+ to enter
             'the_gamblers_feet' => ['duration_s' => 1800, 'dice' => ['count' => 1, 'sides' => 6]],              // roll before each step

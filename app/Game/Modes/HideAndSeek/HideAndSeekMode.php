@@ -178,19 +178,25 @@ class HideAndSeekMode implements GameMode
         };
     }
 
-    /** Curses whose effect requires a hider photo (e.g. a Street View screenshot) need one attached. */
+    /** Some curses need the hider to attach something when casting: a photo, or a hangman word. */
     private function validatePlayCurse(Session $session, Action $action): ValidationResult
     {
         $uid = $action->payload['card_uid'] ?? null;
         $handCard = collect($session->state_data['hand'] ?? [])->firstWhere('uid', $uid);
         $card = isset($handCard['curse_id']) ? Card::find($handCard['curse_id']) : null;
-        if ($card === null || empty($card->effect['hider_photo'])) {
+        if ($card === null) {
             return ValidationResult::pass();
         }
+        $effect = $card->effect ?? [];
 
-        return ! empty($action->payload['photo_url'])
-            ? ValidationResult::pass()
-            : ValidationResult::fail('This curse needs a photo to send to the seekers.');
+        if (! empty($effect['hider_photo']) && empty($action->payload['photo_url'])) {
+            return ValidationResult::fail('This curse needs a photo to send to the seekers.');
+        }
+        if (! empty($effect['hangman']) && ! Hangman::isValid((string) ($action->payload['word'] ?? ''))) {
+            return ValidationResult::fail('This curse needs a word ('.Hangman::MIN_LENGTH.'–'.Hangman::MAX_LENGTH.' letters) for the seekers to guess.');
+        }
+
+        return ValidationResult::pass();
     }
 
     /** A seeker may board public transport only while walking (no thermometer running) and not already aboard. */
@@ -1094,10 +1100,11 @@ class HideAndSeekMode implements GameMode
             'completed_at' => null,
         ];
 
-        // The Hidden Gallows: a word puzzle the seekers must solve to lift the asking block. The
-        // chosen word stays server-side; the presenter only ever exposes a masked view.
+        // The Hidden Gallows: the hider sets a word the seekers must solve to lift the asking block
+        // (a duration_s cap guarantees an impossible word can't block forever). The word stays
+        // server-side; the presenter only ever exposes a masked view.
         if (! empty($effect['hangman'])) {
-            $instance['hangman'] = Hangman::newState();
+            $instance['hangman'] = Hangman::newState($action->payload['word'] ?? null);
         }
 
         // bonus_draws: a hider self-buff (no seeker task) → grant the draws + resolve at once.
@@ -1221,9 +1228,12 @@ class HideAndSeekMode implements GameMode
                 }
             } else {
                 $hm['wrong'][] = $letter;
-                // Out of guesses → a fresh word, progress wiped (the asking block persists).
+                // Gallows full → wipe the guesses and start over on the SAME (hider's) word, so
+                // deliberately losing is never a quick escape. The duration_s cap is the real
+                // safety net against an unsolvable word.
                 if (count($hm['wrong']) >= (int) ($hm['max_wrong'] ?? Hangman::MAX_WRONG)) {
-                    $hm = Hangman::newState();
+                    $hm['guessed'] = [];
+                    $hm['wrong'] = [];
                 }
             }
 

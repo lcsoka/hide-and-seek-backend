@@ -3,7 +3,6 @@
 namespace Tests\Feature;
 
 use App\Events\GameEventBroadcast;
-use App\Game\Modes\HideAndSeek\Hangman;
 use App\Models\Card;
 use App\Models\Question;
 use App\Models\Session;
@@ -212,18 +211,23 @@ class CurseAndPhotoTest extends TestCase
         $this->assertIsBool($roll['success']);
     }
 
-    public function test_the_hidden_hangman_blocks_asking_until_the_word_is_solved(): void
+    public function test_the_hidden_hangman_needs_a_word_and_blocks_asking_until_solved(): void
     {
         Event::fake([GameEventBroadcast::class]);
         $ctx = $this->setUpSeeking();
         $curse = Card::create([
             'key' => 'hangman_curse', 'name' => ['en' => 'The Hidden Hangman'], 'description' => ['en' => 'Solve the word.'],
-            'effect' => ['blocks_asking' => true, 'hangman' => true], 'is_active' => true,
+            'effect' => ['blocks_asking' => true, 'hangman' => true, 'duration_s' => 300], 'is_active' => true,
         ]);
         $this->giveHiderCard($ctx['sessionId'], ['uid' => 'h1', 'type' => 'curse', 'curse_id' => $curse->id]);
 
         Sanctum::actingAs($ctx['host']);
-        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'play_curse', 'payload' => ['card_uid' => 'h1']])->assertOk();
+        // Casting without a word is rejected; a junk word (digits/too short) too.
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'play_curse', 'payload' => ['card_uid' => 'h1']])->assertStatus(422);
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'play_curse', 'payload' => ['card_uid' => 'h1', 'word' => 'x1']])->assertStatus(422);
+
+        // The hider sets the word the seekers must guess.
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'play_curse', 'payload' => ['card_uid' => 'h1', 'word' => 'Villamos']])->assertOk();
 
         // The seeker is blocked from asking and offered the puzzle — not a plain "mark done".
         Sanctum::actingAs($ctx['seeker']);
@@ -237,21 +241,17 @@ class CurseAndPhotoTest extends TestCase
         $hangman = $state->json('curses.0.hangman');
         // The raw word never reaches the client: only a fully-blank masked view at the start.
         $this->assertArrayNotHasKey('word', $hangman);
+        $this->assertCount(8, $hangman['mask']); // "Villamos"
         $this->assertSame([], array_filter($hangman['mask'], fn ($m) => $m !== null));
 
-        // The word lives server-side only — read it there to drive the puzzle.
-        $word = Session::find($ctx['sessionId'])->state_data['curses_played'][0]['hangman']['word'];
-        $folded = collect(mb_str_split($word))->map(fn ($c) => Hangman::fold($c))->unique()->values();
-
         // A wrong guess counts a miss and reveals nothing.
-        $wrong = collect(Hangman::ALPHABET)->first(fn ($l) => ! $folded->contains($l));
-        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'hangman_guess', 'payload' => ['curse_uid' => $uid, 'letter' => $wrong]])->assertOk();
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'hangman_guess', 'payload' => ['curse_uid' => $uid, 'letter' => 'B']])->assertOk();
         $mid = $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state");
-        $this->assertSame([$wrong], $mid->json('curses.0.hangman.wrong'));
+        $this->assertSame(['B'], $mid->json('curses.0.hangman.wrong'));
         $this->assertTrue($mid->json('questions_blocked'));
 
-        // Guessing every letter solves it and lifts the block.
-        foreach ($folded as $letter) {
+        // Guessing every distinct letter of VILLAMOS solves it and lifts the block.
+        foreach (['V', 'I', 'L', 'A', 'M', 'O', 'S'] as $letter) {
             $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'hangman_guess', 'payload' => ['curse_uid' => $uid, 'letter' => $letter]])->assertOk();
         }
 
