@@ -1086,7 +1086,13 @@ class HideAndSeekMode implements GameMode
         }
 
         return new ActionOutcome($data, null, [
-            $this->event('QuestionAnswered', ['seq' => $pending['seq'], 'question_id' => $pending['question_id'], 'auto' => $auto] + $answer),
+            $this->event('QuestionAnswered', [
+                'seq' => $pending['seq'],
+                'question_id' => $pending['question_id'],
+                'category' => $pending['category'] ?? null, // so the seeker toast can show the right icon
+                'asked_by' => $pending['asked_by'] ?? null,
+                'auto' => $auto,
+            ] + $answer),
         ]);
     }
 
