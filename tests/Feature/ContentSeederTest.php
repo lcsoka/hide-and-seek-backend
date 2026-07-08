@@ -19,12 +19,12 @@ class ContentSeederTest extends TestCase
         $this->seed(CardSeeder::class);
         $this->seed(QuestionSeeder::class);
 
-        // The official deck: 24 curses + 7 powerup rows + 13 time-bonus rows.
-        $this->assertSame(24, Card::where('type', 'curse')->count());
+        // The official deck: 23 curses + 7 powerup rows + 13 time-bonus rows.
+        $this->assertSame(23, Card::where('type', 'curse')->count());
         $this->assertSame(7, Card::where('type', 'powerup')->count());
         $this->assertSame(13, Card::where('type', 'time_bonus')->count());
-        // …expanding (by `count`) to 70 physical cards: 24 + 21 + 25.
-        $this->assertSame(70, (int) Card::sum('count'));
+        // …expanding (by `count`) to 69 physical cards: 23 + 21 + 25.
+        $this->assertSame(69, (int) Card::sum('count'));
         $this->assertSame(21, (int) Card::where('type', 'powerup')->sum('count'));
         $this->assertSame(25, (int) Card::where('type', 'time_bonus')->sum('count'));
         $this->assertSame(66, Question::count());
@@ -34,7 +34,7 @@ class ContentSeederTest extends TestCase
         $this->assertSame(0, Question::where('is_custom', true)->count());
 
         // A known curse and every question category are present.
-        $this->assertTrue(Card::where('key', 'the_labyrinth')->exists());
+        $this->assertTrue(Card::where('key', 'the_cairn')->exists());
         foreach (QuestionCategory::cases() as $category) {
             $this->assertTrue(
                 Question::where('category', $category->value)->exists(),
@@ -50,7 +50,7 @@ class ContentSeederTest extends TestCase
         $this->seed(QuestionSeeder::class);
         $this->seed(QuestionSeeder::class);
 
-        $this->assertSame(44, Card::count()); // 24 + 7 + 13 rows, unchanged on re-seed
+        $this->assertSame(43, Card::count()); // 23 + 7 + 13 rows, unchanged on re-seed
         $this->assertSame(66, Question::count());
     }
 
@@ -59,9 +59,9 @@ class ContentSeederTest extends TestCase
         $this->seed(CardSeeder::class);
         $this->seed(QuestionSeeder::class);
 
-        $curse = Card::where('key', 'the_labyrinth')->firstOrFail();
-        $this->assertSame('A labirintus', $curse->getTranslation('name', 'hu'));
-        $this->assertSame('The Labyrinth', $curse->getTranslation('name', 'en'));
+        $curse = Card::where('key', 'the_cairn')->firstOrFail();
+        $this->assertSame('A kőrakás', $curse->getTranslation('name', 'hu'));
+        $this->assertSame('The Cairn', $curse->getTranslation('name', 'en'));
 
         $question = Question::where('key', 'matching.museum')->firstOrFail();
         $this->assertSame('Egyezés — Múzeum', $question->getTranslation('title', 'hu'));

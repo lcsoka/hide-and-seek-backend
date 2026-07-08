@@ -32,6 +32,12 @@ class CardSeeder extends Seeder
             ]);
         }
 
+        // Retire built-in curses we've since removed from the deck (updateOrCreate never deletes,
+        // so an old row like `the_labyrinth` would otherwise linger). Custom curses are untouched.
+        Card::where('type', 'curse')->where('is_custom', false)
+            ->whereNotIn('key', array_column($this->curses(), 'key'))
+            ->update(['is_active' => false]);
+
         foreach ($this->powerups() as $power => $count) {
             Card::updateOrCreate(['key' => "powerup.{$power}"], [
                 'type' => 'powerup',
@@ -96,7 +102,6 @@ class CardSeeder extends Seeder
             'the_bird_guide' => ['requires_proof' => true, 'blocks_asking' => true],
             'the_cairn' => ['requires_proof' => true, 'blocks_asking' => true],
             'the_ransom_note' => ['requires_proof' => true, 'blocks_asking' => true],
-            'the_labyrinth' => ['requires_proof' => true, 'blocks_asking' => true],
             'the_mediocre_travel_agent' => ['requires_proof' => true], // a side-quest, not a hard block
             // The hider sends a Street View screenshot; seekers must find it in real life
             // before they can ask again, clearing it with a photo of where they end up.
@@ -144,7 +149,6 @@ class CardSeeder extends Seeder
             ['key' => 'the_right_turn', 'name' => ['en' => 'The Right Turn', 'hu' => 'A jobbra fordulás'], 'cost' => ['en' => 'Discard 1 card', 'hu' => '1 kártya eldobása'], 'description' => ['en' => 'For the next 20–60 minutes seekers can only turn right at intersections.', 'hu' => 'A következő 20–60 percben a keresők kereszteződésekben csak jobbra fordulhatnak.']],
             ['key' => 'the_urban_explorer', 'name' => ['en' => 'The Urban Explorer', 'hu' => 'A városfelfedező'], 'cost' => ['en' => 'Discard 2 cards', 'hu' => '2 kártya eldobása'], 'description' => ['en' => 'Seekers cannot ask questions while on transit or in train stations.', 'hu' => 'A keresők nem kérdezhetnek közlekedés közben vagy vasútállomásokon.']],
             ['key' => 'the_overflowing_chalice', 'name' => ['en' => 'The Overflowing Chalice', 'hu' => 'A túlcsorduló kehely'], 'cost' => ['en' => 'Discard 1 card', 'hu' => '1 kártya eldobása'], 'description' => ['en' => 'For the next three questions, the hider may draw an additional card from the hider deck.', 'hu' => 'A következő három kérdésnél a bújó egy extra kártyát húzhat a bújó pakliból.']],
-            ['key' => 'the_labyrinth', 'name' => ['en' => 'The Labyrinth', 'hu' => 'A labirintus'], 'cost' => ['en' => 'Draw a maze', 'hu' => 'Labirintus rajzolása'], 'description' => ['en' => 'Seekers must solve a hand-drawn maze before asking questions.', 'hu' => 'A kérdezés előtt a keresőknek meg kell oldaniuk egy kézzel rajzolt labirintust.']],
         ];
     }
 }

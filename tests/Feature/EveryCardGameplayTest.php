@@ -187,26 +187,26 @@ class EveryCardGameplayTest extends TestCase
     {
         $this->seed(CardSeeder::class);
         $ctx = $this->seek();
-        $labyrinth = Card::where('key', 'the_labyrinth')->firstOrFail();
+        $cairn = Card::where('key', 'the_cairn')->firstOrFail();
 
         // Play a curse → it shows on the seekers' /state, localized.
-        $this->giveHiderCard($ctx['sessionId'], ['uid' => 'c', 'type' => 'curse', 'curse_id' => $labyrinth->id]);
+        $this->giveHiderCard($ctx['sessionId'], ['uid' => 'c', 'type' => 'curse', 'curse_id' => $cairn->id]);
         $this->play($ctx, 'play_curse', ['card_uid' => 'c']);
 
         Sanctum::actingAs($ctx['seeker']);
-        $hu = collect($this->withHeader('Accept-Language', 'hu')->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('curses'))->firstWhere('curse_id', $labyrinth->id);
-        $en = collect($this->withHeader('Accept-Language', 'en')->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('curses'))->firstWhere('curse_id', $labyrinth->id);
-        $this->assertSame('A labirintus', $hu['name']);
-        $this->assertSame('The Labyrinth', $en['name']);
+        $hu = collect($this->withHeader('Accept-Language', 'hu')->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('curses'))->firstWhere('curse_id', $cairn->id);
+        $en = collect($this->withHeader('Accept-Language', 'en')->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('curses'))->firstWhere('curse_id', $cairn->id);
+        $this->assertSame('A kőrakás', $hu['name']);
+        $this->assertSame('The Cairn', $en['name']);
 
         // The hider's hand localizes a curse, a powerup, and a time-bonus.
-        $this->giveHiderCard($ctx['sessionId'], ['uid' => 'h1', 'type' => 'curse', 'curse_id' => $labyrinth->id]);
+        $this->giveHiderCard($ctx['sessionId'], ['uid' => 'h1', 'type' => 'curse', 'curse_id' => $cairn->id]);
         $this->giveHiderCard($ctx['sessionId'], ['uid' => 'h2', 'type' => 'powerup', 'power' => 'veto']);
         $this->giveHiderCard($ctx['sessionId'], ['uid' => 'h3', 'type' => 'time_bonus', 'minutes' => 5]);
 
         Sanctum::actingAs($ctx['host']);
         $hand = collect($this->withHeader('Accept-Language', 'hu')->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json('hand'))->keyBy('uid');
-        $this->assertSame('A labirintus', $hand['h1']['name']);
+        $this->assertSame('A kőrakás', $hand['h1']['name']);
         $this->assertSame('Vétó', $hand['h2']['name']);
         $this->assertSame('+5 perc időbónusz', $hand['h3']['name']);
     }

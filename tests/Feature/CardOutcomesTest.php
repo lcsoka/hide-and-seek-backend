@@ -43,7 +43,7 @@ class CardOutcomesTest extends TestCase
         $this->seed(CardSeeder::class);
         $ctx = $this->startSeeking();
         $curses = Card::where('type', 'curse')->where('is_active', true)->get();
-        $this->assertGreaterThanOrEqual(24, $curses->count());
+        $this->assertGreaterThanOrEqual(23, $curses->count());
 
         foreach ($curses->values() as $i => $curse) {
             $extra = ! empty($curse->effect['hider_photo']) ? ['photo_url' => 'https://example.com/streetview.jpg'] : [];
