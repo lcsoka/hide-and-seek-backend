@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Card;
+use App\Models\City;
 use App\Models\Question;
 
 /**
@@ -23,6 +24,21 @@ class CatalogController extends Controller
             'parameters' => $q->parameters,
             'reward_draw' => $q->reward_draw,
             'reward_keep' => $q->reward_keep,
+        ]);
+    }
+
+    /** Playable cities for the new-game wizard: cover image, the size tied to the city, and the
+     *  transit modes that actually exist there. */
+    public function cities()
+    {
+        return City::query()->where('is_active', true)->orderBy('sort')->get()->map(fn (City $c) => [
+            'key' => $c->key,
+            'name' => $c->name,
+            'lat' => $c->lat,
+            'lng' => $c->lng,
+            'image' => $c->imageUrl(),
+            'size' => $c->default_size->value,
+            'modes' => $c->available_modes,
         ]);
     }
 

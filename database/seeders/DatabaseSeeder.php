@@ -19,10 +19,11 @@ class DatabaseSeeder extends Seeder
             ['name' => 'Admin', 'password' => 'password'],
         );
 
-        // Official Jet Lag content (questions + curses).
+        // Official Jet Lag content (questions + curses) + playable cities.
         $this->call([
             CardSeeder::class,
             QuestionSeeder::class,
+            CitySeeder::class,
         ]);
 
         $this->seedSampleSession();

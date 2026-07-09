@@ -24,6 +24,7 @@ Route::prefix('v1')->group(function () {
     Route::post('/feedback', [FeedbackController::class, 'store']);
     Route::get('/questions', [CatalogController::class, 'questions']);
     Route::get('/curses', [CatalogController::class, 'curses']);
+    Route::get('/cities', [CatalogController::class, 'cities']);
     // Web Push: the VAPID public key the client needs to subscribe.
     Route::get('/push/public-key', [PushController::class, 'publicKey']);
     // Cached server-side Overpass proxy — the web app's only path to OSM data.

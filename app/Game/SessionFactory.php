@@ -3,6 +3,7 @@
 namespace App\Game;
 
 use App\Enums\GameSize;
+use App\Models\City;
 use App\Models\Player;
 use App\Models\Session;
 use App\Models\User;
@@ -22,7 +23,7 @@ class SessionFactory
     public function create(User $host, string $modeKey, string $cityKey, GameSize $size, array $overrides = [], ?string $displayName = null): Session
     {
         $mode = $this->modes->make($modeKey);
-        $city = config("game.cities.{$cityKey}");
+        $city = City::where('key', $cityKey)->where('is_active', true)->first();
 
         if ($city === null) {
             throw new InvalidArgumentException("Unknown city [{$cityKey}].");
@@ -30,7 +31,7 @@ class SessionFactory
 
         $config = array_merge(
             $mode->defaultConfig($size),
-            ['city' => array_merge(['key' => $cityKey], $city)],
+            ['city' => ['key' => $city->key, 'name' => $city->name, 'lat' => $city->lat, 'lng' => $city->lng]],
             $overrides,
         );
 

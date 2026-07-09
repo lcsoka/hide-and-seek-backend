@@ -20,7 +20,7 @@ class StoreSessionRequest extends FormRequest
     {
         return [
             'game_mode' => ['nullable', Rule::in(array_keys(config('game.modes', [])))],
-            'city' => ['required', Rule::in(array_keys(config('game.cities', [])))],
+            'city' => ['required', 'string', Rule::exists('cities', 'key')->where('is_active', true)],
             'game_size' => ['required', Rule::enum(GameSize::class)],
             'config' => ['nullable', 'array'],
             'config.transit_modes' => ['sometimes', 'array', 'min:1'],
