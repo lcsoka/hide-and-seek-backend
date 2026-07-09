@@ -46,6 +46,9 @@ Route::prefix('v1')->group(function () {
         Route::post('/push/subscribe', [PushController::class, 'subscribe']);
         Route::post('/push/unsubscribe', [PushController::class, 'unsubscribe']);
 
+        // The full deck (official + own custom) the host can curate in the new-game wizard.
+        Route::get('/deck', [CatalogController::class, 'deck']);
+
         // User-generated content (a registered user's own custom curses + questions).
         Route::get('/my/content', [ContentController::class, 'index']);
         Route::post('/my/curses', [ContentController::class, 'storeCurse']);

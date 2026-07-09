@@ -1456,13 +1456,17 @@ class HideAndSeekMode implements GameMode
 
     /**
      * Build the hider draw pool: official cards (curses + time-bonus + powerups) plus the host's
-     * own custom curses, so a user's saved curses appear only in the games they host.
+     * own custom curses, so a user's saved curses appear only in the games they host. When the host
+     * curated the deck in the new-game wizard, `$enabledIds` limits the pool to the cards they kept.
+     *
+     * @param  array<int, string>|null  $enabledIds
      */
-    private function deckPool(?int $hostUserId = null): array
+    private function deckPool(?int $hostUserId = null, ?array $enabledIds = null): array
     {
         $pool = [];
         $cards = Card::query()->where('is_active', true)
             ->where(fn ($q) => $q->whereNull('user_id')->orWhere('user_id', $hostUserId))
+            ->when(! empty($enabledIds), fn ($q) => $q->whereIn('id', $enabledIds))
             ->orderBy('sort')->get();
         foreach ($cards as $card) {
             $descriptor = match ($card->type) {
@@ -1487,7 +1491,10 @@ class HideAndSeekMode implements GameMode
     private function drawFromDeck(array &$data, int $n): array
     {
         if (! isset($data['deck'])) {
-            $deck = $this->deckPool(isset($data['host_user_id']) ? (int) $data['host_user_id'] : null);
+            $deck = $this->deckPool(
+                isset($data['host_user_id']) ? (int) $data['host_user_id'] : null,
+                isset($data['deck_cards']) && is_array($data['deck_cards']) ? $data['deck_cards'] : null,
+            );
             shuffle($deck);
             $data['deck'] = $deck;
         }

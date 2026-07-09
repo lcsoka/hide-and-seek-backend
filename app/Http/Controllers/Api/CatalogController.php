@@ -53,4 +53,25 @@ class CatalogController extends Controller
             'effect' => $c->effect,
         ]);
     }
+
+    /**
+     * The full hider deck the host can curate in the new-game wizard: every official card plus the
+     * host's OWN custom curses, so they can toggle any of them in or out of the game. Auth-scoped.
+     */
+    public function deck(\Illuminate\Http\Request $request)
+    {
+        $userId = $request->user()?->id;
+
+        return Card::query()->where('is_active', true)
+            ->where(fn ($q) => $q->whereNull('user_id')->orWhere('user_id', $userId))
+            ->orderBy('type')->orderBy('sort')->get()->map(fn (Card $c) => [
+                'id' => $c->id,
+                'key' => $c->key,
+                'type' => $c->type,
+                'name' => $c->name,
+                'cost' => $c->cost,
+                'description' => $c->description,
+                'is_custom' => (bool) $c->is_custom,
+            ]);
+    }
 }

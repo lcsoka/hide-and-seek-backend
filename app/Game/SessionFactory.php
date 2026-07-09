@@ -45,12 +45,24 @@ class SessionFactory
         $requested = array_values(array_intersect((array) ($config['transit_modes'] ?? []), $city->available_modes));
         $config['transit_modes'] = $requested ?: $city->available_modes;
 
+        // The host may curate the deck in the wizard (a list of card ids to keep). It drives the
+        // draw pool, so it lives in state_data (like host_user_id) rather than the public config.
+        $deckCards = isset($config['deck_cards']) && is_array($config['deck_cards'])
+            ? array_values(array_filter(array_map('strval', $config['deck_cards'])))
+            : null;
+        unset($config['deck_cards']);
+
+        $stateData = array_merge($mode->initialStateData(), ['host_user_id' => $host->id]);
+        if ($deckCards) {
+            $stateData['deck_cards'] = $deckCards;
+        }
+
         $session = Session::create([
             'join_code' => $this->uniqueJoinCode(),
             'game_mode' => $modeKey,
             'state' => $mode->initialState(),
             // Remember the host's user so their own custom curses join this game's deck.
-            'state_data' => array_merge($mode->initialStateData(), ['host_user_id' => $host->id]),
+            'state_data' => $stateData,
             'config' => $config,
             'status' => 'open',
         ]);
