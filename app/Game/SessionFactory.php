@@ -20,7 +20,7 @@ class SessionFactory
      *
      * @param  array<string, mixed>  $overrides  Config overrides merged over the mode defaults.
      */
-    public function create(User $host, string $modeKey, string $cityKey, GameSize $size, array $overrides = [], ?string $displayName = null): Session
+    public function create(User $host, string $modeKey, string $cityKey, ?GameSize $size = null, array $overrides = [], ?string $displayName = null): Session
     {
         $mode = $this->modes->make($modeKey);
         $city = City::where('key', $cityKey)->where('is_active', true)->first();
@@ -29,11 +29,21 @@ class SessionFactory
             throw new InvalidArgumentException("Unknown city [{$cityKey}].");
         }
 
+        // The play size is tied to the city (admin-set) — the host no longer picks it. A caller
+        // (e.g. a dev command) may still force one.
+        $size ??= $city->default_size;
+
         $config = array_merge(
             $mode->defaultConfig($size),
             ['city' => ['key' => $city->key, 'name' => $city->name, 'lat' => $city->lat, 'lng' => $city->lng]],
             $overrides,
         );
+
+        // Units are always metric (no client choice), and hiding spots can only use transit modes
+        // that actually exist in this city — clamp whatever was requested to the city's set.
+        $config['units'] = 'metric';
+        $requested = array_values(array_intersect((array) ($config['transit_modes'] ?? []), $city->available_modes));
+        $config['transit_modes'] = $requested ?: $city->available_modes;
 
         $session = Session::create([
             'join_code' => $this->uniqueJoinCode(),

@@ -23,9 +23,13 @@ trait SeekingScenario
     {
         $host = User::factory()->create();
         Sanctum::actingAs($host);
-        $create = $this->postJson('/api/v1/sessions', ['city' => 'budapest', 'game_size' => 'small', 'config' => ['rounds' => 1]]);
+        $create = $this->postJson('/api/v1/sessions', ['city' => 'budapest', 'config' => ['rounds' => 1]]);
         $sessionId = $create->json('id');
         $hiderId = $create->json('players.0.id');
+
+        // The play size is now tied to the city (Budapest = medium), but these gameplay scenarios
+        // were written around a SMALL game — re-apply the small-size fields before play begins.
+        $this->forceSize($sessionId, \App\Enums\GameSize::Small);
 
         $seeker = User::factory()->create();
         Sanctum::actingAs($seeker);
@@ -37,6 +41,19 @@ trait SeekingScenario
         $this->postJson("/api/v1/sessions/{$sessionId}/actions", ['type' => 'confirm_hidden']);
 
         return compact('sessionId', 'hiderId', 'seekerId', 'host', 'seeker');
+    }
+
+    /** Re-apply a specific play size's config to a session (the size is otherwise city-tied). */
+    protected function forceSize(string $sessionId, \App\Enums\GameSize $size): void
+    {
+        $session = Session::find($sessionId);
+        $session->update(['config' => array_merge($session->config, [
+            'game_size' => $size->value,
+            'play_radius_km' => $size->playRadiusKm(),
+            'hiding_time_limit_s' => $size->hidingTimeLimitSeconds(),
+            'hiding_zone_radius_m' => $size->hidingZoneRadiusMeters(),
+            'time_bonus_s' => $size->timeBonusSeconds(),
+        ])]);
     }
 
     /** @param array{0: float, 1: float} $hider @param array{0: float, 1: float} $seeker */

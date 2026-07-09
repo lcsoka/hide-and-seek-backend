@@ -21,7 +21,8 @@ class StoreSessionRequest extends FormRequest
         return [
             'game_mode' => ['nullable', Rule::in(array_keys(config('game.modes', [])))],
             'city' => ['required', 'string', Rule::exists('cities', 'key')->where('is_active', true)],
-            'game_size' => ['required', Rule::enum(GameSize::class)],
+            // The play size is tied to the city (admin-set); accepted for back-compat but ignored.
+            'game_size' => ['nullable', Rule::enum(GameSize::class)],
             'config' => ['nullable', 'array'],
             'config.transit_modes' => ['sometimes', 'array', 'min:1'],
             'config.transit_modes.*' => ['string', Rule::in(['metro', 'tram', 'rail', 'light_rail', 'bus', 'trolleybus'])],

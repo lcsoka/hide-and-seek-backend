@@ -37,4 +37,22 @@ class CityCatalogTest extends TestCase
             ->assertStatus(422)
             ->assertJsonValidationErrorFor('city');
     }
+
+    public function test_size_units_and_transit_modes_follow_the_city(): void
+    {
+        $user = \App\Models\User::factory()->create();
+        \Laravel\Sanctum\Sanctum::actingAs($user);
+
+        // Szeged is a small city with no metro. Even if the client asks for a large game, imperial
+        // units and a metro line, the server corrects all three to the city's reality.
+        $res = $this->postJson('/api/v1/sessions', [
+            'city' => 'szeged',
+            'game_size' => 'large', // ignored — size is tied to the city
+            'config' => ['units' => 'imperial', 'transit_modes' => ['metro', 'tram']],
+        ])->assertCreated();
+
+        $res->assertJsonPath('config.game_size', 'small');     // Szeged's admin-set size
+        $res->assertJsonPath('config.units', 'metric');        // always metric
+        $res->assertJsonPath('config.transit_modes', ['tram']); // metro dropped — not in Szeged
+    }
 }

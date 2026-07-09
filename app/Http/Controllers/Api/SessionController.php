@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Api;
 
-use App\Enums\GameSize;
 use App\Enums\SessionStatus;
 use App\Events\GameEventBroadcast;
 use App\Game\GameEngine;
@@ -35,7 +34,7 @@ class SessionController extends Controller
             host: $request->user(),
             modeKey: $request->input('game_mode', config('game.default_mode')),
             cityKey: $request->input('city'),
-            size: GameSize::from($request->input('game_size')),
+            size: null, // the play size is tied to the city (admin-set), not chosen by the host
             overrides: $request->input('config', []),
             displayName: $request->input('display_name'),
         );
