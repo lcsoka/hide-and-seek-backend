@@ -25,7 +25,9 @@ class DeckConfigTest extends TestCase
         $this->assertTrue($deck->contains(fn ($c) => $c['type'] === 'curse'));
         $this->assertTrue($deck->contains(fn ($c) => $c['type'] === 'powerup'));
         $this->assertTrue($deck->contains(fn ($c) => $c['type'] === 'time_bonus'));
-        $this->assertTrue($deck->every(fn ($c) => isset($c['id'], $c['name'], $c['type'])));
+        $this->assertTrue($deck->every(fn ($c) => isset($c['id'], $c['name'], $c['type'], $c['count'])));
+        // Some cards ship multiple copies in the deck (e.g. powerups); the count reflects that.
+        $this->assertTrue($deck->contains(fn ($c) => $c['count'] > 1));
     }
 
     public function test_curated_deck_is_stored_and_limits_the_draw_pool(): void

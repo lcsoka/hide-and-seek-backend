@@ -71,6 +71,7 @@ class CatalogController extends Controller
                 'name' => $c->name,
                 'cost' => $c->cost,
                 'description' => $c->description,
+                'count' => max(1, (int) $c->count), // copies of this card in the shuffled deck
                 'is_custom' => (bool) $c->is_custom,
             ]);
     }
