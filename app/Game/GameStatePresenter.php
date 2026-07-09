@@ -87,6 +87,8 @@ class GameStatePresenter
             'hand' => $isHider ? $this->hand($session) : [],
             'hand_limit' => $isHider ? (int) ($session->state_data['hand_limit'] ?? config('game.hand_limit', 6)) : null,
             'pending_draw' => $isHider ? $this->pendingDraw($session) : null,
+            // A cycle powerup awaiting the hider's choice of which cards to shed before drawing.
+            'pending_discard' => $isHider ? ($session->state_data['pending_discard'] ?? null) : null,
             'time_bonus_s' => $isHider ? $this->handTimeBonusSeconds($session) : null,
             'timers' => $this->timers($session),
             // Running scoreboard, and the just-ended round's reveal/recap (round_end + finished).

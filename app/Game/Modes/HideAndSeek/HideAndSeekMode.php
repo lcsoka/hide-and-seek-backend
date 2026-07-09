@@ -109,6 +109,7 @@ class HideAndSeekMode implements GameMode
                 // mode, in which case they re-confirm their new spot.
                 'hider' => array_merge(
                     $pending ? ['answer_question', 'play_curse', 'play_powerup'] : ['play_curse', 'play_powerup'],
+                    ($session->state_data['pending_discard'] ?? null) !== null ? ['discard_cards'] : [],
                     ($session->state_data['pending_draw'] ?? null) !== null ? ['keep_cards'] : [],
                     ($session->state_data['pending_curse_choice'] ?? null) !== null ? ['choose_disabled_categories'] : [],
                     ($session->state_data['relocating'] ?? false) ? ['choose_station', 'confirm_hidden'] : [],
@@ -234,6 +235,7 @@ class HideAndSeekMode implements GameMode
             'play_curse' => $this->playCurse($player, $action, $data),
             'play_powerup' => $this->playPowerup($action, $data),
             'keep_cards' => $this->keepCards($action, $data),
+            'discard_cards' => $this->discardCards($action, $data),
             'discard_card' => $this->discardCard($action, $data),
             'choose_disabled_categories' => $this->chooseDisabledCategories($action, $data),
             'amend_answer' => $this->amendAnswer($session, $action, $data),
@@ -1368,17 +1370,26 @@ class HideAndSeekMode implements GameMode
             // Discard the whole hand (gone, not returned to the deck) and draw fresh.
             $data['hand'] = $this->drawFromDeck($data, count($data['hand'] ?? []));
         } else {
-            // 'draw_1_expand_1' permanently raises the hand limit by 1 (do it before the
-            // draw so the new card fits within the larger limit).
+            // 'draw_1_expand_1' permanently raises the hand limit by 1 (do it before the draw so
+            // the new card fits) and reveals the card through the keep-draw modal.
             if ($power === 'draw_1_expand_1') {
                 $data['hand_limit'] = $this->handLimit($data) + 1;
-            }
-            // Draw powerups: reveal the new cards through the keep-draw modal (capped at the headroom).
-            $draw = ['discard_1_draw_2' => 2, 'discard_2_draw_3' => 3, 'draw_1_expand_1' => 1][$power] ?? 0;
-            if ($draw > 0) {
-                $cards = $this->drawFromDeck($data, $draw);
-                // Keep all drawn cards; the hand limit is enforced (oldest-first) when kept.
+                $cards = $this->drawFromDeck($data, 1);
                 $data['pending_draw'] = ['cards' => $cards, 'keep' => count($cards)];
+            }
+            // Cycle powerups (discard N, draw N+1): net-neutral on hand size — the played card PLUS
+            // N cards the hider chooses leave, then the replacements are drawn. The hider first
+            // picks which cards to shed (pending_discard); discard_cards draws + opens the keep modal.
+            $cycle = ['discard_1_draw_2' => ['discard' => 1, 'draw' => 2], 'discard_2_draw_3' => ['discard' => 2, 'draw' => 3]][$power] ?? null;
+            if ($cycle !== null) {
+                $need = min($cycle['discard'], count($data['hand'] ?? []));
+                if ($need > 0) {
+                    $data['pending_discard'] = ['need' => $need, 'draw' => $cycle['draw']];
+                } else {
+                    // Nothing left to shed (the powerup was the hider's last card) — just draw.
+                    $cards = $this->drawFromDeck($data, $cycle['draw']);
+                    $data['pending_draw'] = ['cards' => $cards, 'keep' => count($cards)];
+                }
             }
             // 'move' lets the hider relocate: drop the committed spot AND the old hiding zone
             // (questions fall back to live GPS meanwhile) so the hider picks a fresh station and
@@ -1409,6 +1420,37 @@ class HideAndSeekMode implements GameMode
         $data['pending_draw'] = null;
 
         return new ActionOutcome($data, null, [$this->event('CardsKept', ['count' => count($kept)])]);
+    }
+
+    /**
+     * The hider pays a cycle powerup's cost: shed the chosen hand cards, then draw the replacements
+     * (revealed through the keep modal). Requires the full cost — a short selection is a no-op, so
+     * the pending_discard stays until the hider commits the right number of cards.
+     */
+    private function discardCards(Action $action, array $data): ActionOutcome
+    {
+        $pending = $data['pending_discard'] ?? null;
+        if ($pending === null) {
+            return new ActionOutcome($data);
+        }
+
+        $need = (int) ($pending['need'] ?? 0);
+        // Only uids actually in the hand count. Validate the FULL cost before shedding anything, so a
+        // short/partial selection leaves the hand (and the pending_discard) untouched.
+        $handUids = array_column($data['hand'] ?? [], 'uid');
+        $valid = array_values(array_intersect(array_unique((array) ($action->payload['uids'] ?? [])), $handUids));
+        if (count($valid) < $need) {
+            return new ActionOutcome($data); // wait for a full choice — nothing shed yet
+        }
+
+        foreach (array_slice($valid, 0, $need) as $uid) {
+            $this->takeFromHand($data, $uid);
+        }
+        $data['pending_discard'] = null;
+        $cards = $this->drawFromDeck($data, (int) ($pending['draw'] ?? 0));
+        $data['pending_draw'] = ['cards' => $cards, 'keep' => count($cards)];
+
+        return new ActionOutcome($data, null, [$this->event('CardsDiscarded', ['count' => $need])]);
     }
 
     /** The hider's current max hand size (config default, raised by 'draw_1_expand_1'). */

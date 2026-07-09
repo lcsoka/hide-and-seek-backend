@@ -20,11 +20,11 @@ return [
         ],
         'discard_1_draw_2' => [
             'name' => 'Dobj 1-et, Húzz 2-t',
-            'description' => 'Dobd el ezt a kártyát, és húzz két újat.',
+            'description' => 'Dobj el egy másik lapot a kezedből, majd húzz két újat.',
         ],
         'discard_2_draw_3' => [
             'name' => 'Dobj 2-t, Húzz 3-at',
-            'description' => 'Dobd el ezt a kártyát, és húzz három újat.',
+            'description' => 'Dobj el két másik lapot a kezedből, majd húzz három újat.',
         ],
         'draw_1_expand_1' => [
             'name' => 'Húzz 1-et, Bővíts 1-et',

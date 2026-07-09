@@ -155,12 +155,72 @@ class CardOutcomesTest extends TestCase
 
     private function assertDrawPowerup(string $power, int $expected): void
     {
+        // With no OTHER cards in hand there's nothing to shed, so a cycle powerup draws immediately.
         $ctx = $this->startSeeking();
         $this->play($ctx, ['uid' => 'p', 'type' => 'powerup', 'power' => $power], 'play_powerup');
 
         $draw = $this->state($ctx)['pending_draw'];
         $this->assertNotNull($draw, "{$power} should open a draw");
         $this->assertCount($expected, $draw['cards']);
+    }
+
+    public function test_cycle_powerup_sheds_a_chosen_card_before_drawing_and_is_net_neutral(): void
+    {
+        $ctx = $this->startSeeking();
+        // Two spare cards alongside the powerup we'll play (hand of three).
+        $this->giveHiderCard($ctx['sessionId'], ['uid' => 'keep', 'type' => 'time_bonus', 'minutes' => 5]);
+        $this->giveHiderCard($ctx['sessionId'], ['uid' => 'shed', 'type' => 'time_bonus', 'minutes' => 8]);
+
+        $this->play($ctx, ['uid' => 'p', 'type' => 'powerup', 'power' => 'discard_1_draw_2'], 'play_powerup');
+
+        // The powerup asks the hider to shed ONE card first — no draw revealed yet.
+        $s = $this->state($ctx);
+        $this->assertSame(['need' => 1, 'draw' => 2], $s['pending_discard']);
+        $this->assertNull($s['pending_draw']);
+
+        // Shed the chosen card → the two replacements are drawn.
+        Sanctum::actingAs($ctx['host']);
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'discard_cards', 'payload' => ['uids' => ['shed']]])->assertOk();
+
+        $s = $this->state($ctx);
+        $this->assertNull($s['pending_discard']);
+        $this->assertCount(2, $s['pending_draw']['cards']);
+        $handUids = array_map(fn ($c) => $c['uid'], $s['hand']);
+        $this->assertContains('keep', $handUids, 'the card the hider chose to keep survives');
+        $this->assertNotContains('shed', $handUids, 'the shed card is gone');
+        $this->assertNotContains('p', $handUids, 'the powerup itself is spent');
+
+        // Keep both drawn cards → the hand is the same size it started at (net-0 cycle).
+        $keepUids = array_map(fn ($c) => $c['uid'], $s['pending_draw']['cards']);
+        Sanctum::actingAs($ctx['host']);
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'keep_cards', 'payload' => ['uids' => $keepUids]])->assertOk();
+
+        $this->assertCount(3, $this->state($ctx)['hand']);
+    }
+
+    public function test_discard_cards_needs_the_full_cost_before_it_draws(): void
+    {
+        $ctx = $this->startSeeking();
+        $this->giveHiderCard($ctx['sessionId'], ['uid' => 'a', 'type' => 'time_bonus', 'minutes' => 5]);
+        $this->giveHiderCard($ctx['sessionId'], ['uid' => 'b', 'type' => 'time_bonus', 'minutes' => 8]);
+        $this->giveHiderCard($ctx['sessionId'], ['uid' => 'c', 'type' => 'time_bonus', 'minutes' => 9]);
+
+        $this->play($ctx, ['uid' => 'p', 'type' => 'powerup', 'power' => 'discard_2_draw_3'], 'play_powerup');
+        $this->assertSame(['need' => 2, 'draw' => 3], $this->state($ctx)['pending_discard']);
+
+        // A single card isn't enough to pay a discard-2 cost — it stays pending, nothing drawn.
+        Sanctum::actingAs($ctx['host']);
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'discard_cards', 'payload' => ['uids' => ['a']]])->assertOk();
+        $s = $this->state($ctx);
+        $this->assertNotNull($s['pending_discard']);
+        $this->assertNull($s['pending_draw']);
+
+        // Paying the full cost draws the three replacements.
+        Sanctum::actingAs($ctx['host']);
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'discard_cards', 'payload' => ['uids' => ['a', 'b']]])->assertOk();
+        $s = $this->state($ctx);
+        $this->assertNull($s['pending_discard']);
+        $this->assertCount(3, $s['pending_draw']['cards']);
     }
 
     public function test_powerup_move_is_consumed_and_announced(): void
