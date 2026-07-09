@@ -68,6 +68,30 @@ class SessionController extends Controller
         ]);
     }
 
+    /**
+     * Leave a game. A player who bails from the LOBBY is removed outright so the roster stays
+     * clean and abandoned lobbies don't linger. Once the game is live, a departure is treated as a
+     * temporary disconnect (they may reconnect from another device / after a phone lock), so the
+     * player is kept. The host is never removed — they own the session. Idempotent: leaving twice,
+     * or leaving a game you were never in, is a no-op.
+     */
+    public function leave(Session $session, Request $request): JsonResponse
+    {
+        $player = $session->players()->where('user_id', $request->user()->id)->first();
+
+        if ($player === null || $session->state !== 'lobby' || $player->is_host) {
+            return response()->json(null, 204);
+        }
+
+        $payload = ['player_id' => $player->id, 'display_name' => $player->display_name];
+        $player->delete();
+
+        // Tell the remaining players so their roster updates live instead of needing a refresh.
+        GameEventBroadcast::record($session->id, 'PlayerLeft', $payload);
+
+        return response()->json(null, 204);
+    }
+
     public function show(Session $session): SessionResource
     {
         return new SessionResource($session->load('players', 'teams'));

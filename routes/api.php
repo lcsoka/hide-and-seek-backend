@@ -62,6 +62,8 @@ Route::prefix('v1')->group(function () {
         Route::get('/my/sessions', [SessionController::class, 'mySessions']);
         Route::post('/sessions', [SessionController::class, 'store']);
         Route::post('/sessions/{code}/join', [SessionController::class, 'join']);
+        // Leave a game: drops the player only if they bail from the lobby (in-game is a keep).
+        Route::post('/sessions/{session}/leave', [SessionController::class, 'leave']);
         Route::get('/sessions/{session}', [SessionController::class, 'show']);
         Route::get('/sessions/{session}/state', [SessionController::class, 'state']);
         // The askable questions for this game (official + the host's custom).
