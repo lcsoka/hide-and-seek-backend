@@ -29,6 +29,31 @@ class EndgameTest extends TestCase
         $s->update(['state_data' => array_merge($s->state_data, $patch)]);
     }
 
+    public function test_seekers_can_still_ask_questions_in_the_endgame_by_default(): void
+    {
+        $ctx = $this->startSeeking();
+        Sanctum::actingAs($ctx['seeker']);
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'declare_endgame'])->assertOk();
+
+        $state = $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json();
+        $this->assertSame('endgame', $state['state']);
+        $this->assertContains('ask_question', $state['available_actions'], 'endgame questions are on by default');
+    }
+
+    public function test_endgame_questions_can_be_turned_off(): void
+    {
+        $ctx = $this->startSeeking();
+        $s = Session::find($ctx['sessionId']);
+        $s->update(['config' => array_merge($s->config, ['endgame_questions' => false])]);
+
+        Sanctum::actingAs($ctx['seeker']);
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'declare_endgame'])->assertOk();
+
+        $state = $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json();
+        $this->assertSame('endgame', $state['state']);
+        $this->assertNotContains('ask_question', $state['available_actions'], 'the host disabled endgame questions');
+    }
+
     public function test_the_catch_is_judged_against_the_committed_spot_not_live_drift(): void
     {
         $ctx = $this->startSeeking();

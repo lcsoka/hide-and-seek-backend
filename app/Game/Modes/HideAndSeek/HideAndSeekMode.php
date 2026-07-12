@@ -58,6 +58,8 @@ class HideAndSeekMode implements GameMode
             // A seeker must stay inside the hiding zone this long before the endgame
             // auto-starts — so briefly passing through early on never triggers it.
             'endgame_dwell_s' => 60,
+            // Seekers may keep asking questions during the endgame (default on; a host can turn it off).
+            'endgame_questions' => true,
             // Opt-in: a question category can't be re-asked until this many seconds after it was
             // last answered (0 = off). `question_cooldowns` overrides it per category.
             'question_cooldown_s' => 0,
@@ -120,7 +122,14 @@ class HideAndSeekMode implements GameMode
                 default => [],
             },
             'endgame' => match ($player->role) {
-                'seeker' => $this->seekerCanCatch($session, $player) && ($session->state_data['found_claim'] ?? null) === null ? ['claim_found'] : [],
+                // Endgame keeps the seeker's full toolkit (ask/thermometer/transit) when questions are
+                // enabled (default), plus the catch. 'declare_endgame' is dropped — already in endgame.
+                'seeker' => array_merge(
+                    ($session->config['endgame_questions'] ?? true)
+                        ? array_values(array_diff($this->seekerActions($session, $player, $pending), ['declare_endgame']))
+                        : [],
+                    $this->seekerCanCatch($session, $player) && ($session->state_data['found_claim'] ?? null) === null ? ['claim_found'] : [],
+                ),
                 'hider' => array_merge(
                     ['surrender'],
                     ($session->state_data['found_claim'] ?? null) !== null ? ['confirm_caught', 'dispute_found'] : [],

@@ -28,6 +28,7 @@ class StoreSessionRequest extends FormRequest
             'config.transit_modes.*' => ['string', Rule::in(['metro', 'tram', 'rail', 'light_rail', 'bus', 'trolleybus'])],
             'config.hiding_zone_rule' => ['sometimes', Rule::in(['circle', 'nearest'])],
             'config.reveal_seekers_to_hider' => ['sometimes', 'boolean'],
+            'config.endgame_questions' => ['sometimes', 'boolean'],
             // The host's curated deck: ids of the cards to keep in play (empty/absent = all).
             'config.deck_cards' => ['sometimes', 'array'],
             'config.deck_cards.*' => ['string'],
