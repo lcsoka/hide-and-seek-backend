@@ -3,6 +3,10 @@
         @keyframes jtr-pulse { 0% { transform: scale(.5); opacity: .85; } 100% { transform: scale(2.4); opacity: 0; } }
         .jtr-ring { position: absolute; inset: 0; border-radius: 9999px; border: 2px solid currentColor; animation: jtr-pulse 1.1s ease-out infinite; }
         .jtr-banner { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); z-index: 500; }
+        /* Leaflet re-positions each marker by setting a new transform on every zoom; a framework
+           transition on that transform makes the icons (thermometer end, stations…) slide/drift
+           during the zoom instead of snapping to their point. Force it off. */
+        .leaflet-marker-icon, .leaflet-marker-shadow { transition: none !important; }
     </style>
     <div x-data="replayApp(@js($this->replayBundle()))" x-init="init()" class="grid gap-4 lg:grid-cols-3">
         {{-- Map + transport controls --}}
@@ -232,12 +236,26 @@
                 icon(kind) { return { action: '⚑', ask: '❓', curse: '🎴' }[kind] || '•'; },
 
                 // --- deduction (radar + thermometer, via turf) ---
+                // Half-plane of points closer to B than A (perpendicular bisector of A–B). a/b are
+                // [lat,lng]; towardB keeps B's (warmer) side. Built as a large PLANAR quad in lng/lat
+                // (lng scaled by cos(lat) so the bisector is truly perpendicular) — the earlier
+                // geodesic-destination quad self-intersected over its long reach and silently left the
+                // candidate uncut (so thermometer answers never cut). Mirrors the web app's version.
                 halfPlane(a, b, towardB) {
-                    const A = turf.point([a[1], a[0]]), B = turf.point([b[1], b[0]]);
-                    const mid = turf.midpoint(A, B), keep = turf.bearing(A, B) + (towardB ? 0 : 180), D = 400;
-                    const p1 = turf.destination(mid, D, keep - 90), p2 = turf.destination(mid, D, keep + 90);
-                    const p3 = turf.destination(p2, D, keep), p4 = turf.destination(p1, D, keep);
-                    return turf.polygon([[p1.geometry.coordinates, p2.geometry.coordinates, p3.geometry.coordinates, p4.geometry.coordinates, p1.geometry.coordinates]]);
+                    const aLat = a[0], aLng = a[1], bLat = b[0], bLng = b[1];
+                    const midLat = (aLat + bLat) / 2, k = Math.cos(midLat * Math.PI / 180) || 1;
+                    let ux = (bLng - aLng) * k, uy = bLat - aLat;
+                    const len = Math.hypot(ux, uy) || 1; ux /= len; uy /= len;
+                    if (!towardB) { ux = -ux; uy = -uy; }
+                    const px = -uy, py = ux, mx = (aLng + bLng) / 2, my = midLat, reach = 8;
+                    const at = (sx, sy) => [mx + sx / k, my + sy];
+                    return turf.polygon([[
+                        at(px * reach, py * reach),
+                        at(px * reach + ux * 2 * reach, py * reach + uy * 2 * reach),
+                        at(-px * reach + ux * 2 * reach, -py * reach + uy * 2 * reach),
+                        at(-px * reach, -py * reach),
+                        at(px * reach, py * reach),
+                    ]]);
                 },
                 computeCandidate(qs) {
                     if (!window.turf) return null;

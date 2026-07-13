@@ -277,7 +277,9 @@ class ReplayBuilder
     {
         $events = [];
 
-        $skip = ['ask_question', 'answer_question', 'amend_answer', 'play_curse'];
+        // ask/answer/curse are carried by the question + curse rows; location:observed is a
+        // high-volume position ping that would flood the timeline with noise.
+        $skip = ['ask_question', 'answer_question', 'amend_answer', 'play_curse', 'location:observed'];
         foreach (ActionLog::query()->where('session_id', $session->id)->orderBy('created_at')->get(['type', 'player_id', 'created_at']) as $log) {
             if (in_array($log->type, $skip, true)) {
                 continue;
