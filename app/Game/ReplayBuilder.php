@@ -63,6 +63,9 @@ class ReplayBuilder
                     'end' => isset($q['end']['lat'], $q['end']['lng'])
                         ? ['lat' => (float) $q['end']['lat'], 'lng' => (float) $q['end']['lng']]
                         : null,
+                    // OSM geometry so the replay can cut matching/tentacles/measuring like the web app:
+                    // the candidate POIs (for the Voronoi cell) + the seeker's reference/matched place.
+                    'geo' => $this->questionGeo($q['category'] ?? null, $ask, is_array($answer) ? $answer : []),
                 ];
             })
             ->filter(fn ($q) => $q['at'] !== null)
@@ -206,6 +209,48 @@ class ReplayBuilder
         }
 
         return $out;
+    }
+
+    /**
+     * OSM geometry for a matching/tentacles/measuring question, so the replay can reconstruct its
+     * cut the way the web app does: the candidate POIs of the question's feature type (whose Voronoi
+     * split IS the cut) + the seeker's reference/matched place (from the answer). Best-effort +
+     * cached; returns null for categories/answers that don't need it (radar, thermometer, admin zone).
+     *
+     * @param  array<string, mixed>  $ask
+     * @param  array<string, mixed>  $answer
+     * @return array{pois: array<int, array{0: float, 1: float, 2: ?string}>, ref: ?array{lat: float, lng: float, name: ?string}}|null
+     */
+    private function questionGeo(?string $category, array $ask, array $answer): ?array
+    {
+        $feature = $ask['feature'] ?? null;
+        if (! in_array($category, ['tentacles', 'matching', 'measuring'], true) || ! is_string($feature) || ! isset($ask['lat'], $ask['lng'])) {
+            return null; // admin-zone matching / border measuring carry no point feature (need boundary geometry)
+        }
+        $lat = (float) $ask['lat'];
+        $lng = (float) $ask['lng'];
+        $ref = isset($answer['feature_lat'], $answer['feature_lng'])
+            ? ['lat' => (float) $answer['feature_lat'], 'lng' => (float) $answer['feature_lng'], 'name' => $answer['feature_name'] ?? null]
+            : null;
+
+        // Measuring is a single circle around the reference — no POI set needed.
+        if ($category === 'measuring') {
+            return ['pois' => [], 'ref' => $ref];
+        }
+
+        // Tentacles: candidates within the radius. Matching: a wide area for the Voronoi (capped).
+        $radiusM = $category === 'tentacles' ? (float) ($ask['radius_m'] ?? 1609) : 40000.0;
+        $pois = [];
+        try {
+            $features = app(MapDataSource::class)->within($feature, $lat, $lng, $radiusM);
+            foreach (array_slice($features, 0, 400) as $f) {
+                $pois[] = [round($f->lat, 6), round($f->lng, 6), $f->name];
+            }
+        } catch (\Throwable) {
+            // best-effort: no POIs → the blade falls back gracefully (whole circle / no cut)
+        }
+
+        return ['pois' => $pois, 'ref' => $ref];
     }
 
     /**

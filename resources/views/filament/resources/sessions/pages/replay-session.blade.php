@@ -270,18 +270,50 @@
                     if (this.bundle.playAreaGeo) cand = turf.feature(this.bundle.playAreaGeo);
                     else if (this.bundle.playArea) cand = turf.circle([this.bundle.playArea.lng, this.bundle.playArea.lat], this.bundle.playArea.radiusKm, { units: 'kilometers', steps: 96 });
                     else return null;
+                    const fc = (a) => turf.featureCollection(a);
                     for (const q of qs) {
                         try {
                             if (q.category === 'radar' && q.ask.radius_m) {
                                 const c = turf.circle([q.ask.lng, q.ask.lat], q.ask.radius_m / 1000, { units: 'kilometers', steps: 64 });
-                                cand = ['yes', 'in_range'].includes(q.answer) ? turf.intersect(turf.featureCollection([cand, c])) : turf.difference(turf.featureCollection([cand, c]));
+                                cand = ['yes', 'in_range'].includes(q.answer) ? turf.intersect(fc([cand, c])) : turf.difference(fc([cand, c]));
                             } else if (q.category === 'thermometer' && q.end) {
-                                cand = turf.intersect(turf.featureCollection([cand, this.halfPlane([q.ask.lat, q.ask.lng], [q.end.lat, q.end.lng], q.answer === 'hotter')]));
+                                cand = turf.intersect(fc([cand, this.halfPlane([q.ask.lat, q.ask.lng], [q.end.lat, q.end.lng], q.answer === 'hotter')]));
+                            } else if (q.category === 'tentacles' && q.geo) {
+                                // Within the radius, keep the Voronoi cell of the matched place (in_range),
+                                // or remove the whole radius circle (out_of_range).
+                                const circle = turf.circle([q.ask.lng, q.ask.lat], (q.ask.radius_m || 1609) / 1000, { units: 'kilometers', steps: 64 });
+                                cand = q.answer === 'out_of_range'
+                                    ? turf.difference(fc([cand, circle]))
+                                    : turf.intersect(fc([cand, this.voronoiRegion(q.geo, [q.ask.lng, q.ask.lat], circle) || circle]));
+                            } else if (q.category === 'matching' && q.geo && q.geo.pois && q.geo.pois.length >= 2) {
+                                // Keep (yes) / remove (no) the Voronoi cell of the seeker's matched place.
+                                const cell = this.voronoiRegion(q.geo, [q.ask.lng, q.ask.lat], null);
+                                if (cell) cand = q.answer === 'yes' ? turf.intersect(fc([cand, cell])) : turf.difference(fc([cand, cell]));
+                            } else if (q.category === 'measuring' && q.geo && q.geo.ref) {
+                                // A circle around the reference at the seeker's own distance — keep inside
+                                // (closer) or outside (further).
+                                const ref = [q.geo.ref.lng, q.geo.ref.lat];
+                                const d = Math.max(turf.distance(turf.point([q.ask.lng, q.ask.lat]), turf.point(ref), { units: 'kilometers' }), 0.05);
+                                const circle = turf.circle(ref, d, { units: 'kilometers', steps: 64 });
+                                cand = q.answer === 'closer' ? turf.intersect(fc([cand, circle])) : turf.difference(fc([cand, circle]));
                             }
                         } catch (e) { /* geometry hiccup — keep the last candidate */ }
                         if (!cand) break;
                     }
                     return cand;
+                },
+
+                // The Voronoi cell of the seeker's reference place among the candidate POIs, optionally
+                // clipped to a radius circle (tentacles). Mirrors the web app's osm-deduction.
+                voronoiRegion(geo, askLngLat, clip) {
+                    const pts = (geo.pois || []).map((p) => turf.point([p[1], p[0]], { name: p[2] }));
+                    if (pts.length < 2) return clip || null;
+                    const box = turf.bbox(clip || turf.circle(askLngLat, 60, { units: 'kilometers' }));
+                    const cells = turf.voronoi(turf.featureCollection(pts), { bbox: box });
+                    const ref = geo.ref ? turf.point([geo.ref.lng, geo.ref.lat]) : turf.point(askLngLat);
+                    const cell = cells.features.find((c) => c && turf.booleanPointInPolygon(ref, c));
+                    if (!cell) return clip || null;
+                    return clip ? turf.intersect(turf.featureCollection([cell, clip])) : cell;
                 },
                 renderDeduction() {
                     this.dedLayer.clearLayers();
@@ -290,7 +322,7 @@
                     // only uses that round's questions — carrying earlier cuts over would point at the wrong spot.
                     const r = this.activeRound;
                     const from = r ? r.start : this.bundle.t0;
-                    const qs = this.bundle.questions.filter((q) => q.ask && q.at <= this.time && q.at >= from && (q.category === 'radar' || q.category === 'thermometer'));
+                    const qs = this.bundle.questions.filter((q) => q.ask && q.at <= this.time && q.at >= from && ['radar', 'thermometer', 'tentacles', 'matching', 'measuring'].includes(q.category));
                     const key = (r ? r.round : 0) + ':' + qs.length;
                     if (key !== this._dedKey) { this._dedKey = key; this._dedGeo = this.computeCandidate(qs); }
                     if (this._dedGeo) L.geoJSON(this._dedGeo, { style: { color: '#16a34a', weight: 2, fillColor: '#16a34a', fillOpacity: 0.09 }, interactive: false }).addTo(this.dedLayer);
