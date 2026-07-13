@@ -12,6 +12,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ActionLog;
 use App\Models\Card;
 use App\Models\Player;
+use App\Models\PlayerPosition;
 use App\Models\Question;
 use App\Models\Session;
 use App\Models\User;
@@ -249,6 +250,16 @@ class DebugController extends Controller
                 'payload' => $l->payload,
                 'at' => $l->created_at?->timestamp,
             ])->all(),
+            // The throttled movement history — every player's position samples over time, so the
+            // replay can scrub and animate real movement (players themselves only keep their last
+            // position). Compact keys keep the payload small when there are many samples.
+            'positions' => PlayerPosition::query()->where('session_id', $session->id)->orderBy('recorded_at')->get()
+                ->map(fn (PlayerPosition $p) => [
+                    'player_id' => $p->player_id,
+                    'lat' => $p->lat,
+                    'lng' => $p->lng,
+                    'at' => $p->recorded_at?->timestamp,
+                ])->all(),
         ];
     }
 }
