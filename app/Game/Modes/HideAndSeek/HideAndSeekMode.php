@@ -145,6 +145,14 @@ class HideAndSeekMode implements GameMode
             $actions[] = 'end_game';
         }
 
+        // Safety net: void a stuck pending question so play returns to normal (the seeker can ask
+        // again, the hider is freed). Available to the host, or to the seeker who asked it — so a
+        // question that jams the game (e.g. its resolve never fired) can always be cleared.
+        $pendingQ = $session->state_data['pending_question'] ?? null;
+        if ($pendingQ !== null && ($player->is_host || ($pendingQ['asked_by'] ?? null) === $player->id)) {
+            $actions[] = 'cancel_question';
+        }
+
         return $actions;
     }
 
@@ -164,6 +172,9 @@ class HideAndSeekMode implements GameMode
             'amend_answer' => ($this->amendableIndex($session) !== null && ($action->payload['answer'] ?? null) !== null)
                 ? ValidationResult::pass()
                 : ValidationResult::fail('There is no recent answer to change.'),
+            'cancel_question' => ($session->state_data['pending_question'] ?? null) !== null
+                ? ValidationResult::pass()
+                : ValidationResult::fail('There is no pending question to cancel.'),
             'ask_question' => $this->validateAsk($session, $this->questionCategoryOf($action)),
             'start_thermometer' => isset(($session->state_data['on_transit'] ?? [])[$player->id])
                 ? ValidationResult::fail('Get off transit before starting a thermometer — it must be walked.')
@@ -241,6 +252,7 @@ class HideAndSeekMode implements GameMode
             'board_transit' => $this->boardTransit($player, $action, $data),
             'alight_transit' => $this->alightTransit($player, $action, $data),
             'answer_question' => $this->answerQuestion($session, $action, $data),
+            'cancel_question' => $this->cancelQuestion($data),
             'play_curse' => $this->playCurse($player, $action, $data),
             'play_powerup' => $this->playPowerup($action, $data),
             'keep_cards' => $this->keepCards($action, $data),
@@ -672,11 +684,6 @@ class HideAndSeekMode implements GameMode
     {
         $data = $session->state_data ?? [];
 
-        // Mid-thermometer: the seeker is travelling on foot and can only stop it.
-        if (($data['thermometer'] ?? null) !== null) {
-            return ['stop_thermometer', 'declare_endgame'];
-        }
-
         $active = $this->activeCurseInstances($data);
         // A blocking curse locks questions until the seekers clear it.
         $blocked = (bool) array_filter($active, fn ($c) => ! empty($c['blocks_asking']));
@@ -684,6 +691,19 @@ class HideAndSeekMode implements GameMode
         $canComplete = (bool) array_filter($active, fn ($c) => (! empty($c['requires_proof']) || ! empty($c['blocks_asking'])) && empty($c['dice']) && empty($c['hangman']));
         $canGuessHangman = (bool) array_filter($active, fn ($c) => ! empty($c['hangman']));
         $canRoll = (bool) array_filter($active, fn ($c) => ! empty($c['dice']));
+        // Clearing an active curse (proof / dice / hangman) is ALWAYS allowed — even mid-thermometer.
+        // A curse's task doesn't wait for the walk to finish, so the seeker must be able to respond to
+        // it without first stopping the thermometer.
+        $clearCurse = array_merge(
+            $canComplete ? ['complete_curse'] : [],
+            $canGuessHangman ? ['hangman_guess'] : [],
+            $canRoll ? ['roll_dice'] : [],
+        );
+
+        // Mid-thermometer: the seeker is travelling on foot — they can stop it and still clear curses.
+        if (($data['thermometer'] ?? null) !== null) {
+            return array_merge(['stop_thermometer', 'declare_endgame'], $clearCurse);
+        }
 
         // Public-transport board/alight (the journey log). The thermometer must be WALKED:
         // a seeker can't start one while on transit, and boarding isn't offered mid-thermometer.
@@ -693,9 +713,7 @@ class HideAndSeekMode implements GameMode
         return array_merge(
             $pending || $blocked ? ['declare_endgame'] : array_merge($asks, ['declare_endgame']),
             [$onTransit ? 'alight_transit' : 'board_transit'],
-            $canComplete ? ['complete_curse'] : [],
-            $canGuessHangman ? ['hangman_guess'] : [],
-            $canRoll ? ['roll_dice'] : [],
+            $clearCurse,
         );
     }
 
@@ -1123,6 +1141,25 @@ class HideAndSeekMode implements GameMode
         }
 
         return $evaluator->evaluate($session, $asker, $question, $pending['payload'] ?? []);
+    }
+
+    /**
+     * Safety net: void a stuck pending question, returning play to normal (the seeker can ask
+     * again, the hider is freed). Triggered by the host or the seeker who asked it — so a question
+     * that jams the game (e.g. its resolve timer never fired) can always be cleared without a reset.
+     */
+    private function cancelQuestion(array $data): ActionOutcome
+    {
+        $pending = $data['pending_question'] ?? null;
+        if ($pending === null) {
+            return new ActionOutcome($data);
+        }
+        $data['pending_question'] = null;
+        $data['question_answer'] = null;
+
+        return new ActionOutcome($data, null, [
+            $this->event('QuestionVoided', ['seq' => $pending['seq'] ?? null, 'asked_by' => $pending['asked_by'] ?? null]),
+        ]);
     }
 
     /** The hider plays a curse card from their hand (removed by uid) against the seekers. */
