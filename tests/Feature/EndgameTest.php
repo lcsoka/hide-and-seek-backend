@@ -54,6 +54,29 @@ class EndgameTest extends TestCase
         $this->assertNotContains('ask_question', $state['available_actions'], 'the host disabled endgame questions');
     }
 
+    public function test_endgame_catch_is_a_manual_claim_that_survives_a_stale_seeker_gps(): void
+    {
+        $ctx = $this->startSeeking();
+        $this->patchState($ctx['sessionId'], ['hider_position' => ['lat' => 47.50, 'lng' => 19.04]]);
+        // The seeker's reported position is far away — a GPS glitch that stopped updating (the real
+        // playtest lost a win to exactly this: the seeker's location never refreshed).
+        Player::whereKey($ctx['seekerId'])->update(['last_lat' => 47.60, 'last_lng' => 19.30]);
+
+        // During seeking the proximity gate still applies — too far to claim.
+        Sanctum::actingAs($ctx['seeker']);
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'claim_found'])->assertStatus(422);
+
+        // Endgame: the seeker can claim MANUALLY despite the distance; the hider confirms.
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'declare_endgame'])->assertOk();
+        $state = $this->getJson("/api/v1/sessions/{$ctx['sessionId']}/state")->json();
+        $this->assertContains('claim_found', $state['available_actions']);
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'claim_found'])->assertOk();
+
+        Sanctum::actingAs($ctx['host']);
+        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'confirm_caught'])->assertOk();
+        $this->assertSame('round_end', Session::find($ctx['sessionId'])->state);
+    }
+
     public function test_the_catch_is_judged_against_the_committed_spot_not_live_drift(): void
     {
         $ctx = $this->startSeeking();
@@ -61,7 +84,7 @@ class EndgameTest extends TestCase
         $this->patchState($ctx['sessionId'], ['hider_position' => ['lat' => 47.50, 'lng' => 19.04]]);
         Player::whereKey($ctx['hiderId'])->update(['last_lat' => 47.80, 'last_lng' => 19.60]);
         Sanctum::actingAs($ctx['seeker']);
-        $this->postJson("/api/v1/sessions/{$ctx['sessionId']}/actions", ['type' => 'declare_endgame'])->assertOk();
+        // Still in SEEKING, where the proximity gate applies (endgame is a manual claim instead).
 
         // Standing on the live drift B, the seeker is NOT close enough to claim the catch.
         Player::whereKey($ctx['seekerId'])->update(['last_lat' => 47.80, 'last_lng' => 19.60]);

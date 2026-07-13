@@ -128,7 +128,10 @@ class HideAndSeekMode implements GameMode
                     ($session->config['endgame_questions'] ?? true)
                         ? array_values(array_diff($this->seekerActions($session, $player, $pending), ['declare_endgame']))
                         : [],
-                    $this->seekerCanCatch($session, $player) && ($session->state_data['found_claim'] ?? null) === null ? ['claim_found'] : [],
+                    // In the endgame the catch is a MANUAL claim (the hider confirms), so it works
+                    // even if the seeker's GPS is stale/unavailable — otherwise a location glitch can
+                    // leave the game unendable (a real playtest lost a win to a stuck seeker position).
+                    ($session->state_data['found_claim'] ?? null) === null ? ['claim_found'] : [],
                 ),
                 'hider' => array_merge(
                     ['surrender'],
@@ -163,7 +166,9 @@ class HideAndSeekMode implements GameMode
             'assign_hider' => (! isset($action->payload['player_id']) || $session->players()->whereKey($action->payload['player_id'])->exists())
                 ? ValidationResult::pass()
                 : ValidationResult::fail('player_id must be a player in this session.'),
-            'claim_found' => $this->seekerCanCatch($session, $player)
+            // In the endgame a seeker may claim the catch manually (the hider confirms), so a stale
+            // GPS can't block the win. During seeking the proximity gate still applies.
+            'claim_found' => (($player->role === 'seeker' && $session->state === 'endgame') || $this->seekerCanCatch($session, $player))
                 ? ValidationResult::pass()
                 : ValidationResult::fail('You are not close enough to the hider to catch them.'),
             'confirm_caught', 'dispute_found' => ($session->state_data['found_claim'] ?? null) !== null
