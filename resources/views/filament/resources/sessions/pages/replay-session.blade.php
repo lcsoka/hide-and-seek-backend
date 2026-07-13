@@ -165,6 +165,9 @@
                         this.load('https://unpkg.com/@turf/turf@7/turf.min.js', null, () => window.turf)]);
                     this.setupMap();
                     this.render();
+                    // The Filament grid settles its width after first paint; recompute the map size
+                    // once it has, so the projection (and every layer's placement on zoom) is correct.
+                    setTimeout(() => this.map && this.map.invalidateSize(), 200);
                 },
 
                 load(src, css, ready) {
@@ -181,7 +184,11 @@
 
                 setupMap() {
                     const dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-                    this.map = L.map(this.$refs.map, { attributionControl: false });
+                    // zoomAnimation off: the Filament panel CSS interferes with the timed transform
+                    // Leaflet applies to its panes during an animated zoom, so the layers (region,
+                    // radar circles, thermometer lines, markers) slide out of place mid-zoom. An
+                    // instant zoom redraws every layer at the correct spot with nothing to desync.
+                    this.map = L.map(this.$refs.map, { attributionControl: false, zoomAnimation: false, markerZoomAnimation: false });
                     L.tileLayer(dark ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png' : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
                         { subdomains: 'abcd', maxZoom: 19 }).addTo(this.map);
 
