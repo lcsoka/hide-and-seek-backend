@@ -238,11 +238,21 @@ class ReplayBuilder
             return ['pois' => [], 'ref' => $ref];
         }
 
-        // Tentacles: candidates within the radius. Matching: a wide area for the Voronoi (capped).
-        $radiusM = $category === 'tentacles' ? (float) ($ask['radius_m'] ?? 1609) : 40000.0;
+        // Tentacles: candidates within the radius. Matching: a wide area for the Voronoi — 80 km to
+        // match the web app's search, so both stacks build the SAME cell.
+        $radiusM = $category === 'tentacles' ? (float) ($ask['radius_m'] ?? 1609) : 80000.0;
         $pois = [];
         try {
             $features = app(MapDataSource::class)->within($feature, $lat, $lng, $radiusM);
+            // Nearest-first (lng scaled by cos lat) so the cap keeps the reference cell's immediate
+            // neighbours — they alone decide its shape; far cells don't matter.
+            $k = cos(deg2rad($lat)) ?: 1.0;
+            usort($features, function ($a, $b) use ($lat, $lng, $k) {
+                $da = ($a->lat - $lat) ** 2 + (($a->lng - $lng) * $k) ** 2;
+                $db = ($b->lat - $lat) ** 2 + (($b->lng - $lng) * $k) ** 2;
+
+                return $da <=> $db;
+            });
             foreach (array_slice($features, 0, 400) as $f) {
                 $pois[] = [round($f->lat, 6), round($f->lng, 6), $f->name];
             }

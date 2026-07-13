@@ -308,7 +308,7 @@
                 voronoiRegion(geo, askLngLat, clip) {
                     const pts = (geo.pois || []).map((p) => turf.point([p[1], p[0]], { name: p[2] }));
                     if (pts.length < 2) return clip || null;
-                    const box = turf.bbox(clip || turf.circle(askLngLat, 60, { units: 'kilometers' }));
+                    const box = turf.bbox(clip || turf.circle(askLngLat, 80, { units: 'kilometers' }));
                     const cells = turf.voronoi(turf.featureCollection(pts), { bbox: box });
                     const ref = geo.ref ? turf.point([geo.ref.lng, geo.ref.lat]) : turf.point(askLngLat);
                     const cell = cells.features.find((c) => c && turf.booleanPointInPolygon(ref, c));
