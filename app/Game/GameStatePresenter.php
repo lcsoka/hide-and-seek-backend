@@ -433,6 +433,8 @@ class GameStatePresenter
                 'name' => $model?->name, 'cost' => $model?->cost, 'description' => $model?->description,
                 // The hider must attach a photo (e.g. a Street View shot) when casting this curse.
                 'needs_photo' => (bool) ($model?->effect['hider_photo'] ?? false),
+                // The hider attaches a VIDEO when casting (the Bird Guide's bird footage).
+                'needs_video' => (bool) ($model?->effect['hider_video'] ?? false),
                 // The hider must type a word (the Hidden Hangman) for the seekers to guess.
                 'needs_word' => (bool) ($model?->effect['hangman'] ?? false),
             ];
@@ -471,6 +473,8 @@ class GameStatePresenter
                 'cost' => $model?->cost,
                 'description' => $model?->description,
                 'requires_proof' => (bool) ($c['requires_proof'] ?? false),
+                // The seeker clears this curse with a VIDEO (film a bird), not a photo.
+                'video_proof' => (bool) ($model?->effect['hider_video'] ?? false),
                 'blocks_asking' => (bool) ($c['blocks_asking'] ?? false),
                 'dice' => $c['dice'] ?? null,
                 'last_roll' => $rolls ? end($rolls) : null,

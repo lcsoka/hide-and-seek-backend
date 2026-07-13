@@ -99,7 +99,7 @@ class CardSeeder extends Seeder
             // "Photograph / film X before asking" — a photo clears them; they block asking until done.
             'the_luxury_car' => ['requires_proof' => true, 'blocks_asking' => true],
             'the_zoologist' => ['requires_proof' => true, 'blocks_asking' => true],
-            'the_bird_guide' => ['requires_proof' => true, 'blocks_asking' => true],
+            'the_bird_guide' => ['requires_proof' => true, 'blocks_asking' => true, 'hider_video' => true],
             'the_cairn' => ['requires_proof' => true, 'blocks_asking' => true],
             'the_ransom_note' => ['requires_proof' => true, 'blocks_asking' => true],
             'the_mediocre_travel_agent' => ['requires_proof' => true], // a side-quest, not a hard block
