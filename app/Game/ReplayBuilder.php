@@ -55,6 +55,8 @@ class ReplayBuilder
                     'by' => $q['asked_by'] ?? null,
                     'category' => $q['category'] ?? null,
                     'answer' => is_array($answer) ? ($answer['answer'] ?? null) : $answer,
+                    // A photo/video question answer is the hider's clue — surface it in the timeline.
+                    'photo' => is_array($answer) ? ($answer['photo_url'] ?? null) : null,
                     'ask' => isset($ask['lat'], $ask['lng'])
                         ? ['lat' => (float) $ask['lat'], 'lng' => (float) $ask['lng'], 'radius_m' => $ask['radius_m'] ?? null, 'feature' => $ask['feature'] ?? null]
                         : null,
@@ -70,7 +72,13 @@ class ReplayBuilder
         $rawCurses = $this->acrossRounds($session, 'curses_played');
         $curseNames = Card::whereIn('id', collect($rawCurses)->pluck('curse_id')->filter()->unique()->all())->pluck('name', 'id');
         $curses = collect($rawCurses)
-            ->map(fn (array $c) => ['at' => $c['at'] ?? null, 'by' => $c['by'] ?? null, 'name' => $curseNames[$c['curse_id'] ?? null] ?? 'Curse'])
+            ->map(fn (array $c) => [
+                'at' => $c['at'] ?? null,
+                'by' => $c['by'] ?? null,
+                'name' => $curseNames[$c['curse_id'] ?? null] ?? 'Curse',
+                // The hider's cast photo/video + the seeker's completion proof, whichever exist.
+                'media' => array_values(array_filter([$c['hint_photo_url'] ?? null, $c['proof_url'] ?? null])),
+            ])
             ->filter(fn ($c) => $c['at'] !== null)
             ->sortBy('at')
             ->values()->all();
@@ -279,6 +287,7 @@ class ReplayBuilder
                 'kind' => 'action',
                 'label' => ucfirst(str_replace('_', ' ', $log->type)),
                 'by' => $names[$log->player_id] ?? null,
+                'media' => [],
             ];
         }
 
@@ -288,11 +297,20 @@ class ReplayBuilder
                 'kind' => 'ask',
                 'label' => ucfirst((string) $q['category']).' question'.($q['answer'] ? ' → '.str_replace('_', ' ', (string) $q['answer']) : ''),
                 'by' => $names[$q['by']] ?? null,
+                'media' => ! empty($q['photo']) ? [$q['photo']] : [],
             ];
         }
 
         foreach ($curses as $c) {
-            $events[] = ['at' => $c['at'], 'kind' => 'curse', 'label' => 'Curse: '.$c['name'], 'by' => $names[$c['by']] ?? null];
+            $events[] = [
+                'at' => $c['at'],
+                'kind' => 'curse',
+                'label' => 'Curse: '.$c['name'],
+                'by' => $names[$c['by']] ?? null,
+                'media' => $c['media'] ?? [],
+                // A played curse card, shown as a coloured chip in the timeline.
+                'card' => ['name' => $c['name'], 'color' => '#7c3aed'],
+            ];
         }
 
         return collect($events)->filter(fn ($e) => $e['at'] !== null)->sortBy('at')->values()->all();

@@ -93,18 +93,51 @@
             <div class="min-h-0 flex-1 overflow-auto p-2">
                 <template x-if="bundle.events.length === 0"><p class="p-3 text-sm text-gray-400">No recorded events for this game.</p></template>
                 <template x-for="(e, i) in bundle.events" :key="i">
-                    <button type="button" @click="seek(e.at)" class="flex w-full items-start gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition"
-                            :class="i === currentEventIndex ? 'bg-primary-50 dark:bg-primary-500/10' : 'hover:bg-gray-50 dark:hover:bg-white/5'">
-                        <span class="w-10 shrink-0 pt-0.5 text-right font-mono text-xs text-gray-400" x-text="rel(e.at)"></span>
-                        <span class="text-base leading-none" x-text="icon(e.kind)"></span>
-                        <span class="min-w-0 flex-1">
-                            <span class="block truncate font-medium" x-text="e.label"></span>
-                            <span class="block truncate text-xs text-gray-400" x-text="e.by || ''"></span>
-                        </span>
-                    </button>
+                    <div class="rounded-lg transition" :class="i === currentEventIndex ? 'bg-primary-50 dark:bg-primary-500/10' : 'hover:bg-gray-50 dark:hover:bg-white/5'">
+                        <button type="button" @click="seek(e.at)" class="flex w-full items-start gap-2 px-2.5 py-1.5 text-left text-sm">
+                            <span class="w-14 shrink-0 pt-0.5 text-right font-mono text-xs tabular-nums text-gray-400" x-text="clock(e.at)"></span>
+                            <span class="text-base leading-none" x-text="icon(e.kind)"></span>
+                            <span class="min-w-0 flex-1">
+                                <span class="block truncate font-medium" x-text="e.label"></span>
+                                <span class="block truncate text-xs text-gray-400" x-text="e.by || ''"></span>
+                                <template x-if="e.card">
+                                    <span class="mt-1 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-semibold"
+                                          :style="`color:${e.card.color};border:1px solid ${e.card.color}`">
+                                        <span>🎴</span><span x-text="e.card.name"></span>
+                                    </span>
+                                </template>
+                            </span>
+                        </button>
+                        {{-- Photo/video clues sent for this question or curse — tap to view full-screen. --}}
+                        <template x-if="e.media && e.media.length">
+                            <div class="flex flex-wrap gap-1.5 pb-2 pl-[4.5rem] pr-2.5">
+                                <template x-for="(m, mi) in e.media" :key="mi">
+                                    <button type="button" @click="openMedia(m)"
+                                            class="relative h-12 w-12 overflow-hidden rounded-md ring-1 ring-gray-950/10 dark:ring-white/10">
+                                        <template x-if="isVideo(m)">
+                                            <span class="block h-full w-full">
+                                                <video :src="m" class="h-full w-full object-cover" muted playsinline preload="metadata"></video>
+                                                <span class="absolute inset-0 grid place-items-center"><span class="grid h-5 w-5 place-items-center rounded-full bg-black/55 text-[10px] text-white">▶</span></span>
+                                            </span>
+                                        </template>
+                                        <template x-if="!isVideo(m)"><img :src="m" class="h-full w-full object-cover" alt=""></template>
+                                    </button>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
                 </template>
             </div>
         </div>
+
+        {{-- Full-screen media viewer for a tapped photo/video clue. --}}
+        <template x-if="viewer">
+            <div @click="closeMedia()" class="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 p-4">
+                <button type="button" @click="closeMedia()" class="absolute right-4 top-4 grid h-10 w-10 place-items-center rounded-full bg-white/15 text-xl text-white hover:bg-white/25">✕</button>
+                <template x-if="viewer.video"><video :src="viewer.url" controls autoplay playsinline @click.stop class="max-h-[85vh] max-w-full rounded-xl bg-black"></video></template>
+                <template x-if="!viewer.video"><img :src="viewer.url" @click.stop class="max-h-[85vh] max-w-full rounded-xl" alt=""></template>
+            </div>
+        </template>
     </div>
 
     <script>
@@ -117,6 +150,7 @@
                 showDeduction: true,
                 showTraces: false,
                 banner: null,
+                viewer: null,
                 map: null,
                 markers: {},
                 qLayer: null, dedLayer: null, traceLayer: null, evLayer: null,
@@ -363,6 +397,11 @@
                     }, 200);
                 },
                 rel(t) { const s = Math.max(0, Math.round(t - this.bundle.t0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); },
+                // Wall-clock hh:mm:ss for the timeline (the actual time of day the event happened).
+                clock(t) { const d = new Date(t * 1000), p = (n) => String(n).padStart(2, '0'); return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); },
+                isVideo(url) { return /\.(mp4|mov|m4v|webm|3gp|ogv)(\?|#|$)/i.test(url || ''); },
+                openMedia(url) { this.viewer = { url, video: this.isVideo(url) }; },
+                closeMedia() { this.viewer = null; },
             };
         };
     </script>
