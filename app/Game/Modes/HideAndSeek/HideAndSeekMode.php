@@ -215,8 +215,8 @@ class HideAndSeekMode implements GameMode
         }
         $effect = $card->effect ?? [];
 
-        if (! empty($effect['hider_photo']) && empty($action->payload['photo_url'])) {
-            return ValidationResult::fail('This curse needs a photo to send to the seekers.');
+        if ((! empty($effect['hider_photo']) || ! empty($effect['hider_video'])) && empty($action->payload['photo_url'])) {
+            return ValidationResult::fail('This curse needs a photo or video to send to the seekers.');
         }
         if (! empty($effect['hangman']) && ! Hangman::isValid((string) ($action->payload['word'] ?? ''))) {
             return ValidationResult::fail('This curse needs a word ('.Hangman::MIN_LENGTH.'–'.Hangman::MAX_LENGTH.' letters) for the seekers to guess.');
@@ -1196,9 +1196,10 @@ class HideAndSeekMode implements GameMode
             'expires_at' => $duration !== null ? $now + $duration : null,
             'status' => 'active',
             'proof_url' => null,
-            // The hider's own photo handed to the seekers (e.g. the Unguided Tourist's
-            // Street View screenshot) — captured at play time when effect.hider_photo is set.
-            'hint_photo_url' => ! empty($effect['hider_photo']) ? ($action->payload['photo_url'] ?? null) : null,
+            // The hider's own photo/video handed to the seekers (e.g. the Unguided Tourist's Street
+            // View screenshot, or the Bird Guide's video) — captured at play time when the curse
+            // sets hider_photo or hider_video. The media url arrives as photo_url either way.
+            'hint_photo_url' => (! empty($effect['hider_photo']) || ! empty($effect['hider_video'])) ? ($action->payload['photo_url'] ?? null) : null,
             'completed_at' => null,
         ];
 
