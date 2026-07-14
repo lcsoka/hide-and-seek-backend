@@ -29,6 +29,8 @@ class StoreSessionRequest extends FormRequest
             'config.hiding_zone_rule' => ['sometimes', Rule::in(['circle', 'nearest'])],
             'config.reveal_seekers_to_hider' => ['sometimes', 'boolean'],
             'config.endgame_questions' => ['sometimes', 'boolean'],
+            // How long the hider has to hide, in seconds (host override; else the city-size default).
+            'config.hiding_time_limit_s' => ['sometimes', 'integer', 'min:300', 'max:14400'],
             // The host's curated deck: ids of the cards to keep in play (empty/absent = all).
             'config.deck_cards' => ['sometimes', 'array'],
             'config.deck_cards.*' => ['string'],
