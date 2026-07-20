@@ -31,8 +31,10 @@ class TentaclesEvaluator implements QuestionEvaluator
         $radius = (float) ($payload['radius_m'] ?? ($question->parameters['radius_m'] ?? 0));
         $hiderPoint = $this->hiderPoint($session);
 
+        // The tentacle radius is drawn around the asker, so a rough fix would sweep the wrong
+        // set of candidate places.
         if (! is_string($feature) || $radius <= 0 || $hiderPoint === null
-            || $asker->last_lat === null || $asker->last_lng === null) {
+            || ! $asker->hasReliableFix()) {
             return null;
         }
 

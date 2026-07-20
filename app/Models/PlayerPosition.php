@@ -10,13 +10,14 @@ class PlayerPosition extends Model
 {
     public $timestamps = false;
 
-    protected $fillable = ['session_id', 'player_id', 'lat', 'lng', 'recorded_at'];
+    protected $fillable = ['session_id', 'player_id', 'lat', 'lng', 'accuracy_m', 'recorded_at'];
 
     protected function casts(): array
     {
         return [
             'lat' => 'float',
             'lng' => 'float',
+            'accuracy_m' => 'float',
             'recorded_at' => 'datetime',
         ];
     }

@@ -20,8 +20,10 @@ trait ResolvesHiderLocation
             return [(float) $pos['lat'], (float) $pos['lng']];
         }
 
+        // Before any spot is committed the live fix stands in for it — but only a trusted one,
+        // since this point is what every answer and the catch are judged against.
         $hider = $session->players()->find($session->state_data['hider_id'] ?? null);
-        if ($hider !== null && $hider->last_lat !== null && $hider->last_lng !== null) {
+        if ($hider !== null && $hider->hasReliableFix()) {
             return [(float) $hider->last_lat, (float) $hider->last_lng];
         }
 

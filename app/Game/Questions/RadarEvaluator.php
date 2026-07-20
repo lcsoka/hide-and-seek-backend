@@ -24,7 +24,10 @@ class RadarEvaluator implements QuestionEvaluator
     public function evaluate(Session $session, Player $asker, Question $question, array $payload): ?array
     {
         $hiderPoint = $this->hiderPoint($session);
-        if ($hiderPoint === null || $asker->last_lat === null || $asker->last_lng === null) {
+        // The asker's own position is the centre of the radar, so the cut is only as good as
+        // their fix. Unknown or too rough to judge → hand it back for a manual answer rather
+        // than auto-answering from a point that may be a block away.
+        if ($hiderPoint === null || ! $asker->hasReliableFix()) {
             return null; // positions unknown — fall back to a manual answer
         }
         [$hLat, $hLng] = $hiderPoint;

@@ -344,8 +344,10 @@ class GameStatePresenter
         }
         $radius = (float) ($zone['radius_m'] ?? 0);
 
+        // Mirrors the real trigger in HideAndSeekMode::seekerInZone — an untrusted fix must not
+        // raise the "a seeker is closing in" warning any more than it may start the endgame.
         return $session->players->contains(fn (Player $p) => $p->role === 'seeker'
-            && $p->last_lat !== null && $p->last_lng !== null
+            && $p->hasReliableFix()
             && Geo::distanceMeters((float) $p->last_lat, (float) $p->last_lng, (float) $center['lat'], (float) $center['lng']) <= $radius);
     }
 

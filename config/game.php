@@ -35,6 +35,18 @@ return [
     ],
 
     /*
+     | GPS trust. `max_accuracy_m` is the worst reported accuracy (metres) a fix may have and
+     | still decide something: commit the hider's spot, anchor a cut, allow a catch, or trip the
+     | endgame trigger. Above it the reading is still stored and drawn, just not acted on — see
+     | Player::hasReliableFix(). 50 m is comfortably above a clear-sky phone fix (5–15 m) and
+     | below a wifi/cell-tower fallback (100 m+), which is the reading that actually misleads.
+     | The web client drops the truly hopeless ones before sending (BrowserLocationSource).
+     */
+    'location' => [
+        'max_accuracy_m' => env('GAME_MAX_ACCURACY_M', 50),
+    ],
+
+    /*
      | Server-side question evaluators (one per category). Radar is pure geometry;
      | matching/measuring/tentacles use the MapDataSource (Overpass); thermometer
      | is deferred (resolved after the seeker moves).

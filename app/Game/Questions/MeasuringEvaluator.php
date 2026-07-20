@@ -36,7 +36,8 @@ class MeasuringEvaluator implements QuestionEvaluator
         $feature = $payload['feature'] ?? ($question->parameters['feature'] ?? null);
         $hiderPoint = $this->hiderPoint($session);
 
-        if ($hiderPoint === null || $asker->last_lat === null || $asker->last_lng === null) {
+        // Measured against the asker's position — a rough fix would compare the wrong distances.
+        if ($hiderPoint === null || ! $asker->hasReliableFix()) {
             return null;
         }
 

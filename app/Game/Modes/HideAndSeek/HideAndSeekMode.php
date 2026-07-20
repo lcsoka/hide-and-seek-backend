@@ -235,9 +235,16 @@ class HideAndSeekMode implements GameMode
             return ValidationResult::fail('You are already on transit.');
         }
 
-        return ($player->last_lat === null || $player->last_lng === null)
-            ? ValidationResult::fail('Report your location before boarding.')
-            : ValidationResult::pass();
+        if ($player->last_lat === null || $player->last_lng === null) {
+            return ValidationResult::fail('Report your location before boarding.');
+        }
+        // Boarding stamps the journey log with where you got on; a wifi-tower fix would file it
+        // blocks away from the actual stop.
+        if (! $player->hasReliableFix()) {
+            return ValidationResult::fail('Your GPS signal is too weak to board — wait for a better fix.');
+        }
+
+        return ValidationResult::pass();
     }
 
     public function applyAction(Session $session, Player $player, Action $action): ActionOutcome
@@ -450,7 +457,7 @@ class HideAndSeekMode implements GameMode
         $cutoff = $maxAgeSeconds !== null ? now()->subSeconds($maxAgeSeconds * 2) : null;
 
         foreach ($session->players as $p) {
-            if ($p->role !== 'seeker' || $p->last_lat === null || $p->last_lng === null) {
+            if ($p->role !== 'seeker' || ! $p->hasReliableFix()) {
                 continue;
             }
             if ($cutoff !== null && ($p->last_location_at === null || $p->last_location_at->lt($cutoff))) {
@@ -484,7 +491,10 @@ class HideAndSeekMode implements GameMode
         }
         $zone = $session->state_data['hiding_zone'] ?? null;
         $center = $zone['center'] ?? null;
-        if ($center === null || $player->last_lat === null || $player->last_lng === null) {
+        // A poor fix neither starts nor cancels the dwell clock: it could place a seeker who is
+        // still streets away inside the zone, or bounce one who is standing in it back out and
+        // reset their timer.
+        if ($center === null || ! $player->hasReliableFix()) {
             return null;
         }
 
@@ -518,7 +528,11 @@ class HideAndSeekMode implements GameMode
      */
     private function updateHiderSpot(Session $session, Player $player): ?ActionOutcome
     {
-        if ($player->last_lat === null || $player->last_lng === null) {
+        // This point is the ground truth every question is judged against, so it only ever moves
+        // on a fix we trust — otherwise a single bad reading would drag the hider across their
+        // zone and quietly invalidate every cut drawn from that moment on. Keeping the last good
+        // spot is strictly safer: the hider is somewhere near it either way.
+        if (! $player->hasReliableFix()) {
             return null;
         }
         if (($session->state_data['pending_question'] ?? null) !== null) {
@@ -564,6 +578,13 @@ class HideAndSeekMode implements GameMode
 
     private function validateWithinHidingZone(Session $session, Player $hider): ValidationResult
     {
+        // Confirming commits the spot the whole round is then measured from, so it is worth
+        // waiting a few seconds for a real fix. Checked ahead of the branches below so it covers
+        // both the normal confirm and the post-relocation one.
+        if ($hider->last_lat !== null && $hider->last_lng !== null && ! $hider->hasReliableFix()) {
+            return ValidationResult::fail('Your GPS signal is too weak to confirm — wait for a better fix.');
+        }
+
         // Relocating via the 'move' powerup: the whole point is to leave the zone, so
         // only a known position is required — no zone bound.
         if ($session->state_data['relocating'] ?? false) {
@@ -1619,7 +1640,11 @@ class HideAndSeekMode implements GameMode
             return false;
         }
         $hiderPoint = $this->hiderPoint($session);
-        if ($hiderPoint === null || $player->last_lat === null || $player->last_lng === null) {
+        // The catch radius is 75 m — smaller than the error on a wifi/cell fix, so an untrusted
+        // reading could hand a seeker the catch from the far side of the neighbourhood. In the
+        // endgame the claim stays available regardless (see availableActions), so this only
+        // gates the silent proximity catch.
+        if ($hiderPoint === null || ! $player->hasReliableFix()) {
             return false;
         }
         $radius = (float) ($session->config['endgame_catch_radius_m'] ?? 75);

@@ -62,7 +62,7 @@ class MatchingEvaluator implements QuestionEvaluator
 
         // "Station Name's Length": compare the NAME length of each side's nearest feature, not identity.
         if (($question->parameters['match'] ?? null) === 'name_length') {
-            if ($asker->last_lat === null || $asker->last_lng === null) {
+            if (! $asker->hasReliableFix()) {
                 return null;
             }
             $askerNearest = $this->map->nearest($feature, (float) $asker->last_lat, (float) $asker->last_lng);
@@ -96,7 +96,7 @@ class MatchingEvaluator implements QuestionEvaluator
         }
 
         // Fallback: compute the seeker's nearest from their own position.
-        if ($asker->last_lat === null || $asker->last_lng === null) {
+        if (! $asker->hasReliableFix()) {
             return null;
         }
         $askerNearest = $this->map->nearest($feature, (float) $asker->last_lat, (float) $asker->last_lng);
@@ -124,7 +124,7 @@ class MatchingEvaluator implements QuestionEvaluator
      */
     private function evaluateAdmin(Player $asker, int $adminLevel, array $hiderPoint): ?array
     {
-        if ($asker->last_lat === null || $asker->last_lng === null) {
+        if (! $asker->hasReliableFix()) {
             return null;
         }
         $hiderArea = $this->regions->areaContaining($hiderPoint[0], $hiderPoint[1], $adminLevel);
