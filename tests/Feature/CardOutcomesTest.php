@@ -46,7 +46,10 @@ class CardOutcomesTest extends TestCase
         $this->assertGreaterThanOrEqual(23, $curses->count());
 
         foreach ($curses->values() as $i => $curse) {
-            $extra = ! empty($curse->effect['hider_photo']) ? ['photo_url' => 'https://example.com/streetview.jpg'] : [];
+            // hider_video behaves like hider_photo at play time: the hider hands media over first.
+            $extra = (! empty($curse->effect['hider_photo']) || ! empty($curse->effect['hider_video']))
+                ? ['photo_url' => 'https://example.com/streetview.jpg']
+                : [];
             if (! empty($curse->effect['hangman'])) {
                 $extra['word'] = 'VILLAMOS'; // the Hidden Hangman needs a word from the hider
             }

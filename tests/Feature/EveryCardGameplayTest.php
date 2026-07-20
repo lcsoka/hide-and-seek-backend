@@ -55,7 +55,9 @@ class EveryCardGameplayTest extends TestCase
             $this->giveHiderCard($ctx['sessionId'], ['uid' => 'c', 'type' => 'curse', 'curse_id' => $curse->id]);
             $effect = $curse->effect ?? [];
             $playPayload = ['card_uid' => 'c'];
-            if (! empty($effect['hider_photo'])) {
+            // Both flags hand media to the seekers, so both require it up front (the Bird Guide
+            // records a video before the seekers must reply with a longer one).
+            if (! empty($effect['hider_photo']) || ! empty($effect['hider_video'])) {
                 $playPayload['photo_url'] = 'https://example.com/streetview.jpg';
             }
             if (! empty($effect['hangman'])) {
@@ -66,9 +68,9 @@ class EveryCardGameplayTest extends TestCase
             $sd = $this->stateData($ctx);
             $key = $curse->key;
 
-            if (! empty($effect['hider_photo'])) {
+            if (! empty($effect['hider_photo']) || ! empty($effect['hider_video'])) {
                 $played = end($sd['curses_played']);
-                $this->assertSame('https://example.com/streetview.jpg', $played['hint_photo_url'] ?? null, "{$key} should hand the hider's photo to the seekers");
+                $this->assertSame('https://example.com/streetview.jpg', $played['hint_photo_url'] ?? null, "{$key} should hand the hider's media to the seekers");
             }
 
             $disable = $effect['disable_categories'] ?? null;
